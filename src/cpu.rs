@@ -1,9 +1,14 @@
 //mod cpu;
+use mem::MemBus;
+use common;
+use std::collections::HashMap;
 
 // LR35902 CPU
 pub struct CPU {
+    // Accumulator
     a: u8,
 
+    // Registers
     b: u8,
     c: u8,
     d: u8,
@@ -11,28 +16,26 @@ pub struct CPU {
     h: u8,
     l: u8,
 
+    // Flags
     f_z: bool,
     f_n: bool,
     f_h: bool,
     f_c: bool,
 
+    // Stack Pointer & PC
     sp: u16,
     pc: u16,
 
-    mem: Vec<u8>,
+    // Memory Bus (ROM,RAM,Peripherals etc)
+    mem: MemBus,
 }
-
 
 // Internal enum for operands.
-enum Operand {
-    A,
-    B,
-    C,
-    D,
-    E,
-    H,
-    L,
-}
+/*enum Operand<'a> {
+    SReg(&'a mut u8),
+    DReg(&'a mut u16),
+    Mem(u16),
+}*/
 
 
 // Internal
@@ -65,56 +68,51 @@ impl CPU {
         self.l = (val & 0xFF) as u8;
     }
 
+    // TODO: a more complex memory system
     #[inline]
     fn read_mem(&self, loc: u16) -> u8 {
-        return self.mem[loc as usize];
+        return self.mem.read(loc);
     }
 
     #[inline]
     fn write_mem(&mut self, loc: u16, val: u8) {
-        self.mem[loc as usize] = val;
+        self.mem.write(loc, val);
     }
 }
-
-
-
 
 // Instructions
 impl CPU {
     // Arithmetic
-    fn add(&mut self, op2: u8, carry: bool) {
+    fn add(&mut self, carry: bool, read: &Fn(&CPU)->u8) {
         let c = if self.f_c && carry {1} else {0};
-        let result = (self.a as u16) + (op2 as u16) + c;
+        let result = (self.a as u16) + (read(&self) as u16) + c;
         self.f_z = if (result & 0xFF) == 0 {true} else {false};
         self.f_n = false;
         self.f_h = if result > 0xF {true} else {false};
         self.f_c = if result > 0xFF {true} else {false};
-        //TODO: remove 0xFF?
-        self.a = (result & 0xFF) as u8;
+        self.a = result as u8;
     }
 
-    fn add_16(&mut self, op2: u16) {
-        let result = (self.get_hl() as u32) + (op2 as u32);
+    fn add_16(&mut self, read: &Fn(&CPU)->u16) {
+        let result = (self.get_hl() as u32) + (read(&self) as u32);
         self.f_n = false;
         self.f_h = if result > 0xF {true} else {false};
         self.f_c = if result > 0xFFFF {true} else {false};
-        //TODO: remove 0xFF?
-        self.set_hl((result & 0xFFFF) as u16);
+        self.set_hl(result as u16);
     }
 
-    fn sub(&mut self, op2: u8, carry: bool) {
+    fn sub(&mut self, carry: bool, read: &Fn(&CPU)->u8) {
         let c = if self.f_c && carry {1} else {0};
-        let result = (self.a as i16) - (op2 as i16) - c;
+        let result = (self.a as i16) - (read(&self) as i16) - c;
         self.f_z = if result == 0 {true} else {false};
         self.f_n = true;
         self.f_h = if result < 0x10 {true} else {false};
         self.f_c = if result < 0 {true} else {false};
-        //TODO: remove 0xFF?
-        self.a = (result & 0xFF) as u8;
+        self.a = result as u8;
     }
 
-    fn and(&mut self, op2: u8) {
-        let result = self.a & op2;
+    fn and(&mut self, read: &Fn(&CPU)->u8) {
+        let result = self.a & read(&self);
         self.f_z = if result == 0 {true} else {false};
         self.f_n = false;
         self.f_h = true;
@@ -122,8 +120,8 @@ impl CPU {
         self.a = result;
     }
 
-    fn xor(&mut self, op2: u8) {
-        let result = self.a ^ op2;
+    fn xor(&mut self, read: &Fn(&CPU)->u8) {
+        let result = self.a ^ read(&self);
         self.f_z = if result == 0 {true} else {false};
         self.f_n = false;
         self.f_h = false;
@@ -131,8 +129,8 @@ impl CPU {
         self.a = result;
     }
 
-    fn or(&mut self, op2: u8) {
-        let result = self.a | op2;
+    fn or(&mut self, read: &Fn(&CPU)->u8) {
+        let result = self.a | read(&self);
         self.f_z = if result == 0 {true} else {false};
         self.f_n = false;
         self.f_h = false;
@@ -140,52 +138,54 @@ impl CPU {
         self.a = result;
     }
 
-    fn cp(&mut self, op2: u8) {
-        let result = (self.a as i16) - (op2 as i16);
+    fn cp(&mut self, read: &Fn(&CPU)->u8) {
+        let result = (self.a as i16) - (read(&self) as i16);
         self.f_z = if result == 0 {true} else {false};
         self.f_n = true;
         self.f_h = if result < 0x10 {true} else {false};
         self.f_c = if result < 0 {true} else {false};
-        //TODO: remove 0xFF?
-        self.a = (result & 0xFF) as u8;
+        self.a = result as u8;
     }
 
-    // TODO: inc/dec on regs
-
-    fn inc_mem(&mut self, loc: u16) {
-        let result = (self.read_mem(loc) as u16) + 1;
+    // inc/dec
+    fn inc(&mut self, read: &Fn(&CPU)->u8, write: &Fn(&mut CPU, u8)) {
+        let result = (read(&self) as u16) + 1;
         self.f_z = if (result & 0xFF) == 0 {true} else {false};
         self.f_n = false;
         self.f_h = if result > 0xF {true} else {false};
-        self.write_mem(loc, (result & 0xFF) as u8);
+        write(self, result as u8);
     }
 
-    fn dec_mem(&mut self, loc: u16) {
-        let result = (self.read_mem(loc) as i16) - 1;
+    fn dec(&mut self, read: &Fn(&CPU)->u8, write: &Fn(&mut CPU, u8)) {
+        let result = (read(&self) as i16) - 1;
         self.f_z = if (result & 0xFF) == 0 {true} else {false};
         self.f_n = false;
         self.f_h = if result < 0x10 {true} else {false};
-        self.write_mem(loc, (result & 0xFF) as u8);
+        write(self, result as u8);
     }
 
+    // TODO: improve this
     fn daa(&mut self) {
-        let lo_nib = (self.a & 0xF as u16);
-        let hi_nib = (self.a & 0xF0 as u16);
+        let lo_nib = (self.a & 0xF) as u16;
+        let hi_nib = (self.a & 0xF0) as u16;
         let lo_inc = match (lo_nib, self.f_n, self.f_h) {
-            (_ @ 10...15,false,false) => 0x06,
-            (_ @ 0...3,false,true) => 0x06,
-            (_ @ 6...15,true,true) => 0x0A,
+            // TODO: improve matches
+            (x @ 10...15,false,false) => 0x06,
+            (x @ 0...3,false,true) => 0x06,
+            (x @ 6...15,true,true) => 0x0A,
             _ => 0x00,
-        }
+        };
         let hi_inc = match (hi_nib, self.f_c, self.f_n, self.f_h) {
-            (_ @ 10...15,false,false,_) => 0x60,
-            (_ @ 9...15,false,false,false) if lo_inc==6 => 0x60,
-            (_ @ 0..2,true,false,false) => 0x60,
-            (_ @ 0..3,true,false,true) => 0x60,
-            (_ @ 0..8,false,true,true) => 0xF0,
-            (_ @ 7..15,true,true,false) => 0xA0,
-            (_ @ 6..15,true,true,true) => 0x90,
-        }
+            // TODO: improve matches
+            (x @ 10...15,false,false,_) => 0x60,
+            (x @ 9...15,false,false,false) if lo_inc==6 => 0x60,
+            (x @ 0...2,true,false,false) => 0x60,
+            (x @ 0...3,true,false,true) => 0x60,
+            (x @ 0...8,false,true,true) => 0xF0,
+            (x @ 7...15,true,true,false) => 0xA0,
+            (x @ 6...15,true,true,true) => 0x90,
+            _ => 0x00,
+        };
         let result = (hi_nib | lo_nib) + lo_inc + hi_inc;
         self.f_z = if (result & 0xFF) == 0 {true} else {false};
         self.f_h = false;
@@ -242,80 +242,94 @@ impl CPU {
         self.a = (self.a >> 1) | carry_bit;
     }
 
-    fn rlc(&mut self, reg_op: Operand) {
-        let reg = match reg_op {
-            A => &mut self.a,
-            B => &mut self.b,
-            C => &mut self.c,
-            D => &mut self.d,
-            E => &mut self.e,
-            H => &mut self.h,
-            L => &mut self.l,
-        };
-        let top_bit = (*reg >> 7) & 1;
-        *reg = (*reg << 1) | top_bit;
-        self.f_z = if *reg == 0 {true} else {false};
+    fn rlc(&mut self, read: &Fn(&CPU)->u8, write: &Fn(&mut CPU, u8)) {
+        let op = read(&self);
+        let top_bit = (op >> 7) & 1;
+        let result = (op << 1) | top_bit;
+        self.f_z = if result == 0 {true} else {false};
         self.f_n = false;
         self.f_h = false;
         self.f_c = if top_bit != 0 {true} else {false};
+        write(self, result);
     }
 
-    fn rl(&mut self, reg_op: Operand) {
-        let reg = match reg_op {
-            A => &mut self.a,
-            B => &mut self.b,
-            C => &mut self.c,
-            D => &mut self.d,
-            E => &mut self.e,
-            H => &mut self.h,
-            L => &mut self.l,
-        };
+    fn rl(&mut self, read: &Fn(&CPU)->u8, write: &Fn(&mut CPU, u8)) {
+        let op = read(&self);
         let carry_bit = if self.f_c {1} else {0};
-        let top_bit = (*reg >> 7) & 1;
-        *reg = (*reg << 1) | carry_bit;
-        self.f_z = if *reg == 0 {true} else {false};
+        let top_bit = (op >> 7) & 1;
+        let result = (op << 1) | carry_bit;
+        self.f_z = if result == 0 {true} else {false};
         self.f_n = false;
         self.f_h = false;
         self.f_c = if top_bit != 0 {true} else {false};
+        write(self, result);
     }
 
-    fn rrc(&mut self, reg_op: Operand) {
-        let reg = match reg_op {
-            A => &mut self.a,
-            B => &mut self.b,
-            C => &mut self.c,
-            D => &mut self.d,
-            E => &mut self.e,
-            H => &mut self.h,
-            L => &mut self.l,
-        };
-        let bot_bit = (*reg << 7) & 0x80;
-        *reg = (*reg >> 1) | bot_bit;
-        self.f_z = if *reg == 0 {true} else {false};
+    fn rrc(&mut self, read: &Fn(&CPU)->u8, write: &Fn(&mut CPU, u8)) {
+        let op = read(&self);
+        let bot_bit = (op << 7) & 0x80;
+        let result = (op >> 1) | bot_bit;
+        self.f_z = if result == 0 {true} else {false};
         self.f_n = false;
         self.f_h = false;
         self.f_c = if bot_bit != 0 {true} else {false};
+        write(self, result);
     }
 
-    fn rr(&mut self, reg_op: Operand) {
-        let reg = match reg_op {
-            A => &mut self.a,
-            B => &mut self.b,
-            C => &mut self.c,
-            D => &mut self.d,
-            E => &mut self.e,
-            H => &mut self.h,
-            L => &mut self.l,
-        };
+    fn rr(&mut self, read: &Fn(&CPU)->u8, write: &Fn(&mut CPU, u8)) {
+        let op = read(&self);
         let carry_bit = if self.f_c {0x80} else {0};
-        let bot_bit = (*reg << 7) & 0x80;
-        *reg = (*reg >> 1) | carry_bit;
-        self.f_z = if *reg == 0 {true} else {false};
+        let bot_bit = (op << 7) & 0x80;
+        let result = (op >> 1) | carry_bit;
+        self.f_z = if result == 0 {true} else {false};
         self.f_n = false;
         self.f_h = false;
         self.f_c = if bot_bit != 0 {true} else {false};
+        write(self, result);
     }
+
 
 
 }
+
+
+// Public interface
+impl CPU {
+    // Initialise CPU
+    pub fn new() -> CPU {
+        CPU {
+            a: 0,
+            b: 0,
+            c: 0,
+            d: 0,
+            e: 0,
+            h: 0,
+            l: 0,
+            f_z: false,
+            f_n: false,
+            f_h: false,
+            f_c: false,
+            sp: 0,
+            pc: 0x100,
+            mem: MemBus::new(),
+        }
+    }
+
+    // Single step
+    pub fn step(&mut self) {
+        // read PC
+        let instr = self.read_mem(self.pc);
+        // read any more bytes as needed
+
+        // call function - TODO match
+        match instr {
+            0x04 => self.inc(&|ref s| s.b, &|ref mut s,i| s.b=i),
+            0x80 => self.add(false, &|ref s| s.b),
+            _ => self.add(false, &|ref s| s.c),
+        }
+        // increment PC
+    }
+}
+
+
 
