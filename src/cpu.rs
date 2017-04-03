@@ -22,6 +22,9 @@ pub struct CPU {
     f_h: bool,
     f_c: bool,
 
+    // Interrupts
+    ime: bool,
+
     // Stack Pointer & PC
     sp: u16,
     pc: u16,
@@ -30,12 +33,15 @@ pub struct CPU {
     mem: MemBus,
 }
 
-// Internal enum for operands.
-/*enum Operand<'a> {
-    SReg(&'a mut u8),
-    DReg(&'a mut u16),
-    Mem(u16),
-}*/
+
+// Conditions for Jump
+enum Cond {
+    NZ,
+    NC,
+    Z,
+    C,
+    AL,
+}
 
 
 // Internal
@@ -78,23 +84,52 @@ impl CPU {
         self.mem.write(loc, val);
     }
 
-    // read and write to/from mem pointed to by hl
-    fn read_hl(&self) -> u8 {
-        let hl = self.get_hl();
-        self.mem.read(hl)
-    }
-
-    fn write_hl(&mut self, val: u8) {
-        let hl = self.get_hl();
-        self.mem.write(hl, val);
-    }
-
     // read mem pointed to by pc (and inc pc)
     fn fetch(&mut self) -> u8 {
         let result = self.mem.read(self.pc);
         self.pc += 1;
         result
     }
+
+    // read and write to/from mem pointed to by hl
+    fn read_hl(&self) -> u8 {
+        let hl = self.get_hl();
+        self.mem.read(hl)
+    }
+
+    fn write_hl(&mut s: CPU, val: u8) {
+        let hl = s.get_hl();
+        s.mem.write(hl, val);
+    }
+
+    // Writing to specific registers
+    /*fn write_a(&mut s: CPU, val: u8) {
+        s.a = val;
+    }
+
+    fn write_b(&mut s: CPU, val: u8) {
+        s.b = val;
+    }
+
+    fn write_c(&mut s: CPU, val: u8) {
+        s.c = val;
+    }
+
+    fn write_d(&mut s: CPU, val: u8) {
+        s.d = val;
+    }
+
+    fn write_e(&mut s: CPU, val: u8) {
+        s.e = val;
+    }
+
+    fn write_h(&mut s: CPU, val: u8) {
+        s.h = val;
+    }
+
+    fn write_l(&mut s: CPU, val: u8) {
+        s.l = val;
+    }*/
 }
 
 // Instructions
@@ -214,6 +249,12 @@ impl CPU {
         self.f_n = true;
         self.f_h = true;
         self.a = self.a ^ 0xFF;
+    }
+
+    // Load
+    fn ld(&mut self, read: &Fn(&CPU)->u8, write: &Fn(&mut CPU, u8)) {
+        let data = read(self);
+        write(self, data);
     }
 
     // Shift/Rotate
@@ -365,11 +406,90 @@ impl CPU {
         self.f_h = true;
     }
 
+    // Control commands
+    fn scf(&mut self) {
+        self.f_c = true;
+        self.f_n = false;
+        self.f_h = false;
+    }
 
-    // Other
+    fn ccf(&mut self) {
+        self.f_c = if self.f_c {false} else {true};
+        self.f_n = false;
+        self.f_h = false;
+    }
+
     fn nop(&self) {
         return;
     }
+
+    // halt, stop
+    fn di(&mut self) {
+        self.ime = false;
+    }
+
+    fn ei(&mut self) {
+        self.ime = true;
+    }
+
+    // Jump
+    fn jp(&mut self, cd: Cond, loc: u16) {
+        match cd {
+            Cond::AL => self.pc = loc,
+            Cond::NZ => if self.f_n && self.f_z {self.pc = loc},
+            Cond::NC => if self.f_n && self.f_c {self.pc = loc},
+            Cond::Z => if self.f_z {self.pc = loc},
+            Cond::C => if self.f_c {self.pc = loc},
+        }
+    }
+
+    fn jr(&mut self, cd: Cond, loc: i8) {
+        match cd {
+            Cond::AL => {},
+            Cond::NZ => if !self.f_n || !self.f_z {return},
+            Cond::NC => if !self.f_n || !self.f_c {return},
+            Cond::Z => if !self.f_z {return},
+            Cond::C => if !self.f_c {return},
+        }
+        self.pc = ((self.pc as i32) + (loc as i32)) as u16;
+    }
+
+    fn call(&mut self, cd: Cond, loc: u16) {
+        match cd {
+            Cond::AL => {},
+            Cond::NZ => if !self.f_n || !self.f_z {return},
+            Cond::NC => if !self.f_n || !self.f_c {return},
+            Cond::Z => if !self.f_z {return},
+            Cond::C => if !self.f_c {return},
+        }
+        self.mem.write(self.sp, self.pc as u8);
+        self.mem.write(self.sp-1, (self.pc >> 8) as u8);
+        self.sp -= 2;
+        self.pc = loc;
+    }
+
+    fn ret(&mut self, cd: Cond) {
+        match cd {
+            Cond::AL => {},
+            Cond::NZ => if !self.f_n || !self.f_z {return},
+            Cond::NC => if !self.f_n || !self.f_c {return},
+            Cond::Z => if !self.f_z {return},
+            Cond::C => if !self.f_c {return},
+        }
+        let hi_byte = self.mem.read(self.sp+1) as u16;
+        let lo_byte = self.mem.read(self.sp+2) as u16;
+        self.sp += 2;
+        self.pc = (hi_byte << 8) | lo_byte;
+    }
+
+    fn reti(&mut self) {
+        self.ime = true;
+        let hi_byte = self.mem.read(self.sp+1) as u16;
+        let lo_byte = self.mem.read(self.sp+2) as u16;
+        self.sp += 2;
+        self.pc = (hi_byte << 8) | lo_byte;
+    }
+
 }
 
 
@@ -389,6 +509,7 @@ impl CPU {
             f_n: false,
             f_h: false,
             f_c: false,
+            ime: true,
             sp: 0,
             pc: 0x100,
             mem: MemBus::new(),
@@ -518,266 +639,106 @@ impl CPU {
 
 
     fn prefix_cb(&mut self, instr: u8) {
-        match instr {
+        let mat = (instr & 0xC0) | ((instr >> 3) & 0x7) | ((instr << 3) & 0x38);
+        match mat {
             0x00 => self.rlc(&|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x01 => self.rlc(&|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x02 => self.rlc(&|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x03 => self.rlc(&|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x04 => self.rlc(&|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x05 => self.rlc(&|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x06 => self.rlc(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x07 => self.rlc(&|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x08 => self.rrc(&|ref s| s.b, &|ref mut s,i| s.b=i),
+            0x01 => self.rrc(&|ref s| s.b, &|ref mut s,i| s.b=i),
+            0x02 => self.rl(&|ref s| s.b, &|ref mut s,i| s.b=i),
+            0x03 => self.rr(&|ref s| s.b, &|ref mut s,i| s.b=i),
+            0x04 => self.sla(&|ref s| s.b, &|ref mut s,i| s.b=i),
+            0x05 => self.sra(&|ref s| s.b, &|ref mut s,i| s.b=i),
+            0x06 => self.swap(&|ref s| s.b, &|ref mut s,i| s.b=i),
+            0x07 => self.srl(&|ref s| s.b, &|ref mut s,i| s.b=i),
+
+            0x08 => self.rlc(&|ref s| s.c, &|ref mut s,i| s.c=i),
             0x09 => self.rrc(&|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x0A => self.rrc(&|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x0B => self.rrc(&|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x0C => self.rrc(&|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x0D => self.rrc(&|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x0E => self.rrc(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x0F => self.rrc(&|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x10 => self.rl(&|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x11 => self.rl(&|ref s| s.c, &|ref mut s,i| s.c=i),
+            0x0A => self.rl(&|ref s| s.c, &|ref mut s,i| s.c=i),
+            0x0B => self.rr(&|ref s| s.c, &|ref mut s,i| s.c=i),
+            0x0C => self.sla(&|ref s| s.c, &|ref mut s,i| s.c=i),
+            0x0D => self.sra(&|ref s| s.c, &|ref mut s,i| s.c=i),
+            0x0E => self.swap(&|ref s| s.c, &|ref mut s,i| s.c=i),
+            0x0F => self.srl(&|ref s| s.c, &|ref mut s,i| s.c=i),
+
+            0x10 => self.rlc(&|ref s| s.d, &|ref mut s,i| s.d=i),
+            0x11 => self.rrc(&|ref s| s.d, &|ref mut s,i| s.d=i),
             0x12 => self.rl(&|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x13 => self.rl(&|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x14 => self.rl(&|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x15 => self.rl(&|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x16 => self.rl(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x17 => self.rl(&|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x18 => self.rr(&|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x19 => self.rr(&|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x1A => self.rr(&|ref s| s.d, &|ref mut s,i| s.d=i),
+            0x13 => self.rr(&|ref s| s.d, &|ref mut s,i| s.d=i),
+            0x14 => self.sla(&|ref s| s.d, &|ref mut s,i| s.d=i),
+            0x15 => self.sra(&|ref s| s.d, &|ref mut s,i| s.d=i),
+            0x16 => self.swap(&|ref s| s.d, &|ref mut s,i| s.d=i),
+            0x17 => self.srl(&|ref s| s.d, &|ref mut s,i| s.d=i),
+
+            0x18 => self.rlc(&|ref s| s.e, &|ref mut s,i| s.e=i),
+            0x19 => self.rrc(&|ref s| s.e, &|ref mut s,i| s.e=i),
+            0x1A => self.rl(&|ref s| s.e, &|ref mut s,i| s.e=i),
             0x1B => self.rr(&|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x1C => self.rr(&|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x1D => self.rr(&|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x1E => self.rr(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x1F => self.rr(&|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x20 => self.sla(&|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x21 => self.sla(&|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x22 => self.sla(&|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x23 => self.sla(&|ref s| s.e, &|ref mut s,i| s.e=i),
+            0x1C => self.sla(&|ref s| s.e, &|ref mut s,i| s.e=i),
+            0x1D => self.sra(&|ref s| s.e, &|ref mut s,i| s.e=i),
+            0x1E => self.swap(&|ref s| s.e, &|ref mut s,i| s.e=i),
+            0x1F => self.srl(&|ref s| s.e, &|ref mut s,i| s.e=i),
+
+            0x20 => self.rlc(&|ref s| s.h, &|ref mut s,i| s.h=i),
+            0x21 => self.rrc(&|ref s| s.h, &|ref mut s,i| s.h=i),
+            0x22 => self.rl(&|ref s| s.h, &|ref mut s,i| s.h=i),
+            0x23 => self.rr(&|ref s| s.h, &|ref mut s,i| s.h=i),
             0x24 => self.sla(&|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x25 => self.sla(&|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x26 => self.sla(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x27 => self.sla(&|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x28 => self.sra(&|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x29 => self.sra(&|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x2A => self.sra(&|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x2B => self.sra(&|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x2C => self.sra(&|ref s| s.h, &|ref mut s,i| s.h=i),
+            0x25 => self.sra(&|ref s| s.h, &|ref mut s,i| s.h=i),
+            0x26 => self.swap(&|ref s| s.h, &|ref mut s,i| s.h=i),
+            0x27 => self.srl(&|ref s| s.h, &|ref mut s,i| s.h=i),
+
+            0x28 => self.rlc(&|ref s| s.l, &|ref mut s,i| s.l=i),
+            0x29 => self.rrc(&|ref s| s.l, &|ref mut s,i| s.l=i),
+            0x2A => self.rl(&|ref s| s.l, &|ref mut s,i| s.l=i),
+            0x2B => self.rr(&|ref s| s.l, &|ref mut s,i| s.l=i),
+            0x2C => self.sla(&|ref s| s.l, &|ref mut s,i| s.l=i),
             0x2D => self.sra(&|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x2E => self.sra(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x2F => self.sra(&|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x30 => self.swap(&|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x31 => self.swap(&|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x32 => self.swap(&|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x33 => self.swap(&|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x34 => self.swap(&|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x35 => self.swap(&|ref s| s.l, &|ref mut s,i| s.l=i),
+            0x2E => self.swap(&|ref s| s.l, &|ref mut s,i| s.l=i),
+            0x2F => self.srl(&|ref s| s.l, &|ref mut s,i| s.l=i),
+
+            0x30 => self.rlc(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
+            0x31 => self.rrc(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
+            0x32 => self.rl(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
+            0x33 => self.rr(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
+            0x34 => self.sla(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
+            0x35 => self.sra(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
             0x36 => self.swap(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x37 => self.swap(&|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x38 => self.srl(&|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x39 => self.srl(&|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x3A => self.srl(&|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x3B => self.srl(&|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x3C => self.srl(&|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x3D => self.srl(&|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x3E => self.srl(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
+            0x37 => self.srl(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
+
+            0x38 => self.rlc(&|ref s| s.a, &|ref mut s,i| s.a=i),
+            0x39 => self.rrc(&|ref s| s.a, &|ref mut s,i| s.a=i),
+            0x3A => self.rl(&|ref s| s.a, &|ref mut s,i| s.a=i),
+            0x3B => self.rr(&|ref s| s.a, &|ref mut s,i| s.a=i),
+            0x3C => self.sla(&|ref s| s.a, &|ref mut s,i| s.a=i),
+            0x3D => self.sra(&|ref s| s.a, &|ref mut s,i| s.a=i),
+            0x3E => self.swap(&|ref s| s.a, &|ref mut s,i| s.a=i),
             0x3F => self.srl(&|ref s| s.a, &|ref mut s,i| s.a=i),
 
-            0x40 => self.bit(0, &|ref s| s.b),
-            0x41 => self.bit(0, &|ref s| s.c),
-            0x42 => self.bit(0, &|ref s| s.d),
-            0x43 => self.bit(0, &|ref s| s.e),
-            0x44 => self.bit(0, &|ref s| s.h),
-            0x45 => self.bit(0, &|ref s| s.l),
-            0x46 => self.bit(0, &|ref s| s.read_hl()),
-            0x47 => self.bit(0, &|ref s| s.a),
-            0x48 => self.bit(1, &|ref s| s.b),
-            0x49 => self.bit(1, &|ref s| s.c),
-            0x4A => self.bit(1, &|ref s| s.d),
-            0x4B => self.bit(1, &|ref s| s.e),
-            0x4C => self.bit(1, &|ref s| s.h),
-            0x4D => self.bit(1, &|ref s| s.l),
-            0x4E => self.bit(1, &|ref s| s.read_hl()),
-            0x4F => self.bit(1, &|ref s| s.a),
-            0x50 => self.bit(2, &|ref s| s.b),
-            0x51 => self.bit(2, &|ref s| s.c),
-            0x52 => self.bit(2, &|ref s| s.d),
-            0x53 => self.bit(2, &|ref s| s.e),
-            0x54 => self.bit(2, &|ref s| s.h),
-            0x55 => self.bit(2, &|ref s| s.l),
-            0x56 => self.bit(2, &|ref s| s.read_hl()),
-            0x57 => self.bit(2, &|ref s| s.a),
-            0x58 => self.bit(3, &|ref s| s.b),
-            0x59 => self.bit(3, &|ref s| s.c),
-            0x5A => self.bit(3, &|ref s| s.d),
-            0x5B => self.bit(3, &|ref s| s.e),
-            0x5C => self.bit(3, &|ref s| s.h),
-            0x5D => self.bit(3, &|ref s| s.l),
-            0x5E => self.bit(3, &|ref s| s.read_hl()),
-            0x5F => self.bit(3, &|ref s| s.a),
-            0x60 => self.bit(4, &|ref s| s.b),
-            0x61 => self.bit(4, &|ref s| s.c),
-            0x62 => self.bit(4, &|ref s| s.d),
-            0x63 => self.bit(4, &|ref s| s.e),
-            0x64 => self.bit(4, &|ref s| s.h),
-            0x65 => self.bit(4, &|ref s| s.l),
-            0x66 => self.bit(4, &|ref s| s.read_hl()),
-            0x67 => self.bit(4, &|ref s| s.a),
-            0x68 => self.bit(5, &|ref s| s.b),
-            0x69 => self.bit(5, &|ref s| s.c),
-            0x6A => self.bit(5, &|ref s| s.d),
-            0x6B => self.bit(5, &|ref s| s.e),
-            0x6C => self.bit(5, &|ref s| s.h),
-            0x6D => self.bit(5, &|ref s| s.l),
-            0x6E => self.bit(5, &|ref s| s.read_hl()),
-            0x6F => self.bit(5, &|ref s| s.a),
-            0x70 => self.bit(6, &|ref s| s.b),
-            0x71 => self.bit(6, &|ref s| s.c),
-            0x72 => self.bit(6, &|ref s| s.d),
-            0x73 => self.bit(6, &|ref s| s.e),
-            0x74 => self.bit(6, &|ref s| s.h),
-            0x75 => self.bit(6, &|ref s| s.l),
-            0x76 => self.bit(6, &|ref s| s.read_hl()),
-            0x77 => self.bit(6, &|ref s| s.a),
-            0x78 => self.bit(7, &|ref s| s.b),
-            0x79 => self.bit(7, &|ref s| s.c),
-            0x7A => self.bit(7, &|ref s| s.d),
-            0x7B => self.bit(7, &|ref s| s.e),
-            0x7C => self.bit(7, &|ref s| s.h),
-            0x7D => self.bit(7, &|ref s| s.l),
-            0x7E => self.bit(7, &|ref s| s.read_hl()),
-            0x7F => self.bit(7, &|ref s| s.a),
+            0x40...0x47 => self.bit(mat & 7, &|ref s| s.b),
+            0x48...0x4F => self.bit(mat & 7, &|ref s| s.c),
+            0x50...0x57 => self.bit(mat & 7, &|ref s| s.d),
+            0x58...0x5F => self.bit(mat & 7, &|ref s| s.e),
+            0x60...0x67 => self.bit(mat & 7, &|ref s| s.h),
+            0x68...0x6F => self.bit(mat & 7, &|ref s| s.l),
+            0x70...0x77 => self.bit(mat & 7, &|ref s| s.read_hl()),
+            0x78...0x7F => self.bit(mat & 7, &|ref s| s.a),
 
-            0x80 => self.res(0, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x81 => self.res(0, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x82 => self.res(0, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x83 => self.res(0, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x84 => self.res(0, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x85 => self.res(0, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x86 => self.res(0, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x87 => self.res(0, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x88 => self.res(1, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x89 => self.res(1, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x8A => self.res(1, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x8B => self.res(1, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x8C => self.res(1, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x8D => self.res(1, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x8E => self.res(1, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x8F => self.res(1, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x90 => self.res(2, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x91 => self.res(2, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x92 => self.res(2, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x93 => self.res(2, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x94 => self.res(2, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x95 => self.res(2, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x96 => self.res(2, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x97 => self.res(2, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x98 => self.res(3, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x99 => self.res(3, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x9A => self.res(3, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x9B => self.res(3, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x9C => self.res(3, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x9D => self.res(3, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x9E => self.res(3, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x9F => self.res(3, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0xA0 => self.res(4, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xA1 => self.res(4, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xA2 => self.res(4, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xA3 => self.res(4, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xA4 => self.res(4, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xA5 => self.res(4, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xA6 => self.res(4, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0xA7 => self.res(4, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0xA8 => self.res(5, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xA9 => self.res(5, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xAA => self.res(5, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xAB => self.res(5, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xAC => self.res(5, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xAD => self.res(5, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xAE => self.res(5, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0xAF => self.res(5, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0xB0 => self.res(6, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xB1 => self.res(6, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xB2 => self.res(6, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xB3 => self.res(6, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xB4 => self.res(6, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xB5 => self.res(6, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xB6 => self.res(6, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0xB7 => self.res(6, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0xB8 => self.res(7, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xB9 => self.res(7, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xBA => self.res(7, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xBB => self.res(7, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xBC => self.res(7, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xBD => self.res(7, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xBE => self.res(7, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0xBF => self.res(7, &|ref s| s.a, &|ref mut s,i| s.a=i),
+            0x80...0x87 => self.res(mat & 7, &|ref s| s.b, &|ref mut s,i| s.b=i),
+            0x88...0x8F => self.res(mat & 7, &|ref s| s.c, &|ref mut s,i| s.c=i),
+            0x90...0x97 => self.res(mat & 7, &|ref s| s.d, &|ref mut s,i| s.d=i),
+            0x98...0x9F => self.res(mat & 7, &|ref s| s.e, &|ref mut s,i| s.e=i),
+            0xA0...0xA7 => self.res(mat & 7, &|ref s| s.h, &|ref mut s,i| s.h=i),
+            0xA8...0xAF => self.res(mat & 7, &|ref s| s.l, &|ref mut s,i| s.l=i),
+            0xB0...0xB7 => self.res(mat & 7, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
+            0xB8...0xBF => self.res(mat & 7, &|ref s| s.a, &|ref mut s,i| s.a=i),
 
-            0xC0 => self.set(0, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xC1 => self.set(0, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xC2 => self.set(0, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xC3 => self.set(0, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xC4 => self.set(0, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xC5 => self.set(0, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xC6 => self.set(0, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0xC7 => self.set(0, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0xC8 => self.set(1, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xC9 => self.set(1, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xCA => self.set(1, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xCB => self.set(1, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xCC => self.set(1, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xCD => self.set(1, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xCE => self.set(1, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0xCF => self.set(1, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0xD0 => self.set(2, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xD1 => self.set(2, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xD2 => self.set(2, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xD3 => self.set(2, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xD4 => self.set(2, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xD5 => self.set(2, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xD6 => self.set(2, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0xD7 => self.set(2, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0xD8 => self.set(3, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xD9 => self.set(3, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xDA => self.set(3, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xDB => self.set(3, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xDC => self.set(3, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xDD => self.set(3, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xDE => self.set(3, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0xDF => self.set(3, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0xE0 => self.set(4, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xE1 => self.set(4, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xE2 => self.set(4, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xE3 => self.set(4, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xE4 => self.set(4, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xE5 => self.set(4, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xE6 => self.set(4, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0xE7 => self.set(4, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0xE8 => self.set(5, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xE9 => self.set(5, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xEA => self.set(5, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xEB => self.set(5, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xEC => self.set(5, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xED => self.set(5, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xEE => self.set(5, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0xEF => self.set(5, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0xF0 => self.set(6, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xF1 => self.set(6, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xF2 => self.set(6, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xF3 => self.set(6, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xF4 => self.set(6, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xF5 => self.set(6, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xF6 => self.set(6, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0xF7 => self.set(6, &|ref s| s.a, &|ref mut s,i| s.a=i),
-            0xF8 => self.set(7, &|ref s| s.b, &|ref mut s,i| s.b=i),
-            0xF9 => self.set(7, &|ref s| s.c, &|ref mut s,i| s.c=i),
-            0xFA => self.set(7, &|ref s| s.d, &|ref mut s,i| s.d=i),
-            0xFB => self.set(7, &|ref s| s.e, &|ref mut s,i| s.e=i),
-            0xFC => self.set(7, &|ref s| s.h, &|ref mut s,i| s.h=i),
-            0xFD => self.set(7, &|ref s| s.l, &|ref mut s,i| s.l=i),
-            0xFE => self.set(7, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-       /*0xFF*/_ => self.set(7, &|ref s| s.a, &|ref mut s,i| s.a=i),
+            0xC0...0xC7 => self.set(mat & 7, &|ref s| s.b, &|ref mut s,i| s.b=i),
+            0xC8...0xCF => self.set(mat & 7, &|ref s| s.c, &|ref mut s,i| s.c=i),
+            0xD0...0xD7 => self.set(mat & 7, &|ref s| s.d, &|ref mut s,i| s.d=i),
+            0xD8...0xDF => self.set(mat & 7, &|ref s| s.e, &|ref mut s,i| s.e=i),
+            0xE0...0xE7 => self.set(mat & 7, &|ref s| s.h, &|ref mut s,i| s.h=i),
+            0xE8...0xEF => self.set(mat & 7, &|ref s| s.l, &|ref mut s,i| s.l=i),
+            0xF0...0xF7 => self.set(mat & 7, &|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
+            /*... FF*/_ => self.set(mat & 7, &|ref s| s.a, &|ref mut s,i| s.a=i),
         }
     }
 }
