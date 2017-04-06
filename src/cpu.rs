@@ -1,6 +1,6 @@
-//mod cpu;
+// CPU Module
+
 use mem::MemBus;
-use common;
 use std::collections::HashMap;
 
 // LR35902 CPU
@@ -850,7 +850,7 @@ impl CPU {
             0xFE => {let imm = self.fetch(); self.cp(&|ref s| imm)},
             0xFF => self.call(Cond::AL, 0x38),
 
-            _ => self.add(false, &|ref s| s.c),
+            _ => {},
         }
     }
 
