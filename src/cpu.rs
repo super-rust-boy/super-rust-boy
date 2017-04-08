@@ -1,7 +1,6 @@
 // CPU Module
 
 use mem::MemBus;
-use std::collections::HashMap;
 
 // LR35902 CPU
 pub struct CPU {
@@ -24,6 +23,7 @@ pub struct CPU {
 
     // Interrupts
     ime: bool,
+    int_stat: IntType,
 
     // Stack Pointer & PC
     sp: u16,
@@ -49,6 +49,17 @@ enum Reg {
     BC,
     DE,
     HL,
+}
+
+// Interrupt Procedures
+enum IntType {
+    Cont,
+    Stop,
+    VBlank,
+    LCDC,
+    Timer,
+    Serial,
+    HiLo,
 }
 
 
@@ -210,30 +221,30 @@ impl CPU {
     }
 
     // inc/dec
-    fn inc(&mut self, read: &Fn(&CPU)->u8, write: &Fn(&mut CPU, u8)) {
-        let result = (read(&self) as u16) + 1;
+    fn inc(&mut self, op: u8) -> u8 {
+        let result = (op as u16) + 1;
         self.f_z = if (result & 0xFF) == 0 {true} else {false};
         self.f_n = false;
         self.f_h = if result > 0xF {true} else {false};
-        write(self, result as u8);
+        result as u8
     }
 
-    fn dec(&mut self, read: &Fn(&CPU)->u8, write: &Fn(&mut CPU, u8)) {
-        let result = (read(&self) as i16) - 1;
+    fn dec(&mut self, op: u8) -> u8 {
+        let result = (op as u16) - 1;
         self.f_z = if (result & 0xFF) == 0 {true} else {false};
         self.f_n = false;
         self.f_h = if result < 0x10 {true} else {false};
-        write(self, result as u8);
+        result as u8
     }
 
-    fn inc_16(&mut self, read: &Fn(&CPU)->u16, write: &Fn(&mut CPU, u16)) {
-        let result = (read(&self) as u32) + 1;
-        write(self, result as u16);
+    fn inc_16(&mut self, op: u16) -> u16 {
+        let result = (op as u32) + 1;
+        result as u16
     }
 
-    fn dec_16(&mut self, read: &Fn(&CPU)->u16, write: &Fn(&mut CPU, u16)) {
-        let result = (read(&self) as i32) - 1;
-        write(self, result as u16);
+    fn dec_16(&mut self, op: u16) -> u16 {
+        let result = (op as i32) - 1;
+        result as u16
     }
 
     // TODO: improve this
@@ -271,17 +282,7 @@ impl CPU {
         self.a = self.a ^ 0xFF;
     }
 
-    // Load
-    fn ld(&mut self, read: &Fn(&CPU)->u8, write: &Fn(&mut CPU, u8)) {
-        let data = read(self);
-        write(self, data);
-    }
-
-    fn ld_16(&mut self, read: &Fn(&CPU)->u16, write: &Fn(&mut CPU, u16)) {
-        let data = read(self);
-        write(self, data);
-    }
-
+    // Stack
     fn pop(&mut self, which: Reg) {
         let hi_byte = self.mem.read(self.sp+1);
         let lo_byte = self.mem.read(self.sp+2);
@@ -537,6 +538,7 @@ impl CPU {
 impl CPU {
     // Initialise CPU
     pub fn new() -> CPU {
+        let dc = "DemoCart.gb";
         CPU {
             a: 0,
             b: 0,
@@ -550,15 +552,25 @@ impl CPU {
             f_h: false,
             f_c: false,
             ime: true,
+            int_stat: IntType::Cont,
             sp: 0,
             pc: 0x100,
-            mem: MemBus::new(),
+            mem: MemBus::new(dc),
         }
     }
 
     // Single instruction
     pub fn step(&mut self) {
-        // TODO: check for interrupt? (should that happen here?)
+        match self.int_stat {
+           IntType::Cont => {},
+           IntType::Stop => return,
+           IntType::VBlank => {self.ime = false; self.pc = 0x40},
+           IntType::LCDC => {self.ime = false; self.pc = 0x48},
+           IntType::Timer => {self.ime = false; self.pc = 0x50},
+           IntType::Serial => {self.ime = false; self.pc = 0x58},
+           IntType::HiLo => {self.ime = false; self.pc = 0x60},
+        }
+
         let instr = self.fetch();
 
         let op8 = match instr % 8 {
@@ -581,151 +593,93 @@ impl CPU {
 
         match instr {
             0x00 => self.nop(),
-            0x01 => {let imm = self.fetch_16();
-                     self.ld_16(&|ref s| imm, &|ref mut s,i| s.set_16(Reg::BC,i))},
-            0x02 => {let loc = self.get_16(Reg::BC);
-                     self.ld(&|ref s| s.a, &|ref mut s,i| s.write_mem(loc,i))},
-            0x03 => self.inc_16(&|ref s| s.get_16(Reg::BC), &|ref mut s,i| s.set_16(Reg::BC,i)),
-            0x04 => self.inc(&|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x05 => self.dec(&|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x06 => {let imm = self.fetch(); self.ld(&|ref s| imm, &|ref mut s,i| s.b=i)},
+            0x01 => {let imm = self.fetch_16(); self.set_16(Reg::BC,imm)},
+            0x02 => {let loc = self.get_16(Reg::BC); let op = self.a;
+                     self.write_mem(loc,op)},
+            0x03 => {let val = self.inc_16(op16); self.set_16(Reg::BC,val)},
+            0x04 => {let op = self.b; self.b = self.inc(op)},
+            0x05 => {let op = self.b; self.b = self.dec(op)},
+            0x06 => self.b = self.fetch(),
             0x07 => self.rlca(),
             0x08 => {}, // LOAD 16-bits into mem (how??) /FOR BC:/ low byte(C) to n, high byte(B) to n+1 
             0x09 => self.add_16(op16),
-            0x0A => {let loc = self.get_16(Reg::BC);
-                     self.ld(&|ref s| s.read_mem(loc), &|ref mut s,i| s.a = i)},
-            0x0B => self.dec_16(&|ref s| s.get_16(Reg::BC), &|ref mut s,i| s.set_16(Reg::BC,i)),
-            0x0C => self.inc(&|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x0D => self.dec(&|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x0E => {let imm = self.fetch(); self.ld(&|ref s| imm, &|ref mut s,i| s.c=i)},
+            0x0A => self.a = self.read_mem(self.get_16(Reg::BC)),
+            0x0B => {let val = self.dec_16(op16); self.set_16(Reg::BC,val)},
+            0x0C => {let op = self.c; self.c = self.inc(op)},
+            0x0D => {let op = self.c; self.c = self.dec(op)},
+            0x0E => self.c = self.fetch(),
             0x0F => self.rrca(),
 
-            0x10 => {}, // TODO stop
-            0x11 => {let imm = self.fetch_16();
-                     self.ld_16(&|ref s| imm, &|ref mut s,i| s.set_16(Reg::DE,i))},
-            0x12 => {let loc = self.get_16(Reg::DE);
-                     self.ld(&|ref s| s.a, &|ref mut s,i| s.write_mem(loc,i))},
-            0x13 => self.inc_16(&|ref s| s.get_16(Reg::DE), &|ref mut s,i| s.set_16(Reg::DE,i)),
-            0x14 => self.inc(&|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x15 => self.dec(&|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x16 => {let imm = self.fetch(); self.ld(&|ref s| imm, &|ref mut s,i| s.d=i)},
+            0x10 => self.int_stat = IntType::Stop,
+            0x11 => {let imm = self.fetch_16(); self.set_16(Reg::DE,imm)},
+            0x12 => {let loc = self.get_16(Reg::DE); let op = self.a;
+                     self.write_mem(loc,op)},
+            0x13 => {let val = self.inc_16(op16); self.set_16(Reg::DE,val)},
+            0x14 => {let op = self.d; self.d = self.inc(op)},
+            0x15 => {let op = self.d; self.d = self.dec(op)},
+            0x16 => self.d = self.fetch(),
             0x17 => self.rla(),
             0x18 => {let imm = self.fetch(); self.jr(Cond::AL, imm as i8)},
             0x19 => self.add_16(op16),
-            0x1A => {let loc = self.get_16(Reg::DE);
-                     self.ld(&|ref s| s.read_mem(loc), &|ref mut s,i| s.a = i)},
-            0x1B => self.dec_16(&|ref s| s.get_16(Reg::DE), &|ref mut s,i| s.set_16(Reg::DE,i)),
-            0x1C => self.inc(&|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x1D => self.dec(&|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x1E => {let imm = self.fetch(); self.ld(&|ref s| imm, &|ref mut s,i| s.e=i)},
+            0x1A => self.a = self.read_mem(self.get_16(Reg::DE)),
+            0x1B => {let val = self.dec_16(op16); self.set_16(Reg::DE,val)},
+            0x1C => {let op = self.e; self.e = self.inc(op)},
+            0x1D => {let op = self.e; self.e = self.dec(op)},
+            0x1E => self.e = self.fetch(),
             0x1F => self.rra(),
 
             0x20 => {let imm = self.fetch(); self.jr(Cond::NZ, imm as i8)},
-            0x21 => {let imm = self.fetch_16();
-                     self.ld_16(&|ref s| imm, &|ref mut s,i| s.set_16(Reg::HL,i))},
-            0x22 => {self.ld(&|ref s| s.a, &|ref mut s,i| s.write_hl(i));
-                     self.inc_16(&|ref s| s.get_16(Reg::HL), &|ref mut s,i| s.set_16(Reg::HL,i))},
-            0x23 => self.inc_16(&|ref s| s.get_16(Reg::HL), &|ref mut s,i| s.set_16(Reg::HL,i)),
-            0x24 => self.inc(&|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x25 => self.dec(&|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x26 => {let imm = self.fetch(); self.ld(&|ref s| imm, &|ref mut s,i| s.h=i)},
+            0x21 => {let imm = self.fetch_16(); self.set_16(Reg::HL,imm)},
+            0x22 => {let op = self.a; self.write_hl(op);
+                     let val = self.inc_16(op16); self.set_16(Reg::HL,val)},
+            0x23 => {let val = self.inc_16(op16); self.set_16(Reg::HL,val)},
+            0x24 => {let op = self.h; self.h = self.inc(op)},
+            0x25 => {let op = self.h; self.h = self.dec(op)},
+            0x26 => self.h = self.fetch(),
             0x27 => self.daa(),
             0x28 => {let imm = self.fetch(); self.jr(Cond::Z, imm as i8)},
             0x29 => self.add_16(op16),
-            0x2A => {self.ld(&|ref s| s.read_hl(), &|ref mut s,i| s.a=i);
-                     self.inc_16(&|ref s| s.get_16(Reg::HL), &|ref mut s,i| s.set_16(Reg::HL,i))},
-            0x2B => self.dec_16(&|ref s| s.get_16(Reg::HL), &|ref mut s,i| s.set_16(Reg::HL,i)),
-            0x2C => self.inc(&|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x2D => self.dec(&|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x2E => {let imm = self.fetch(); self.ld(&|ref s| imm, &|ref mut s,i| s.l=i)},
+            0x2A => {self.a = self.read_hl();
+                     let val = self.inc_16(op16); self.set_16(Reg::HL,val)},
+            0x2B => {let val = self.dec_16(op16); self.set_16(Reg::HL,val)},
+            0x2C => {let op = self.l; self.l = self.inc(op)},
+            0x2D => {let op = self.l; self.l = self.dec(op)},
+            0x2E => self.l = self.fetch(),
             0x2F => self.cpl(),
 
             0x30 => {let imm = self.fetch(); self.jr(Cond::NC, imm as i8)},
-            0x31 => {let imm = self.fetch_16(); self.ld_16(&|ref s| imm, &|ref mut s,i| s.sp = i)},
-            0x32 => {self.ld(&|ref s| s.a, &|ref mut s,i| s.write_hl(i));
-                     self.dec_16(&|ref s| s.get_16(Reg::HL), &|ref mut s,i| s.set_16(Reg::HL,i))},
-            0x33 => self.inc_16(&|ref s| s.sp, &|ref mut s,i| s.sp=i),
-            0x34 => self.inc(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x35 => self.dec(&|ref s| s.read_hl(), &|ref mut s,i| s.write_hl(i)),
-            0x36 => {let imm = self.fetch(); self.ld(&|ref s| imm, &|ref mut s,i| s.write_hl(i))},
+            0x31 => self.sp = self.fetch_16(),
+            0x32 => {let op = self.a; self.write_hl(op);
+                     let val = self.inc_16(op16); self.set_16(Reg::HL,val)},
+            0x33 => self.sp = self.inc_16(op16),
+            0x34 => {let op = self.read_hl(); let res = self.inc(op); self.write_hl(res)},
+            0x35 => {let op = self.read_hl(); let res = self.dec(op); self.write_hl(res)},
+            0x36 => {let imm = self.fetch();
+                     self.write_hl(imm)},
             0x37 => self.scf(),
             0x38 => {let imm = self.fetch(); self.jr(Cond::C, imm as i8)},
             0x39 => self.add_16(op16),
-            0x3A => {self.ld(&|ref s| s.read_hl(), &|ref mut s,i| s.a=i);
-                     self.dec_16(&|ref s| s.get_16(Reg::HL), &|ref mut s,i| s.set_16(Reg::HL,i))},
-            0x3B => self.dec_16(&|ref s| s.sp, &|ref mut s,i| s.sp=i),
-            0x3C => self.inc(&|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x3D => self.dec(&|ref s| s.a, &|ref mut s,i| s.a=i),
-            0x3E => {let imm = self.fetch(); self.ld(&|ref s| imm, &|ref mut s,i| s.a=i)},
+            0x3A => {self.a = self.read_hl();
+                     let val = self.inc_16(op16); self.set_16(Reg::HL,val)},
+            0x3B => self.sp = self.dec_16(op16),
+            0x3C => {let op = self.a; self.a = self.inc(op)},
+            0x3D => {let op = self.a; self.a = self.dec(op)},
+            0x3E => self.a = self.fetch(),
             0x3F => self.ccf(),
 
-            0x40 => self.ld(&|ref s| s.b, &|ref mut s,i| s.b=i),
-            0x41 => self.ld(&|ref s| s.c, &|ref mut s,i| s.b=i),
-            0x42 => self.ld(&|ref s| s.d, &|ref mut s,i| s.b=i),
-            0x43 => self.ld(&|ref s| s.e, &|ref mut s,i| s.b=i),
-            0x44 => self.ld(&|ref s| s.h, &|ref mut s,i| s.b=i),
-            0x45 => self.ld(&|ref s| s.l, &|ref mut s,i| s.b=i),
-            0x46 => self.ld(&|ref s| s.read_hl(), &|ref mut s,i| s.b=i),
-            0x47 => self.ld(&|ref s| s.a, &|ref mut s,i| s.b=i),
-            0x48 => self.ld(&|ref s| s.b, &|ref mut s,i| s.c=i),
-            0x49 => self.ld(&|ref s| s.c, &|ref mut s,i| s.c=i),
-            0x4A => self.ld(&|ref s| s.d, &|ref mut s,i| s.c=i),
-            0x4B => self.ld(&|ref s| s.e, &|ref mut s,i| s.c=i),
-            0x4C => self.ld(&|ref s| s.h, &|ref mut s,i| s.c=i),
-            0x4D => self.ld(&|ref s| s.l, &|ref mut s,i| s.c=i),
-            0x4E => self.ld(&|ref s| s.read_hl(), &|ref mut s,i| s.c=i),
-            0x4F => self.ld(&|ref s| s.a, &|ref mut s,i| s.c=i),
+            0x40...0x47 => self.b = op8,
+            0x48...0x4F => self.c = op8,
 
-            0x50 => self.ld(&|ref s| s.b, &|ref mut s,i| s.d=i),
-            0x51 => self.ld(&|ref s| s.c, &|ref mut s,i| s.d=i),
-            0x52 => self.ld(&|ref s| s.d, &|ref mut s,i| s.d=i),
-            0x53 => self.ld(&|ref s| s.e, &|ref mut s,i| s.d=i),
-            0x54 => self.ld(&|ref s| s.h, &|ref mut s,i| s.d=i),
-            0x55 => self.ld(&|ref s| s.l, &|ref mut s,i| s.d=i),
-            0x56 => self.ld(&|ref s| s.read_hl(), &|ref mut s,i| s.d=i),
-            0x57 => self.ld(&|ref s| s.a, &|ref mut s,i| s.d=i),
-            0x58 => self.ld(&|ref s| s.b, &|ref mut s,i| s.e=i),
-            0x59 => self.ld(&|ref s| s.c, &|ref mut s,i| s.e=i),
-            0x5A => self.ld(&|ref s| s.d, &|ref mut s,i| s.e=i),
-            0x5B => self.ld(&|ref s| s.e, &|ref mut s,i| s.e=i),
-            0x5C => self.ld(&|ref s| s.h, &|ref mut s,i| s.e=i),
-            0x5D => self.ld(&|ref s| s.l, &|ref mut s,i| s.e=i),
-            0x5E => self.ld(&|ref s| s.read_hl(), &|ref mut s,i| s.e=i),
-            0x5F => self.ld(&|ref s| s.a, &|ref mut s,i| s.e=i),
+            0x50...0x57 => self.d = op8,
+            0x58...0x5F => self.e = op8,
 
-            0x60 => self.ld(&|ref s| s.b, &|ref mut s,i| s.h=i),
-            0x61 => self.ld(&|ref s| s.c, &|ref mut s,i| s.h=i),
-            0x62 => self.ld(&|ref s| s.d, &|ref mut s,i| s.h=i),
-            0x63 => self.ld(&|ref s| s.e, &|ref mut s,i| s.h=i),
-            0x64 => self.ld(&|ref s| s.h, &|ref mut s,i| s.h=i),
-            0x65 => self.ld(&|ref s| s.l, &|ref mut s,i| s.h=i),
-            0x66 => self.ld(&|ref s| s.read_hl(), &|ref mut s,i| s.h=i),
-            0x67 => self.ld(&|ref s| s.a, &|ref mut s,i| s.h=i),
-            0x68 => self.ld(&|ref s| s.b, &|ref mut s,i| s.l=i),
-            0x69 => self.ld(&|ref s| s.c, &|ref mut s,i| s.l=i),
-            0x6A => self.ld(&|ref s| s.d, &|ref mut s,i| s.l=i),
-            0x6B => self.ld(&|ref s| s.e, &|ref mut s,i| s.l=i),
-            0x6C => self.ld(&|ref s| s.h, &|ref mut s,i| s.l=i),
-            0x6D => self.ld(&|ref s| s.l, &|ref mut s,i| s.l=i),
-            0x6E => self.ld(&|ref s| s.read_hl(), &|ref mut s,i| s.l=i),
-            0x6F => self.ld(&|ref s| s.a, &|ref mut s,i| s.l=i),
+            0x60...0x67 => self.h = op8,
+            0x68...0x6F => self.l = op8,
 
-            0x70 => self.ld(&|ref s| s.b, &|ref mut s,i| s.write_hl(i)),
-            0x71 => self.ld(&|ref s| s.c, &|ref mut s,i| s.write_hl(i)),
-            0x72 => self.ld(&|ref s| s.d, &|ref mut s,i| s.write_hl(i)),
-            0x73 => self.ld(&|ref s| s.e, &|ref mut s,i| s.write_hl(i)),
-            0x74 => self.ld(&|ref s| s.h, &|ref mut s,i| s.write_hl(i)),
-            0x75 => self.ld(&|ref s| s.l, &|ref mut s,i| s.write_hl(i)),
-            0x76 => {}, // TODO halt
-            0x77 => self.ld(&|ref s| s.a, &|ref mut s,i| s.write_hl(i)),
-            0x78 => self.ld(&|ref s| s.b, &|ref mut s,i| s.a=i),
-            0x79 => self.ld(&|ref s| s.c, &|ref mut s,i| s.a=i),
-            0x7A => self.ld(&|ref s| s.d, &|ref mut s,i| s.a=i),
-            0x7B => self.ld(&|ref s| s.e, &|ref mut s,i| s.a=i),
-            0x7C => self.ld(&|ref s| s.h, &|ref mut s,i| s.a=i),
-            0x7D => self.ld(&|ref s| s.l, &|ref mut s,i| s.a=i),
-            0x7E => self.ld(&|ref s| s.read_hl(), &|ref mut s,i| s.a=i),
-            0x7F => self.ld(&|ref s| s.a, &|ref mut s,i| s.a=i),
+            0x70...0x75 => self.write_hl(op8),
+            0x76 => self.int_stat = IntType::Stop,
+            0x77 => self.write_hl(op8),
+            0x78...0x7F => self.a = op8,
 
             0x80...0x87 => self.add(false, op8),
             0x88...0x8F => self.add(true, op8),
@@ -771,33 +725,36 @@ impl CPU {
             0xDF => self.call(Cond::AL, 0x18),
 
             0xE0 => {let imm = (self.fetch() as u16) + 0xFF00;
-                                self.ld(&|ref s| s.a, &|ref mut s,i| s.write_mem(imm,i))},
+                     let op = self.a;
+                     self.write_mem(imm,op)},
             0xE1 => self.pop(Reg::HL),
             0xE2 => {let loc = (self.c as u16) + 0xFF00;
-                                self.ld(&|ref s| s.a, &|ref mut s,i| s.write_mem(loc,i))},
+                     let op = self.a;
+                     self.write_mem(loc,op)},
             0xE5 => self.push(Reg::HL),
             0xE6 => {let imm = self.fetch(); self.and(imm)},
             0xE7 => self.call(Cond::AL, 0x20),
             0xE8 => {let imm = self.fetch(); self.sp = self.add_sp(imm)},
             0xE9 => {let loc = self.get_16(Reg::HL); self.jp(Cond::C, loc)},
             0xEA => {let loc = self.fetch_16();
-                               self.ld(&|ref s| s.a, &|ref mut s,i| s.write_mem(loc,i))},
+                     let op = self.a;
+                     self.write_mem(loc, op)},
             0xEE => {let imm = self.fetch(); self.xor(imm)},
             0xEF => self.call(Cond::AL, 0x28),
 
             0xF0 => {let imm = (self.fetch() as u16) + 0xFF00;
-                                self.ld(&|ref s| s.read_mem(imm), &|ref mut s,i| s.a=i)},
+                     self.a = self.read_mem(imm)},
             0xF1 => self.pop(Reg::AF),
-            0xF2 => {let imm = (self.c as u16) + 0xFF00;
-                                self.ld(&|ref s| s.read_mem(imm), &|ref mut s,i| s.a=i)},
+            0xF2 => {let loc = (self.c as u16) + 0xFF00;
+                     self.a = self.read_mem(loc)},
             0xF3 => self.di(),
             0xF5 => self.push(Reg::AF),
             0xF6 => {let imm = self.fetch(); self.or(imm)},
             0xF7 => self.call(Cond::AL, 0x30),
             0xF8 => {let imm = self.fetch(); let val = self.add_sp(imm); self.set_16(Reg::HL, val)},
-            0xF9 => self.ld_16(&|ref s| s.get_16(Reg::HL), &|ref mut s,i| s.sp=i),
+            0xF9 => self.sp = self.get_16(Reg::HL),
             0xFA => {let loc = self.fetch_16();
-                               self.ld(&|ref s| s.read_mem(loc), &|ref mut s,i| s.a=i)},
+                     self.a = self.read_mem(loc)},
             0xFB => self.ei(),
             0xFE => {let imm = self.fetch(); self.cp(imm)},
             0xFF => self.call(Cond::AL, 0x38),
@@ -849,3 +806,26 @@ impl CPU {
         }
     }
 }
+
+// TEST
+impl CPU {
+    pub fn to_string(&self) -> String {
+        format!("a:{:X} b:{:X} c:{:X} d:{:X} e:{:X} h:{:X} l:{:X}\n\
+                z:{} h:{} n:{} c:{}\n\
+                pc:{:X} sp:{:X}",
+                self.a, self.b, self.c, self.d, self.e, self.h, self.l,
+                self.f_z, self.f_h, self.f_n, self.f_c,
+                self.pc, self.sp)
+    }
+
+    pub fn test_mem(&self, loc: u16) -> String {
+        let data = self.mem.read(loc);
+        format!("data at {:X}:{:X}", loc, data)
+    }
+}
+
+
+
+
+
+
