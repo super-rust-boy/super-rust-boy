@@ -23,7 +23,7 @@ pub struct CPU {
 
     // Interrupts
     ime: bool,
-    int_stat: IntType,
+    cont: bool,
 
     // Stack Pointer & PC
     sp: u16,
@@ -52,7 +52,7 @@ enum Reg {
 }
 
 // Interrupt Procedures
-enum IntType {
+/*enum IntType {
     Cont,
     Stop,
     VBlank,
@@ -60,7 +60,7 @@ enum IntType {
     Timer,
     Serial,
     HiLo,
-}
+}*/
 
 
 // Internal
@@ -86,7 +86,7 @@ impl CPU {
         match which {
             Reg::HL => ((self.h as u16) << 8) | (self.l as u16),
             Reg::AF => ((self.a as u16) << 8) | (self.get_f() as u16),
-            Reg::BC => ((self.b as u16) << 8) | (self.b as u16),
+            Reg::BC => ((self.b as u16) << 8) | (self.c as u16),
             Reg::DE => ((self.d as u16) << 8) | (self.e as u16),
         }
     }
@@ -119,15 +119,16 @@ impl CPU {
     // read mem pointed to by pc (and inc pc)
     fn fetch(&mut self) -> u8 {
         let result = self.mem.read(self.pc);
-        self.pc += 1;
+        self.pc = ((self.pc as u32) + 1) as u16;
         result
     }
 
     fn fetch_16(&mut self) -> u16 {
-        let result = (self.mem.read(self.pc) as u16)
-                     | ((self.mem.read(self.pc + 1) as u16) << 8);
-        self.pc += 2;
-        result
+        let lo_byte = self.mem.read(self.pc) as u16;
+        self.pc = ((self.pc as u32) + 1) as u16;
+        let hi_byte = (self.mem.read(self.pc) as u16) << 8;
+        self.pc = ((self.pc as u32) + 1) as u16;
+        lo_byte | hi_byte
     }
 
     // read and write to/from mem pointed to by hl
@@ -150,6 +151,27 @@ impl CPU {
         self.f_h = if result > 0xF {true} else {false};
         self.f_c = if result > 0xFFFF {true} else {false};
         result as u16
+    }
+
+    // writes sp to mem
+    fn write_sp(&mut self, imm: u16) {
+        let lo_byte = self.sp as u8;
+        let hi_byte = (self.sp >> 8) as u8;
+        self.write_mem(imm, lo_byte);
+        self.write_mem(imm, hi_byte);
+    }
+
+    #[inline]
+    fn stack_push(&mut self, val: u8) {
+        self.sp = ((self.sp as i32) - 1) as u16;
+        self.mem.write(self.sp, val);
+    }
+
+    #[inline]
+    fn stack_pop(&mut self) -> u8 {
+        let ret = self.mem.read(self.sp);
+        self.sp = ((self.sp as u32) + 1) as u16;
+        ret
     }
 }
 
@@ -284,8 +306,8 @@ impl CPU {
 
     // Stack
     fn pop(&mut self, which: Reg) {
-        let hi_byte = self.mem.read(self.sp+1);
-        let lo_byte = self.mem.read(self.sp+2);
+        let lo_byte = self.stack_pop();
+        let hi_byte = self.stack_pop();
         self.sp += 2;
         match which {
             Reg::AF => {self.a = hi_byte; self.set_f(lo_byte);},
@@ -296,15 +318,14 @@ impl CPU {
     }
 
     fn push(&mut self, which: Reg) {
-        let (lo_byte, hi_byte) = match which {
+        let (hi_byte, lo_byte) = match which {
             Reg::AF => (self.a, self.get_f()),
             Reg::BC => (self.b, self.c),
             Reg::DE => (self.d, self.e),
             Reg::HL => (self.h, self.l),
         };
-        self.mem.write(self.sp, lo_byte);
-        self.mem.write(self.sp-1, hi_byte);
-        self.sp -= 2;
+        self.stack_push(hi_byte);
+        self.stack_push(lo_byte);
     }
 
 
@@ -503,9 +524,10 @@ impl CPU {
             Cond::Z => if !self.f_z {return},
             Cond::C => if !self.f_c {return},
         }
-        self.mem.write(self.sp, self.pc as u8);
-        self.mem.write(self.sp-1, (self.pc >> 8) as u8);
-        self.sp -= 2;
+        let hi_byte = (self.pc >> 8) as u8;
+        let lo_byte = self.pc as u8;
+        self.stack_push(hi_byte);
+        self.stack_push(lo_byte);
         self.pc = loc;
     }
 
@@ -517,17 +539,15 @@ impl CPU {
             Cond::Z => if !self.f_z {return},
             Cond::C => if !self.f_c {return},
         }
-        let hi_byte = self.mem.read(self.sp+1) as u16;
-        let lo_byte = self.mem.read(self.sp+2) as u16;
-        self.sp += 2;
+        let lo_byte = self.stack_pop() as u16;
+        let hi_byte = self.stack_pop() as u16;
         self.pc = (hi_byte << 8) | lo_byte;
     }
 
     fn reti(&mut self) {
         self.ime = true;
-        let hi_byte = self.mem.read(self.sp+1) as u16;
-        let lo_byte = self.mem.read(self.sp+2) as u16;
-        self.sp += 2;
+        let lo_byte = self.stack_pop() as u16;
+        let hi_byte = self.stack_pop() as u16;
         self.pc = (hi_byte << 8) | lo_byte;
     }
 
@@ -538,7 +558,7 @@ impl CPU {
 impl CPU {
     // Initialise CPU
     pub fn new() -> CPU {
-        let dc = "DemoCart.gb";
+        let dc = "test.gb";
         CPU {
             a: 0,
             b: 0,
@@ -552,7 +572,7 @@ impl CPU {
             f_h: false,
             f_c: false,
             ime: true,
-            int_stat: IntType::Cont,
+            cont: true,
             sp: 0,
             pc: 0x100,
             mem: MemBus::new(dc),
@@ -561,15 +581,7 @@ impl CPU {
 
     // Single instruction
     pub fn step(&mut self) {
-        match self.int_stat {
-           IntType::Cont => {},
-           IntType::Stop => return,
-           IntType::VBlank => {self.ime = false; self.pc = 0x40},
-           IntType::LCDC => {self.ime = false; self.pc = 0x48},
-           IntType::Timer => {self.ime = false; self.pc = 0x50},
-           IntType::Serial => {self.ime = false; self.pc = 0x58},
-           IntType::HiLo => {self.ime = false; self.pc = 0x60},
-        }
+        if !self.cont {return;}
 
         let instr = self.fetch();
 
@@ -601,7 +613,7 @@ impl CPU {
             0x05 => {let op = self.b; self.b = self.dec(op)},
             0x06 => self.b = self.fetch(),
             0x07 => self.rlca(),
-            0x08 => {}, // LOAD 16-bits into mem (how??) /FOR BC:/ low byte(C) to n, high byte(B) to n+1 
+            0x08 => {let imm = self.fetch_16(); self.write_sp(imm)}
             0x09 => self.add_16(op16),
             0x0A => self.a = self.read_mem(self.get_16(Reg::BC)),
             0x0B => {let val = self.dec_16(op16); self.set_16(Reg::BC,val)},
@@ -610,7 +622,7 @@ impl CPU {
             0x0E => self.c = self.fetch(),
             0x0F => self.rrca(),
 
-            0x10 => self.int_stat = IntType::Stop,
+            0x10 => {},//self.int_stat = IntType::Stop,
             0x11 => {let imm = self.fetch_16(); self.set_16(Reg::DE,imm)},
             0x12 => {let loc = self.get_16(Reg::DE); let op = self.a;
                      self.write_mem(loc,op)},
@@ -677,7 +689,7 @@ impl CPU {
             0x68...0x6F => self.l = op8,
 
             0x70...0x75 => self.write_hl(op8),
-            0x76 => self.int_stat = IntType::Stop,
+            0x76 => {},//self.int_stat = IntType::Stop,
             0x77 => self.write_hl(op8),
             0x78...0x7F => self.a = op8,
 
@@ -763,7 +775,6 @@ impl CPU {
         }
     }
 
-
     fn prefix_cb(&mut self, instr: u8) {
         let op = match instr % 0x8 {
             0 => self.b,
@@ -803,6 +814,13 @@ impl CPU {
             (Some(x), 6) => self.write_hl(x),
             (Some(x), 7) => self.a = x,
             _ => {},
+        }
+    }
+
+    pub fn v_blank(&mut self) {
+        if self.ime {
+            self.ime = false;
+            self.call(Cond::AL, 0x40);
         }
     }
 }
