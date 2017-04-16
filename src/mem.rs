@@ -147,6 +147,7 @@ impl Cartridge {
     }
 
     fn swap_rom_bank(&mut self, bank: u8)/* -> Result<(), String>*/ {
+        //println!("Swapping in bank: {}", bank);
         let pos = (bank as u64) * 0x4000;
         match self.rom_file.seek(SeekFrom::Start(pos)) {
             Ok(_) => {},

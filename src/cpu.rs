@@ -498,8 +498,8 @@ impl CPU {
     fn jp(&mut self, cd: Cond, loc: u16) {
         match cd {
             Cond::AL => self.pc = loc,
-            Cond::NZ => if self.f_n && self.f_z {self.pc = loc},
-            Cond::NC => if self.f_n && self.f_c {self.pc = loc},
+            Cond::NZ => if !self.f_z {self.pc = loc},
+            Cond::NC => if !self.f_c {self.pc = loc},
             Cond::Z => if self.f_z {self.pc = loc},
             Cond::C => if self.f_c {self.pc = loc},
         }
@@ -508,8 +508,8 @@ impl CPU {
     fn jr(&mut self, cd: Cond, loc: i8) {
         match cd {
             Cond::AL => {},
-            Cond::NZ => if !self.f_n || !self.f_z {return},
-            Cond::NC => if !self.f_n || !self.f_c {return},
+            Cond::NZ => if self.f_z {return},
+            Cond::NC => if self.f_c {return},
             Cond::Z => if !self.f_z {return},
             Cond::C => if !self.f_c {return},
         }
@@ -519,8 +519,8 @@ impl CPU {
     fn call(&mut self, cd: Cond, loc: u16) {
         match cd {
             Cond::AL => {},
-            Cond::NZ => if !self.f_n || !self.f_z {return},
-            Cond::NC => if !self.f_n || !self.f_c {return},
+            Cond::NZ => if self.f_z {return},
+            Cond::NC => if self.f_c {return},
             Cond::Z => if !self.f_z {return},
             Cond::C => if !self.f_c {return},
         }
@@ -534,8 +534,8 @@ impl CPU {
     fn ret(&mut self, cd: Cond) {
         match cd {
             Cond::AL => {},
-            Cond::NZ => if !self.f_n || !self.f_z {return},
-            Cond::NC => if !self.f_n || !self.f_c {return},
+            Cond::NZ => if self.f_z {return},
+            Cond::NC => if self.f_c {return},
             Cond::Z => if !self.f_z {return},
             Cond::C => if !self.f_c {return},
         }
