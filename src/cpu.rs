@@ -1,9 +1,10 @@
 // CPU Module
 
 use mem::MemBus;
+use video::VideoDevice;
 
 // LR35902 CPU
-pub struct CPU {
+pub struct CPU<V: VideoDevice> {
     // Accumulator
     a: u8,
 
@@ -30,7 +31,7 @@ pub struct CPU {
     pc: u16,
 
     // Memory Bus (ROM,RAM,Peripherals etc)
-    mem: MemBus,
+    mem: MemBus<V>,
 }
 
 
@@ -64,7 +65,7 @@ enum Reg {
 
 
 // Internal
-impl CPU {
+impl<V: VideoDevice> CPU<V> {
     // Special access registers
     fn get_f(&self) -> u8 {
         let z = if self.f_z {0b10000000} else {0};
@@ -176,7 +177,7 @@ impl CPU {
 }
 
 // Instructions
-impl CPU {
+impl<V: VideoDevice> CPU<V> {
     // Arithmetic
     fn add(&mut self, carry: bool, op: u8) {
         let c = if self.f_c && carry {1} else {0};
@@ -252,7 +253,8 @@ impl CPU {
     }
 
     fn dec(&mut self, op: u8) -> u8 {
-        let result = (op as u16) - 1;
+    // TODO: this function is potentially buggy.
+        let result = ((op as i16) - 1) as i8;
         self.f_z = if (result & 0xFF) == 0 {true} else {false};
         self.f_n = false;
         self.f_h = if result < 0x10 {true} else {false};
@@ -555,10 +557,9 @@ impl CPU {
 
 
 // Public interface
-impl CPU {
+impl<V: VideoDevice> CPU<V> {
     // Initialise CPU
-    pub fn new() -> CPU {
-        let dc = "test.gb";
+    pub fn new(mem: MemBus<V>) -> Self {
         CPU {
             a: 0,
             b: 0,
@@ -575,7 +576,7 @@ impl CPU {
             cont: true,
             sp: 0,
             pc: 0x100,
-            mem: MemBus::new(dc),
+            mem: mem,
         }
     }
 
@@ -818,6 +819,7 @@ impl CPU {
     }
 
     pub fn v_blank(&mut self) {
+        self.mem.trigger_frame();
         if self.ime {
             self.ime = false;
             self.call(Cond::AL, 0x40);
@@ -826,7 +828,7 @@ impl CPU {
 }
 
 // TEST
-impl CPU {
+impl<V: VideoDevice> CPU<V> {
     pub fn to_string(&self) -> String {
         format!("a:{:X} b:{:X} c:{:X} d:{:X} e:{:X} h:{:X} l:{:X}\n\
                 z:{} h:{} n:{} c:{}\n\
@@ -841,9 +843,3 @@ impl CPU {
         format!("data at {:X}:{:X}", loc, data)
     }
 }
-
-
-
-
-
-

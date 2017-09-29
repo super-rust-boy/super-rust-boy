@@ -1,15 +1,27 @@
 //use cpu;
 mod cpu;
 mod mem;
+mod video;
 
 extern crate time;
+#[macro_use]
+extern crate glium;
 
 use time::{Duration, PreciseTime};
 
 fn main() {
-    println!("Hello, world!");
-    let mut state = cpu::CPU::new();
-    //let mut count = 0;
+    let cart = match std::env::args().nth(1) {
+        Some(c) => c,
+        None => panic!("Usage: cargo run [cart name]"),
+    };
+
+    println!("Super Rust Boy: {}", cart);
+
+    let vd = video::GBVideo::new();
+    let mem = mem::MemBus::new(cart.as_str(), vd);
+
+    let mut state = cpu::CPU::new(mem);
+    /*let mut count = 0;
     println!("{}", state.to_string());
 
     let start = PreciseTime::now();
@@ -24,5 +36,13 @@ fn main() {
         println!("frame:{}", count);
     }
     println!("{}", state.to_string());
-    //println!("count:{}", count);
+    //println!("count:{}", count);*/
+
+    loop {
+        let frame = PreciseTime::now();
+        while frame.to(PreciseTime::now()) < Duration::microseconds(16750) {
+            state.step();
+        };
+        state.v_blank();
+    }
 }
