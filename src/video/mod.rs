@@ -2,9 +2,8 @@ mod palette;
 mod shaders;
 
 use glium;
-use glium::{DisplayBuild, Surface};
+use glium::{Display, Surface};
 use glium::texture::texture2d::Texture2d;
-use glium::backend::glutin_backend::GlutinFacade;
 use self::palette::{BWPalette, Palette};
 use mem::MemDevice;
 
@@ -49,54 +48,54 @@ pub struct GBVideo {
     bg_palette: BWPalette,
     obj_palette_0: BWPalette,
     obj_palette_1: BWPalette,
-    
+
     // raw tiles used for background & sprites
     raw_tile_mem: Vec<u8>,
     // map for background & window
     tile_map_mem: Vec<u8>,
     sprite_mem: Vec<u8>,
 
-    display: GlutinFacade,
+    display: Display,
     program: glium::Program,
 }
 
 impl MemDevice for GBVideo {
     fn read(&self, loc: u16) -> u8 {
         match loc {
-            0x8000...0x97FF => self.raw_tile_mem[(loc - 0x8000) as usize],
-            0x9800...0x9FFF => self.tile_map_mem[(loc - 0x9800) as usize],
-            0xFE00...0xFE9F => self.sprite_mem[(loc - 0xFE00) as usize],
-            0xFF40 => self.lcd_control_read(),
-            0xFF41 => self.lcd_status_read(),
-            0xFF42 => self.scroll_y,
-            0xFF43 => self.scroll_x,
-            0xFF44 => self.lcdc_y,
-            0xFF45 => self.ly_compare,
-            0xFF47 => self.bg_palette.read(),
-            0xFF48 => self.obj_palette_0.read(),
-            0xFF49 => self.obj_palette_1.read(),
-            0xFF4A => self.window_y,
-            0xFF4B => self.window_x,
+            0x8000...0x97FF =>  self.raw_tile_mem[(loc - 0x8000) as usize],
+            0x9800...0x9FFF =>  self.tile_map_mem[(loc - 0x9800) as usize],
+            0xFE00...0xFE9F =>  self.sprite_mem[(loc - 0xFE00) as usize],
+            0xFF40 =>           self.lcd_control_read(),
+            0xFF41 =>           self.lcd_status_read(),
+            0xFF42 =>           self.scroll_y,
+            0xFF43 =>           self.scroll_x,
+            0xFF44 =>           self.lcdc_y,
+            0xFF45 =>           self.ly_compare,
+            0xFF47 =>           self.bg_palette.read(),
+            0xFF48 =>           self.obj_palette_0.read(),
+            0xFF49 =>           self.obj_palette_1.read(),
+            0xFF4A =>           self.window_y,
+            0xFF4B =>           self.window_x,
             _ => 0,
         }
     }
 
     fn write(&mut self, loc: u16, val: u8) {
         match loc {
-            0x8000...0x97FF => self.raw_tile_mem[(loc - 0x8000) as usize] = val,
-            0x9800...0x9FFF => self.tile_map_mem[(loc - 0x9800) as usize] = val,
-            0xFE00...0xFE9F => self.sprite_mem[(loc - 0xFE00) as usize] = val,
-            0xFF40 => self.lcd_control_write(val),
-            0xFF41 => self.lcd_status_write(val),
-            0xFF42 => self.scroll_y = val,
-            0xFF43 => self.scroll_x = val,
-            0xFF44 => self.lcdc_y = val,
-            0xFF45 => self.ly_compare = val,
-            0xFF47 => self.bg_palette.write(val),
-            0xFF48 => self.obj_palette_0.write(val),
-            0xFF49 => self.obj_palette_1.write(val),
-            0xFF4A => self.window_y = val,
-            0xFF4B => self.window_x = val,
+            0x8000...0x97FF =>  self.raw_tile_mem[(loc - 0x8000) as usize] = val,
+            0x9800...0x9FFF =>  self.tile_map_mem[(loc - 0x9800) as usize] = val,
+            0xFE00...0xFE9F =>  self.sprite_mem[(loc - 0xFE00) as usize] = val,
+            0xFF40 =>           self.lcd_control_write(val),
+            0xFF41 =>           self.lcd_status_write(val),
+            0xFF42 =>           self.scroll_y = val,
+            0xFF43 =>           self.scroll_x = val,
+            0xFF44 =>           self.lcdc_y = val,
+            0xFF45 =>           self.ly_compare = val,
+            0xFF47 =>           self.bg_palette.write(val),
+            0xFF48 =>           self.obj_palette_0.write(val),
+            0xFF49 =>           self.obj_palette_1.write(val),
+            0xFF4A =>           self.window_y = val,
+            0xFF4B =>           self.window_x = val,
             _ => return,
         }
     }
@@ -127,7 +126,7 @@ impl VideoDevice for GBVideo {
                         let raw_tex = &self.raw_tile_mem[tile_loc..(tile_loc*16)];
                         self.bg_palette.make_texture(&raw_tex, &self.display)
                     };
-                    self.draw_square(&mut target, x*8, y*8, tex);
+                    self.draw_square(&mut target, x*8, y*8, &tex);
                 };
             };
         };
@@ -141,11 +140,18 @@ impl VideoDevice for GBVideo {
 // Control functions
 impl GBVideo {
     pub fn new() -> GBVideo {
-        // create window
-        let display = glium::glutin::WindowBuilder::new().build_glium().unwrap();
+        let events_loop = glium::glutin::EventsLoop::new();
+
+        // create display
+        let window = glium::glutin::WindowBuilder::new();
+        let context = glium::glutin::ContextBuilder::new();
+        let display = glium::Display::new(window, context, &events_loop).unwrap();
+
         // compile program
-        let program = glium::Program::from_source(&display, shaders::VERTEX_SRC,
-                                                   shaders::FRAGMENT_SRC, None).unwrap();
+        let program = glium::Program::from_source(&display,
+                                                  shaders::VERTEX_SRC,
+                                                  shaders::FRAGMENT_SRC,
+                                                  None).unwrap();
 
         GBVideo {
             display_enable: true,
@@ -180,25 +186,25 @@ impl GBVideo {
 
 
     fn lcd_control_write(&mut self, val: u8) {
-        self.display_enable = if val & 0x80 == 0x80 {true} else {false};
-        self.window_offset = if val & 0x40 == 0x40 {0x400} else {0x0};
-        self.window_enable = if val & 0x20 == 0x20 {true} else {false};
-        self.tile_data_select = if val & 0x10 == 0x10 {true} else {false};
-        self.bg_offset = if val & 0x8 == 0x8 {0x400} else {0x0};
-        self.sprite_size = if val & 0x4 == 0x4 {true} else {false};
-        self.sprite_enable = if val & 0x2 == 0x2 {true} else {false};
-        self.bg_enable = if val & 0x1 == 0x1 {true} else {false};
+        self.display_enable     = if val & 0x80 == 0x80 {true} else {false};
+        self.window_offset      = if val & 0x40 == 0x40 {0x400} else {0x0};
+        self.window_enable      = if val & 0x20 == 0x20 {true} else {false};
+        self.tile_data_select   = if val & 0x10 == 0x10 {true} else {false};
+        self.bg_offset          = if val & 0x8 == 0x8   {0x400} else {0x0};
+        self.sprite_size        = if val & 0x4 == 0x4   {true} else {false};
+        self.sprite_enable      = if val & 0x2 == 0x2   {true} else {false};
+        self.bg_enable          = if val & 0x1 == 0x1   {true} else {false};
     }
 
     fn lcd_control_read(&self) -> u8 {
-        let val_7 = if self.display_enable {0x80} else {0};
-        let val_6 = if self.window_offset == 0x400 {0x40} else {0};
-        let val_5 = if self.window_enable {0x20} else {0};
-        let val_4 = if self.tile_data_select {0x10} else {0};
-        let val_3 = if self.bg_offset == 0x400 {0x8} else {0};
-        let val_2 = if self.sprite_size {0x4} else {0};
-        let val_1 = if self.sprite_enable {0x2} else {0};
-        let val_0 = if self.bg_enable {0x1} else {0};
+        let val_7 = if self.display_enable          {0x80} else {0};
+        let val_6 = if self.window_offset == 0x400  {0x40} else {0};
+        let val_5 = if self.window_enable           {0x20} else {0};
+        let val_4 = if self.tile_data_select        {0x10} else {0};
+        let val_3 = if self.bg_offset == 0x400      {0x8} else {0};
+        let val_2 = if self.sprite_size             {0x4} else {0};
+        let val_1 = if self.sprite_enable           {0x2} else {0};
+        let val_0 = if self.bg_enable               {0x1} else {0};
         val_7 | val_6 | val_5 | val_4 | val_3 | val_2 | val_1 | val_0
     }
 
@@ -207,7 +213,7 @@ impl GBVideo {
 
     fn lcd_status_read(&self) -> u8 {
         0
-    }    
+    }
 }
 
 
@@ -215,13 +221,13 @@ impl GBVideo {
 impl GBVideo {
 
     // draw 8x8 textured square
-    fn draw_square(&mut self, mut target: &mut glium::Frame, x: u8, y: u8, texture: Texture2d) {
+    fn draw_square(&mut self, target: &mut glium::Frame, x: u8, y: u8, texture: &Texture2d) {
         use glium::index::{NoIndices, PrimitiveType};
 
         let (x_a, y_a) = (byte_to_float(x, BG_X), byte_to_float(y, BG_Y));
         let (x_b, y_b) = (byte_to_float(x + 8, BG_X), byte_to_float(y + 8, BG_Y));
 
-        let uniforms = uniform!{tex: &texture};
+        let uniforms = uniform!{tex: texture};
 
         let tile = vec![
             Vertex { position: [x_a, y_a], texcoord: [0.0, 0.0] },

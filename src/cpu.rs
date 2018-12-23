@@ -32,6 +32,9 @@ pub struct CPU<V: VideoDevice> {
 
     // Memory Bus (ROM,RAM,Peripherals etc)
     mem: MemBus<V>,
+
+    // Internals
+    cycle_count: u32,
 }
 
 
@@ -42,6 +45,19 @@ enum Cond {
     Z,
     C,
     AL,
+}
+
+impl Cond {
+    fn check<V: VideoDevice>(self, cpu: &CPU<V>) -> bool {
+        use self::Cond::*;
+        match self {
+            AL  => true,
+            NZ  => !cpu.f_z,
+            NC  => !cpu.f_c,
+            Z   => cpu.f_z,
+            C   => cpu.f_c,
+        }
+    }
 }
 
 // Double registers
@@ -498,52 +514,33 @@ impl<V: VideoDevice> CPU<V> {
 
     // Jump
     fn jp(&mut self, cd: Cond, loc: u16) {
-        match cd {
-            Cond::AL => self.pc = loc,
-            Cond::NZ => if !self.f_z {self.pc = loc},
-            Cond::NC => if !self.f_c {self.pc = loc},
-            Cond::Z => if self.f_z {self.pc = loc},
-            Cond::C => if self.f_c {self.pc = loc},
+        if cd.check(&self) {
+            self.pc = loc
         }
     }
 
     fn jr(&mut self, cd: Cond, loc: i8) {
-        match cd {
-            Cond::AL => {},
-            Cond::NZ => if self.f_z {return},
-            Cond::NC => if self.f_c {return},
-            Cond::Z => if !self.f_z {return},
-            Cond::C => if !self.f_c {return},
+        if cd.check(&self) {
+            self.pc = ((self.pc as i32) + (loc as i32)) as u16;
         }
-        self.pc = ((self.pc as i32) + (loc as i32)) as u16;
     }
 
     fn call(&mut self, cd: Cond, loc: u16) {
-        match cd {
-            Cond::AL => {},
-            Cond::NZ => if self.f_z {return},
-            Cond::NC => if self.f_c {return},
-            Cond::Z => if !self.f_z {return},
-            Cond::C => if !self.f_c {return},
+        if cd.check(&self) {
+            let hi_byte = (self.pc >> 8) as u8;
+            let lo_byte = self.pc as u8;
+            self.stack_push(hi_byte);
+            self.stack_push(lo_byte);
+            self.pc = loc;
         }
-        let hi_byte = (self.pc >> 8) as u8;
-        let lo_byte = self.pc as u8;
-        self.stack_push(hi_byte);
-        self.stack_push(lo_byte);
-        self.pc = loc;
     }
 
     fn ret(&mut self, cd: Cond) {
-        match cd {
-            Cond::AL => {},
-            Cond::NZ => if self.f_z {return},
-            Cond::NC => if self.f_c {return},
-            Cond::Z => if !self.f_z {return},
-            Cond::C => if !self.f_c {return},
+        if cd.check(&self) {
+            let lo_byte = self.stack_pop() as u16;
+            let hi_byte = self.stack_pop() as u16;
+            self.pc = (hi_byte << 8) | lo_byte;
         }
-        let lo_byte = self.stack_pop() as u16;
-        let hi_byte = self.stack_pop() as u16;
-        self.pc = (hi_byte << 8) | lo_byte;
     }
 
     fn reti(&mut self) {
@@ -577,6 +574,7 @@ impl<V: VideoDevice> CPU<V> {
             sp: 0,
             pc: 0x100,
             mem: mem,
+            cycle_count: 0,
         }
     }
 

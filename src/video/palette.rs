@@ -23,37 +23,6 @@ pub struct BWPalette {
 
 pub trait Palette {
     fn get_pixel(&self, select: u8) -> Pixel;
-    fn make_texture(&self, raw_tile: &[u8], display: &glium::backend::Facade) -> Texture2d;
-}
-
-impl BWPalette {
-    pub fn new() -> Self {
-        BWPalette{
-            data: 0
-        }
-    }
-
-    pub fn read(&self) -> u8 {
-        self.data
-    }
-
-    pub fn write(&mut self, in_data: u8) {
-        self.data = in_data;
-    }
-}
-
-impl Palette for BWPalette {
-    // apply palette to input
-    fn get_pixel(&self, select: u8) -> Pixel {
-        let shift = (select & 0b11) * 2;
-        let colour_index = (self.data >> shift) & 0b11;
-        match colour_index {
-            0b00 => WHITE,
-            0b01 => LIGHTGREY,
-            0b10 => DARKGREY,
-            _    => BLACK,
-        }
-    }
 
     fn make_texture(&self, raw_tile: &[u8], display: &glium::backend::Facade) -> Texture2d {
         let mut texture_pixels: Vec<Vec<Pixel>> = Vec::new();
@@ -85,3 +54,32 @@ impl Palette for BWPalette {
     }
 }
 
+impl BWPalette {
+    pub fn new() -> Self {
+        BWPalette{
+            data: 0
+        }
+    }
+
+    pub fn read(&self) -> u8 {
+        self.data
+    }
+
+    pub fn write(&mut self, in_data: u8) {
+        self.data = in_data;
+    }
+}
+
+impl Palette for BWPalette {
+    // apply palette to input
+    fn get_pixel(&self, select: u8) -> Pixel {
+        let shift = (select & 0b11) * 2;
+        let colour_index = (self.data >> shift) & 0b11;
+        match colour_index {
+            0b00 => WHITE,
+            0b01 => LIGHTGREY,
+            0b10 => DARKGREY,
+            _    => BLACK,
+        }
+    }
+}
