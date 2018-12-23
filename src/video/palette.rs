@@ -12,10 +12,10 @@ macro_rules! pixel {
     };
 }
 
-const WHITE: Pixel = pixel!(0xFF);
-const LIGHTGREY: Pixel = pixel!(0x7F);
-const DARKGREY: Pixel = pixel!(0x3F);
-const BLACK: Pixel = pixel!(0x00);
+const WHITE: Pixel      = pixel!(0xFF);
+const LIGHTGREY: Pixel  = pixel!(0x7F);
+const DARKGREY: Pixel   = pixel!(0x3F);
+const BLACK: Pixel      = pixel!(0x00);
 
 pub struct BWPalette {
     pub data: u8,

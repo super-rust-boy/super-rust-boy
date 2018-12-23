@@ -2,17 +2,16 @@
 
 mod cartridge;
 
-use time::{Duration, PreciseTime};
 use video::VideoDevice;
 use self::cartridge::Cartridge;
 
 
 pub struct MemBus<V: VideoDevice> {
-    cart: Cartridge,
+    cart:           Cartridge,
 
-    ram_bank: WriteableMem,
-    ram: WriteableMem,
-    video_device: V,
+    ram_bank:       WriteableMem,
+    ram:            WriteableMem,
+    video_device:   V,
     // IO ports
 }
 
@@ -24,10 +23,10 @@ impl<V: VideoDevice> MemBus<V> {
         };
 
         MemBus {
-            cart: rom,
-            ram_bank: WriteableMem::new(0x2000),
-            ram: WriteableMem::new(0x2000),
-            video_device: video_device,
+            cart:           rom,
+            ram_bank:       WriteableMem::new(0x2000),
+            ram:            WriteableMem::new(0x2000),
+            video_device:   video_device,
         }
     }
 

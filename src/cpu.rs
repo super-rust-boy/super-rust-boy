@@ -165,8 +165,8 @@ impl<V: VideoDevice> CPU<V> {
         let result = (self.sp as i32) + (offset as i32);
         self.f_z = false;
         self.f_n = false;
-        self.f_h = if result > 0xF {true} else {false};
-        self.f_c = if result > 0xFFFF {true} else {false};
+        self.f_h = result > 0xF;
+        self.f_c = result > 0xFFFF;
         result as u16
     }
 
@@ -198,34 +198,34 @@ impl<V: VideoDevice> CPU<V> {
     fn add(&mut self, carry: bool, op: u8) {
         let c = if self.f_c && carry {1} else {0};
         let result = (self.a as u16) + (op as u16) + c;
-        self.f_z = if (result & 0xFF) == 0 {true} else {false};
+        self.f_z = (result & 0xFF) == 0;
         self.f_n = false;
-        self.f_h = if result > 0xF {true} else {false};
-        self.f_c = if result > 0xFF {true} else {false};
+        self.f_h = result > 0xF;
+        self.f_c = result > 0xFF;
         self.a = result as u8;
     }
 
     fn add_16(&mut self, op: u16) {
         let result = (self.get_16(Reg::HL) as u32) + (op as u32);
         self.f_n = false;
-        self.f_h = if result > 0xF {true} else {false};
-        self.f_c = if result > 0xFFFF {true} else {false};
+        self.f_h = result > 0xF;
+        self.f_c = result > 0xFFFF;
         self.set_16(Reg::HL, result as u16);
     }
 
     fn sub(&mut self, carry: bool, op: u8) {
         let c = if self.f_c && carry {1} else {0};
         let result = (self.a as i16) - (op as i16) - c;
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = true;
-        self.f_h = if result < 0x10 {true} else {false};
-        self.f_c = if result < 0 {true} else {false};
+        self.f_h = result < 0x10;
+        self.f_c = result < 0;
         self.a = result as u8;
     }
 
     fn and(&mut self, op: u8) {
         let result = self.a & op;
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = false;
         self.f_h = true;
         self.f_c = false;
@@ -234,7 +234,7 @@ impl<V: VideoDevice> CPU<V> {
 
     fn xor(&mut self, op: u8) {
         let result = self.a ^ op;
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = false;
         self.f_h = false;
         self.f_c = false;
@@ -243,7 +243,7 @@ impl<V: VideoDevice> CPU<V> {
 
     fn or(&mut self, op: u8) {
         let result = self.a | op;
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = false;
         self.f_h = false;
         self.f_c = false;
@@ -252,28 +252,28 @@ impl<V: VideoDevice> CPU<V> {
 
     fn cp(&mut self, op: u8) {
         let result = (self.a as i16) - (op as i16);
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = true;
-        self.f_h = if result < 0x10 {true} else {false};
-        self.f_c = if result < 0 {true} else {false};
+        self.f_h = result < 0x10;
+        self.f_c = result < 0;
         self.a = result as u8;
     }
 
     // inc/dec
     fn inc(&mut self, op: u8) -> u8 {
         let result = (op as u16) + 1;
-        self.f_z = if (result & 0xFF) == 0 {true} else {false};
+        self.f_z = (result & 0xFF) == 0;
         self.f_n = false;
-        self.f_h = if result > 0xF {true} else {false};
+        self.f_h = result > 0xF;
         result as u8
     }
 
     fn dec(&mut self, op: u8) -> u8 {
     // TODO: this function is potentially buggy.
         let result = ((op as i16) - 1) as i8;
-        self.f_z = if (result & 0xFF) == 0 {true} else {false};
+        self.f_z = (result & 0xFF) == 0;
         self.f_n = false;
-        self.f_h = if result < 0x10 {true} else {false};
+        self.f_h = result < 0x10;
         result as u8
     }
 
@@ -310,9 +310,9 @@ impl<V: VideoDevice> CPU<V> {
             _ => 0x00,
         };
         let result = (hi_nib | lo_nib) + lo_inc + hi_inc;
-        self.f_z = if (result & 0xFF) == 0 {true} else {false};
+        self.f_z = (result & 0xFF) == 0;
         self.f_h = false;
-        self.f_c = if result > 0xFF {true} else {false};
+        self.f_c = result > 0xFF;
         self.a = (result & 0xFF) as u8;
     }
 
@@ -354,7 +354,7 @@ impl<V: VideoDevice> CPU<V> {
         self.f_z = false;
         self.f_n = false;
         self.f_h = false;
-        self.f_c = if top_bit != 0 {true} else {false};
+        self.f_c = top_bit != 0;
         self.a = (self.a << 1) | top_bit;
     }
 
@@ -365,7 +365,7 @@ impl<V: VideoDevice> CPU<V> {
         self.f_z = false;
         self.f_n = false;
         self.f_h = false;
-        self.f_c = if top_bit != 0 {true} else {false};
+        self.f_c = top_bit != 0;
         self.a = (self.a << 1) | carry_bit;
     }
 
@@ -375,7 +375,7 @@ impl<V: VideoDevice> CPU<V> {
         self.f_z = false;
         self.f_n = false;
         self.f_h = false;
-        self.f_c = if bot_bit != 0 {true} else {false};
+        self.f_c = bot_bit != 0;
         self.a = (self.a >> 1) | bot_bit;
     }
 
@@ -386,17 +386,17 @@ impl<V: VideoDevice> CPU<V> {
         self.f_z = false;
         self.f_n = false;
         self.f_h = false;
-        self.f_c = if bot_bit != 0 {true} else {false};
+        self.f_c = bot_bit != 0;
         self.a = (self.a >> 1) | carry_bit;
     }
 
     fn rlc(&mut self, op: u8) -> Option<u8> {
         let top_bit = (op >> 7) & 1;
         let result = (op << 1) | top_bit;
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = false;
         self.f_h = false;
-        self.f_c = if top_bit != 0 {true} else {false};
+        self.f_c = top_bit != 0;
         Some(result)
     }
 
@@ -404,20 +404,20 @@ impl<V: VideoDevice> CPU<V> {
         let carry_bit = if self.f_c {1} else {0};
         let top_bit = (op >> 7) & 1;
         let result = (op << 1) | carry_bit;
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = false;
         self.f_h = false;
-        self.f_c = if top_bit != 0 {true} else {false};
+        self.f_c = top_bit != 0;
         Some(result)
     }
 
     fn rrc(&mut self, op: u8) -> Option<u8> {
         let bot_bit = (op << 7) & 0x80;
         let result = (op >> 1) | bot_bit;
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = false;
         self.f_h = false;
-        self.f_c = if bot_bit != 0 {true} else {false};
+        self.f_c = bot_bit != 0;
         Some(result)
     }
 
@@ -425,35 +425,35 @@ impl<V: VideoDevice> CPU<V> {
         let carry_bit = if self.f_c {0x80} else {0};
         let bot_bit = (op << 7) & 0x80;
         let result = (op >> 1) | carry_bit;
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = false;
         self.f_h = false;
-        self.f_c = if bot_bit != 0 {true} else {false};
+        self.f_c = bot_bit != 0;
         Some(result)
     }
 
     fn sla(&mut self, op: u8) -> Option<u8> {
-        self.f_c = if (op & 0x80) != 0 {true} else {false};
+        self.f_c = (op & 0x80) != 0;
         let result = op << 1;
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = false;
         self.f_h = false;
         Some(result)
     }
 
     fn sra(&mut self, op: u8) -> Option<u8> {
-        self.f_c = if (op & 0x1) != 0 {true} else {false};
+        self.f_c = (op & 0x1) != 0;
         let result = op >> 1;
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = false;
         self.f_h = false;
         Some(result)
     }
 
     fn srl(&mut self, op: u8) -> Option<u8> {
-        self.f_c = if (op & 0x1) != 0 {true} else {false};
+        self.f_c = (op & 0x1) != 0;
         let result = op >> 1;
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = false;
         self.f_h = false;
         Some(result)
@@ -461,7 +461,7 @@ impl<V: VideoDevice> CPU<V> {
 
     fn swap(&mut self, op: u8) -> Option<u8> {
         let result = (op << 4) | (op >> 4);
-        self.f_z = if result == 0 {true} else {false};
+        self.f_z = result == 0;
         self.f_n = false;
         self.f_h = false;
         self.f_c = false;
@@ -480,7 +480,7 @@ impl<V: VideoDevice> CPU<V> {
     }
 
     fn bit(&mut self, b: u8, op: u8) -> Option<u8> {
-        self.f_z = if (op & (1 << b)) == 0 {true} else {false};
+        self.f_z = (op & (1 << b)) == 0;
         self.f_n = false;
         self.f_h = true;
         None
@@ -494,7 +494,7 @@ impl<V: VideoDevice> CPU<V> {
     }
 
     fn ccf(&mut self) {
-        self.f_c = if self.f_c {false} else {true};
+        self.f_c = !self.f_c;
         self.f_n = false;
         self.f_h = false;
     }

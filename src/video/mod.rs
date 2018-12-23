@@ -30,33 +30,33 @@ pub trait VideoDevice: MemDevice {
 
 pub struct GBVideo {
     // potentially add background, sprite, window objects?
-    display_enable: bool,
-    window_offset: usize,
-    window_enable: bool,
-    bg_offset: usize,
-    bg_enable: bool,
-    tile_data_select: bool,
-    sprite_size: bool,
-    sprite_enable: bool,
+    display_enable:     bool,
+    window_offset:      usize,
+    window_enable:      bool,
+    bg_offset:          usize,
+    bg_enable:          bool,
+    tile_data_select:   bool,
+    sprite_size:        bool,
+    sprite_enable:      bool,
 
-    scroll_y: u8,
-    scroll_x: u8,
-    lcdc_y: u8,
-    ly_compare: u8,
-    window_y: u8,
-    window_x: u8,
-    bg_palette: BWPalette,
-    obj_palette_0: BWPalette,
-    obj_palette_1: BWPalette,
+    scroll_y:           u8,
+    scroll_x:           u8,
+    lcdc_y:             u8,
+    ly_compare:         u8,
+    window_y:           u8,
+    window_x:           u8,
+    bg_palette:         BWPalette,
+    obj_palette_0:      BWPalette,
+    obj_palette_1:      BWPalette,
 
     // raw tiles used for background & sprites
-    raw_tile_mem: Vec<u8>,
+    raw_tile_mem:       Vec<u8>,
     // map for background & window
-    tile_map_mem: Vec<u8>,
-    sprite_mem: Vec<u8>,
+    tile_map_mem:       Vec<u8>,
+    sprite_mem:         Vec<u8>,
 
-    display: Display,
-    program: glium::Program,
+    display:            Display,
+    program:            glium::Program,
 }
 
 impl MemDevice for GBVideo {
@@ -154,31 +154,31 @@ impl GBVideo {
                                                   None).unwrap();
 
         GBVideo {
-            display_enable: true,
-            window_offset: 0x9800,
-            window_enable: false,
-            bg_offset: 0x9800,
-            bg_enable: false,
-            tile_data_select: false,
-            sprite_size: false,
-            sprite_enable: false,
+            display_enable:     true,
+            window_offset:      0x9800,
+            window_enable:      false,
+            bg_offset:          0x9800,
+            bg_enable:          false,
+            tile_data_select:   false,
+            sprite_size:        false,
+            sprite_enable:      false,
 
-            scroll_y: 0,
-            scroll_x: 0,
-            lcdc_y: 0,
-            ly_compare: 0,
-            window_y: 0,
-            window_x: 0,
-            bg_palette: BWPalette::new(),
-            obj_palette_0: BWPalette::new(),
-            obj_palette_1: BWPalette::new(),
+            scroll_y:           0,
+            scroll_x:           0,
+            lcdc_y:             0,
+            ly_compare:         0,
+            window_y:           0,
+            window_x:           0,
+            bg_palette:         BWPalette::new(),
+            obj_palette_0:      BWPalette::new(),
+            obj_palette_1:      BWPalette::new(),
 
-            raw_tile_mem: vec![0; 0x1800],
-            tile_map_mem: vec![0; 0x800],
-            sprite_mem: vec![0; 0x100],
+            raw_tile_mem:       vec![0; 0x1800],
+            tile_map_mem:       vec![0; 0x800],
+            sprite_mem:         vec![0; 0x100],
 
-            display: display,
-            program: program,
+            display:            display,
+            program:            program,
         }
     }
 
@@ -186,14 +186,14 @@ impl GBVideo {
 
 
     fn lcd_control_write(&mut self, val: u8) {
-        self.display_enable     = if val & 0x80 == 0x80 {true} else {false};
+        self.display_enable     = val & 0x80 == 0x80;
         self.window_offset      = if val & 0x40 == 0x40 {0x400} else {0x0};
-        self.window_enable      = if val & 0x20 == 0x20 {true} else {false};
-        self.tile_data_select   = if val & 0x10 == 0x10 {true} else {false};
+        self.window_enable      = val & 0x20 == 0x20;
+        self.tile_data_select   = val & 0x10 == 0x10;
         self.bg_offset          = if val & 0x8 == 0x8   {0x400} else {0x0};
-        self.sprite_size        = if val & 0x4 == 0x4   {true} else {false};
-        self.sprite_enable      = if val & 0x2 == 0x2   {true} else {false};
-        self.bg_enable          = if val & 0x1 == 0x1   {true} else {false};
+        self.sprite_size        = val & 0x4 == 0x4;
+        self.sprite_enable      = val & 0x2 == 0x2;
+        self.bg_enable          = val & 0x1 == 0x1;
     }
 
     fn lcd_control_read(&self) -> u8 {

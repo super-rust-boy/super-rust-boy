@@ -23,13 +23,13 @@ enum MBC {
 pub struct Cartridge {
     rom_bank_0: [u8; 0x4000],
     rom_bank_n: [u8; 0x4000],
-    ram: Vec<u8>,
+    ram:        Vec<u8>,
 
-    rom_file: BufReader<File>,
-    mem_bank: MBC,
+    rom_file:   BufReader<File>,
+    mem_bank:   MBC,
     ram_enable: bool,
     ram_offset: usize,
-    battery: bool,
+    battery:    bool,
 }
 
 impl Cartridge {
@@ -42,31 +42,31 @@ impl Cartridge {
         try!(reader.read(&mut buf).map_err(|e| e.to_string()));
 
         let bank_type = match buf[0x147] {
-            0x1...0x3 => MBC::_1(MB1::new()),
-            0x5...0x6 => MBC::_2,
-            0xF...0x13 => MBC::_3(MB3::new()),
+            0x1...0x3   => MBC::_1(MB1::new()),
+            0x5...0x6   => MBC::_2,
+            0xF...0x13  => MBC::_3(MB3::new()),
             0x15...0x17 => MBC::_4(0),
             0x19...0x1E => MBC::_5(0),
-            _ => MBC::_0,
+            _           => MBC::_0,
         };
 
         let ram_size = match (bank_type.clone(), buf[0x149]) {
             (MBC::_2,_) => 0x200,
-            (_,0x1) => 0x800,
-            (_,0x2) => 0x2000,
-            (_,0x3) => 0x8000,
-            _ => 0,
+            (_,0x1)     => 0x800,
+            (_,0x2)     => 0x2000,
+            (_,0x3)     => 0x8000,
+            _           => 0,
         };
 
         let ret = Cartridge {
             rom_bank_0: buf,
             rom_bank_n: [0; 0x4000],
-            ram: vec!(0; ram_size),
-            rom_file: reader,
-            mem_bank: bank_type,
+            ram:        vec!(0; ram_size),
+            rom_file:   reader,
+            mem_bank:   bank_type,
             ram_enable: false,
             ram_offset: 0,
-            battery: false,
+            battery:    false,
         };
         Ok(ret)
     }
@@ -108,7 +108,7 @@ impl Cartridge {
     pub fn write_ram(&mut self, loc: u16, val: u8) {
         if self.ram_enable {
             match self.mem_bank.clone() {
-                MBC::_2 => self.ram[self.ram_offset + (loc as usize)] = val & 0xF,
+                MBC::_2             => self.ram[self.ram_offset + (loc as usize)] = val & 0xF,
                 MBC::_3(ref mut mb) => if mb.ram_select {self.ram[self.ram_offset + (loc as usize)] = val}
                                        else {mb.set_rtc_reg(val)},
                 _ => self.ram[self.ram_offset + (loc as usize)] = val,
@@ -121,7 +121,7 @@ impl Cartridge {
     fn write_mb1(&mut self, mb: MB1, loc: u16, val: u8) {
         let mut new_mb = mb;
         match loc {
-            0x0000...0x1FFF => self.ram_enable = if (val & 0xF) == 0xA {true} else {false},
+            0x0000...0x1FFF => self.ram_enable = (val & 0xF) == 0xA,
             0x2000...0x3FFF => new_mb.set_lower(val),
             0x4000...0x5FFF => new_mb.set_upper(val),
             _ => new_mb.mem_type_select(val),
@@ -136,7 +136,7 @@ impl Cartridge {
     #[inline]
     fn write_mb2(&mut self, loc: u16, val: u8) {
         match loc {
-            0x0000...0x1FFF => self.ram_enable = if (val & 1) == 1 {true} else {false},
+            0x0000...0x1FFF => self.ram_enable = (val & 1) == 1,
             0x2000...0x3FFF => self.swap_rom_bank(val & 0xF),
             _ => return,
         }
@@ -146,7 +146,7 @@ impl Cartridge {
     fn write_mb3(&mut self, mb: MB3, loc: u16, val: u8) {
         let mut new_mb = mb;
         match (loc, val) {
-            (0x0000...0x1FFF, x) => self.ram_enable = if (x & 0xF) == 0xA {true} else {false},
+            (0x0000...0x1FFF, x) => self.ram_enable = (x & 0xF) == 0xA,
             (0x2000...0x3FFF, 0) => self.swap_rom_bank(1),
             (0x2000...0x3FFF, x) => self.swap_rom_bank(x),
             (0x4000...0x5FFF, x @ 0...3) => self.swap_ram_bank(x),
@@ -162,7 +162,7 @@ impl Cartridge {
 impl MemDevice for Cartridge {
     fn read(&self, loc: u16) -> u8 {
         match loc {
-            0x0...0x3FFF => self.rom_bank_0[loc as usize],
+            0x0...0x3FFF    => self.rom_bank_0[loc as usize],
             0x4000...0x7FFF => self.rom_bank_n[(loc - 0x4000) as usize],
             _ => self.read_ram(loc - 0xA000),
         }
@@ -174,9 +174,9 @@ impl MemDevice for Cartridge {
         }
         else {
             match self.mem_bank.clone() {
-                MBC::_1(mb1) => self.write_mb1(mb1, loc, val),
-                MBC::_2 => self.write_mb2(loc, val),
-                MBC::_3(mb3) => self.write_mb3(mb3, loc, val),
+                MBC::_1(mb1)    => self.write_mb1(mb1, loc, val),
+                MBC::_2         => self.write_mb2(loc, val),
+                MBC::_3(mb3)    => self.write_mb3(mb3, loc, val),
                 _ => return,
             }
         }
@@ -185,24 +185,27 @@ impl MemDevice for Cartridge {
 
 
 // Types for bank swapping
-
 #[derive(Clone)]
 struct MB1 {
-    upper_select: u8,
-    lower_select: u8,
-    mem_type: bool,
+    upper_select:   u8,
+    lower_select:   u8,
+    mem_type:       bool,
 }
 
 impl MB1 {
     fn new() -> MB1 {
-        MB1 {upper_select: 0, lower_select: 0, mem_type: false}
+        MB1 {
+            upper_select:   0,
+            lower_select:   0,
+            mem_type:       false
+        }
     }
 
     fn clone(&self) -> MB1 {
         MB1 {
-            upper_select: self.upper_select,
-            lower_select: self.lower_select,
-            mem_type: self.mem_type,
+            upper_select:   self.upper_select,
+            lower_select:   self.lower_select,
+            mem_type:       self.mem_type,
         }
     }
 
@@ -241,31 +244,31 @@ impl MB1 {
 
 #[derive(Clone)]
 struct MB3 {
-    ram_select: bool,
-    reg_select: u8,
+    ram_select:     bool,
+    reg_select:     u8,
 
-    second_reg: u8,
-    minute_reg: u8,
-    hour_reg: u8,
-    day_count: u16,
-    day_overflow: u8,
+    second_reg:     u8,
+    minute_reg:     u8,
+    hour_reg:       u8,
+    day_count:      u16,
+    day_overflow:   u8,
 
-    halt: u8,
-    time: PreciseTime,
+    halt:           u8,
+    time:           PreciseTime,
 }
 
 impl MB3 {
     fn new() -> MB3 {
         MB3 {
-            ram_select: true,
-            reg_select: 8,
-            second_reg: 0,
-            minute_reg: 0,
-            hour_reg: 0,
-            day_count: 0,
-            day_overflow: 0,
-            halt: 0,
-            time: PreciseTime::now(),
+            ram_select:     true,
+            reg_select:     8,
+            second_reg:     0,
+            minute_reg:     0,
+            hour_reg:       0,
+            day_count:      0,
+            day_overflow:   0,
+            halt:           0,
+            time:           PreciseTime::now(),
         }
     }
 
