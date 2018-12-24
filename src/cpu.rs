@@ -39,6 +39,7 @@ pub struct CPU<V: VideoDevice> {
 
 
 // Conditions for Jump
+#[derive(PartialEq)]
 enum Cond {
     NZ,
     NC,
@@ -48,7 +49,7 @@ enum Cond {
 }
 
 impl Cond {
-    fn check<V: VideoDevice>(self, cpu: &CPU<V>) -> bool {
+    fn check<V: VideoDevice>(&self, cpu: &CPU<V>) -> bool {
         use self::Cond::*;
         match self {
             AL  => true,
@@ -66,6 +67,30 @@ enum Reg {
     BC,
     DE,
     HL,
+}
+
+// Additional commands
+enum With {
+    Inc,
+    Dec,
+    None
+}
+
+impl With {
+    fn resolve<V: VideoDevice>(self, hl: u16, cpu: &mut CPU<V>) {
+        use self::With::*;
+        match self {
+            Inc => {
+                let inc = (hl as u32) + 1;
+                cpu.set_16(Reg::HL, inc as u16);
+            },
+            Dec => {
+                let dec = (hl as u32) - 1;
+                cpu.set_16(Reg::HL, dec as u16);
+            },
+            None => {}
+        }
+    }
 }
 
 // Interrupt Procedures
@@ -124,23 +149,27 @@ impl<V: VideoDevice> CPU<V> {
 
     // Memory access
     #[inline]
-    fn read_mem(&self, loc: u16) -> u8 {
+    fn read_mem(&mut self, loc: u16) -> u8 {
+        self.cycle_count += 4;
         self.mem.read(loc)
     }
 
     #[inline]
     fn write_mem(&mut self, loc: u16, val: u8) {
+        self.cycle_count += 4;
         self.mem.write(loc, val);
     }
 
     // read mem pointed to by pc (and inc pc)
     fn fetch(&mut self) -> u8 {
+        self.cycle_count += 4;
         let result = self.mem.read(self.pc);
         self.pc = ((self.pc as u32) + 1) as u16;
         result
     }
 
     fn fetch_16(&mut self) -> u16 {
+        self.cycle_count += 8;
         let lo_byte = self.mem.read(self.pc) as u16;
         self.pc = ((self.pc as u32) + 1) as u16;
         let hi_byte = (self.mem.read(self.pc) as u16) << 8;
@@ -149,18 +178,24 @@ impl<V: VideoDevice> CPU<V> {
     }
 
     // read and write to/from mem pointed to by hl
-    fn read_hl(&self) -> u8 {
+    fn read_hl(&mut self, with: With) -> u8 {
+        self.cycle_count += 4;
         let hl = self.get_16(Reg::HL);
-        self.mem.read(hl)
+        let res = self.mem.read(hl);
+        with.resolve(hl, self);
+        res
     }
 
-    fn write_hl(&mut self, val: u8) {
+    fn write_hl(&mut self, val: u8, with: With) {
+        self.cycle_count += 4;
         let hl = self.get_16(Reg::HL);
         self.mem.write(hl, val);
+        with.resolve(hl, self);
     }
 
     // increments sp - TODO: maybe improve this fn
     fn add_sp(&mut self, imm: u8) -> u16 {
+        self.cycle_count += 8;
         let offset = imm as i8;
         let result = (self.sp as i32) + (offset as i32);
         self.f_z = false;
@@ -206,6 +241,7 @@ impl<V: VideoDevice> CPU<V> {
     }
 
     fn add_16(&mut self, op: u16) {
+        self.cycle_count += 4;
         let result = (self.get_16(Reg::HL) as u32) + (op as u32);
         self.f_n = false;
         self.f_h = result > 0xF;
@@ -278,11 +314,13 @@ impl<V: VideoDevice> CPU<V> {
     }
 
     fn inc_16(&mut self, op: u16) -> u16 {
+        self.cycle_count += 4;
         let result = (op as u32) + 1;
         result as u16
     }
 
     fn dec_16(&mut self, op: u16) -> u16 {
+        self.cycle_count += 4;
         let result = (op as i32) - 1;
         result as u16
     }
@@ -324,6 +362,7 @@ impl<V: VideoDevice> CPU<V> {
 
     // Stack
     fn pop(&mut self, which: Reg) {
+        self.cycle_count += 8;
         let lo_byte = self.stack_pop();
         let hi_byte = self.stack_pop();
         self.sp += 2;
@@ -336,6 +375,7 @@ impl<V: VideoDevice> CPU<V> {
     }
 
     fn push(&mut self, which: Reg) {
+        self.cycle_count += 12;
         let (hi_byte, lo_byte) = match which {
             Reg::AF => (self.a, self.get_f()),
             Reg::BC => (self.b, self.c),
@@ -515,18 +555,21 @@ impl<V: VideoDevice> CPU<V> {
     // Jump
     fn jp(&mut self, cd: Cond, loc: u16) {
         if cd.check(&self) {
+            self.cycle_count += 4;
             self.pc = loc
         }
     }
 
     fn jr(&mut self, cd: Cond, loc: i8) {
         if cd.check(&self) {
+            self.cycle_count += 4;
             self.pc = ((self.pc as i32) + (loc as i32)) as u16;
         }
     }
 
     fn call(&mut self, cd: Cond, loc: u16) {
         if cd.check(&self) {
+            self.cycle_count += 12;
             let hi_byte = (self.pc >> 8) as u8;
             let lo_byte = self.pc as u8;
             self.stack_push(hi_byte);
@@ -536,7 +579,13 @@ impl<V: VideoDevice> CPU<V> {
     }
 
     fn ret(&mut self, cd: Cond) {
+        self.cycle_count += 4;
         if cd.check(&self) {
+            if cd == Cond::AL {
+                self.cycle_count += 8;
+            } else {
+                self.cycle_count += 12;
+            }
             let lo_byte = self.stack_pop() as u16;
             let hi_byte = self.stack_pop() as u16;
             self.pc = (hi_byte << 8) | lo_byte;
@@ -544,6 +593,7 @@ impl<V: VideoDevice> CPU<V> {
     }
 
     fn reti(&mut self) {
+        self.cycle_count += 12;
         self.ime = true;
         let lo_byte = self.stack_pop() as u16;
         let hi_byte = self.stack_pop() as u16;
@@ -582,6 +632,8 @@ impl<V: VideoDevice> CPU<V> {
     pub fn step(&mut self) {
         if !self.cont {return;}
 
+        //self.cycle_count += 4;
+
         let instr = self.fetch();
 
         let op8 = match instr % 8 {
@@ -591,7 +643,7 @@ impl<V: VideoDevice> CPU<V> {
             3 => self.e,
             4 => self.h,
             5 => self.l,
-            6 => self.read_hl(),
+            6 => self.read_hl(With::None),
             _ => self.a,
         };
 
@@ -606,7 +658,7 @@ impl<V: VideoDevice> CPU<V> {
             0x00 => self.nop(),
             0x01 => {let imm = self.fetch_16(); self.set_16(Reg::BC,imm)},
             0x02 => {let loc = self.get_16(Reg::BC); let op = self.a;
-                     self.write_mem(loc,op)},
+                     self.write_mem(loc,op)}, // +4?
             0x03 => {let val = self.inc_16(op16); self.set_16(Reg::BC,val)},
             0x04 => {let op = self.b; self.b = self.inc(op)},
             0x05 => {let op = self.b; self.b = self.dec(op)},
@@ -614,7 +666,7 @@ impl<V: VideoDevice> CPU<V> {
             0x07 => self.rlca(),
             0x08 => {let imm = self.fetch_16(); self.write_sp(imm)}
             0x09 => self.add_16(op16),
-            0x0A => self.a = self.read_mem(self.get_16(Reg::BC)),
+            0x0A => {let bc = self.get_16(Reg::BC); self.a = self.read_mem(bc)},
             0x0B => {let val = self.dec_16(op16); self.set_16(Reg::BC,val)},
             0x0C => {let op = self.c; self.c = self.inc(op)},
             0x0D => {let op = self.c; self.c = self.dec(op)},
@@ -632,7 +684,7 @@ impl<V: VideoDevice> CPU<V> {
             0x17 => self.rla(),
             0x18 => {let imm = self.fetch(); self.jr(Cond::AL, imm as i8)},
             0x19 => self.add_16(op16),
-            0x1A => self.a = self.read_mem(self.get_16(Reg::DE)),
+            0x1A => {let de = self.get_16(Reg::DE); self.a = self.read_mem(de)},
             0x1B => {let val = self.dec_16(op16); self.set_16(Reg::DE,val)},
             0x1C => {let op = self.e; self.e = self.inc(op)},
             0x1D => {let op = self.e; self.e = self.dec(op)},
@@ -641,8 +693,7 @@ impl<V: VideoDevice> CPU<V> {
 
             0x20 => {let imm = self.fetch(); self.jr(Cond::NZ, imm as i8)},
             0x21 => {let imm = self.fetch_16(); self.set_16(Reg::HL,imm)},
-            0x22 => {let op = self.a; self.write_hl(op);
-                     let val = self.inc_16(op16); self.set_16(Reg::HL,val)},
+            0x22 => {let op = self.a; self.write_hl(op, With::Inc)},
             0x23 => {let val = self.inc_16(op16); self.set_16(Reg::HL,val)},
             0x24 => {let op = self.h; self.h = self.inc(op)},
             0x25 => {let op = self.h; self.h = self.dec(op)},
@@ -650,8 +701,7 @@ impl<V: VideoDevice> CPU<V> {
             0x27 => self.daa(),
             0x28 => {let imm = self.fetch(); self.jr(Cond::Z, imm as i8)},
             0x29 => self.add_16(op16),
-            0x2A => {self.a = self.read_hl();
-                     let val = self.inc_16(op16); self.set_16(Reg::HL,val)},
+            0x2A => {self.a = self.read_hl(With::Inc)},
             0x2B => {let val = self.dec_16(op16); self.set_16(Reg::HL,val)},
             0x2C => {let op = self.l; self.l = self.inc(op)},
             0x2D => {let op = self.l; self.l = self.dec(op)},
@@ -660,18 +710,15 @@ impl<V: VideoDevice> CPU<V> {
 
             0x30 => {let imm = self.fetch(); self.jr(Cond::NC, imm as i8)},
             0x31 => self.sp = self.fetch_16(),
-            0x32 => {let op = self.a; self.write_hl(op);
-                     let val = self.inc_16(op16); self.set_16(Reg::HL,val)},
+            0x32 => {let op = self.a; self.write_hl(op, With::Dec)},
             0x33 => self.sp = self.inc_16(op16),
-            0x34 => {let op = self.read_hl(); let res = self.inc(op); self.write_hl(res)},
-            0x35 => {let op = self.read_hl(); let res = self.dec(op); self.write_hl(res)},
-            0x36 => {let imm = self.fetch();
-                     self.write_hl(imm)},
+            0x34 => {let op = self.read_hl(With::None); let res = self.inc(op); self.write_hl(res, With::None)},
+            0x35 => {let op = self.read_hl(With::None); let res = self.dec(op); self.write_hl(res, With::None)},
+            0x36 => {let imm = self.fetch(); self.write_hl(imm, With::None)},
             0x37 => self.scf(),
             0x38 => {let imm = self.fetch(); self.jr(Cond::C, imm as i8)},
             0x39 => self.add_16(op16),
-            0x3A => {self.a = self.read_hl();
-                     let val = self.inc_16(op16); self.set_16(Reg::HL,val)},
+            0x3A => {self.a = self.read_hl(With::Dec)},
             0x3B => self.sp = self.dec_16(op16),
             0x3C => {let op = self.a; self.a = self.inc(op)},
             0x3D => {let op = self.a; self.a = self.dec(op)},
@@ -687,9 +734,9 @@ impl<V: VideoDevice> CPU<V> {
             0x60...0x67 => self.h = op8,
             0x68...0x6F => self.l = op8,
 
-            0x70...0x75 => self.write_hl(op8),
+            0x70...0x75 => self.write_hl(op8, With::None),
             0x76 => {},//self.int_stat = IntType::Stop,
-            0x77 => self.write_hl(op8),
+            0x77 => self.write_hl(op8, With::None),
             0x78...0x7F => self.a = op8,
 
             0x80...0x87 => self.add(false, op8),
@@ -746,7 +793,7 @@ impl<V: VideoDevice> CPU<V> {
             0xE6 => {let imm = self.fetch(); self.and(imm)},
             0xE7 => self.call(Cond::AL, 0x20),
             0xE8 => {let imm = self.fetch(); self.sp = self.add_sp(imm)},
-            0xE9 => {let loc = self.get_16(Reg::HL); self.jp(Cond::C, loc)},
+            0xE9 => {let loc = self.get_16(Reg::HL); self.jp(Cond::C, loc)}, // jpHL
             0xEA => {let loc = self.fetch_16();
                      let op = self.a;
                      self.write_mem(loc, op)},
@@ -782,7 +829,7 @@ impl<V: VideoDevice> CPU<V> {
             3 => self.e,
             4 => self.h,
             5 => self.l,
-            6 => self.read_hl(),
+            6 => self.read_hl(With::None),
             _ => self.a,
         };
 
@@ -810,7 +857,7 @@ impl<V: VideoDevice> CPU<V> {
             (Some(x), 3) => self.e = x,
             (Some(x), 4) => self.h = x,
             (Some(x), 5) => self.l = x,
-            (Some(x), 6) => self.write_hl(x),
+            (Some(x), 6) => self.write_hl(x, With::None),
             (Some(x), 7) => self.a = x,
             _ => {},
         }
