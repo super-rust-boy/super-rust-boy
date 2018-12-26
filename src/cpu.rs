@@ -3,6 +3,26 @@
 use mem::MemBus;
 use video::VideoDevice;
 
+// Interrupt constants
+mod int {
+    pub const IE: u16 = 0xFFFF; // Interrupt Enable Mem Location
+    pub const IF: u16 = 0xFF0F; // Interrupt Flag Mem Location
+
+    // Interrupt register bits
+    pub const V_BLANK: u8  = 1 << 0;
+    pub const LCD_STAT: u8 = 1 << 1;
+    pub const TIMER: u8    = 1 << 2;
+    pub const SERIAL: u8   = 1 << 3;
+    pub const JOYPAD: u8   = 1 << 4;
+
+    // Interrupt vector locations
+    pub const V_BLANK_VECT: u16  = 0x0040;
+    pub const LCD_STAT_VECT: u16 = 0x0048;
+    pub const TIMER_VECT: u16    = 0x0050;
+    pub const SERIAL_VECT: u16   = 0x0058;
+    pub const JOYPAD_VECT: u16   = 0x0060;
+}
+
 // LR35902 CPU
 pub struct CPU<V: VideoDevice> {
     // Accumulator
@@ -35,6 +55,7 @@ pub struct CPU<V: VideoDevice> {
 
     // Internals
     cycle_count: u32,
+    freeze_count: u32,
 }
 
 
@@ -165,6 +186,8 @@ impl<V: VideoDevice> CPU<V> {
         self.cycle_count += 4;
         let result = self.mem.read(self.pc);
         self.pc = ((self.pc as u32) + 1) as u16;
+        //println!("{:X}", result);
+
         result
     }
 
@@ -174,6 +197,8 @@ impl<V: VideoDevice> CPU<V> {
         self.pc = ((self.pc as u32) + 1) as u16;
         let hi_byte = (self.mem.read(self.pc) as u16) << 8;
         self.pc = ((self.pc as u32) + 1) as u16;
+        //println!("{:X}", lo_byte | hi_byte);
+
         lo_byte | hi_byte
     }
 
@@ -625,15 +650,23 @@ impl<V: VideoDevice> CPU<V> {
             pc: 0x100,
             mem: mem,
             cycle_count: 0,
+            freeze_count: 70_256, // 70_224
         }
     }
 
     // Single instruction
     pub fn step(&mut self) {
-        if !self.cont {return;}
+        if self.handle_interrupts() {
+            return;
+        }
 
-        //self.cycle_count += 4;
+        // Keep cycling
+        if !self.cont {
+            self.cycle_count += 4;
+            return;
+        }
 
+        //println!("INSTR: ");
         let instr = self.fetch();
 
         let op8 = match instr % 8 {
@@ -735,7 +768,7 @@ impl<V: VideoDevice> CPU<V> {
             0x68...0x6F => self.l = op8,
 
             0x70...0x75 => self.write_hl(op8, With::None),
-            0x76 => {},//self.int_stat = IntType::Stop,
+            0x76 => self.cont = false,
             0x77 => self.write_hl(op8, With::None),
             0x78...0x7F => self.a = op8,
 
@@ -865,10 +898,46 @@ impl<V: VideoDevice> CPU<V> {
 
     pub fn v_blank(&mut self) {
         self.mem.trigger_frame();
-        if self.ime {
+        self.cycle_count = 0;
+        // Trigger v-blank interrupt
+        let int_flag = self.mem.read(int::IF);
+        self.mem.write(int::IF, int_flag | int::V_BLANK);
+    }
+
+    fn handle_interrupts(&mut self) -> bool {
+        let int_flag = self.mem.read(int::IF);
+        let interrupts = self.mem.read(int::IE) & int_flag;
+
+        if self.ime && (interrupts != 0) {
+            self.cycle_count += 8;
             self.ime = false;
-            self.call(Cond::AL, 0x40);
+            self.cont = true;
+
+            if (interrupts & int::V_BLANK) != 0 {
+                self.mem.write(int::IF, int_flag & (0xFF ^ int::V_BLANK));
+                self.call(Cond::AL, int::V_BLANK_VECT);
+
+            } else if (interrupts & int::LCD_STAT) != 0 {
+                self.mem.write(int::IF, int_flag & (0xFF ^ int::LCD_STAT));
+                self.call(Cond::AL, int::LCD_STAT_VECT);
+
+            } else if (interrupts & int::TIMER) != 0 {
+                self.mem.write(int::IF, int_flag & (0xFF ^ int::TIMER));
+                self.call(Cond::AL, int::TIMER_VECT);
+
+            } else if (interrupts & int::SERIAL) != 0 {
+                self.mem.write(int::IF, int_flag & (0xFF ^ int::SERIAL));
+                self.call(Cond::AL, int::SERIAL_VECT);
+
+            } else if (interrupts & int::JOYPAD) != 0 {
+                self.mem.write(int::IF, int_flag & (0xFF ^ int::JOYPAD));
+                self.call(Cond::AL, int::JOYPAD_VECT);
+            }
+
+            return true;
         }
+
+        return false;
     }
 }
 

@@ -4,10 +4,8 @@ Game Boy emulator written in Rust.
 
 
 ## TODO:
-* Add cycle-counting to CPU
 * Test CPU
 * Test Video
-* Cleanup and splitting of memory code
 
 ## TODO later:
 * Add ability to use preset ROM (internally - for testing)

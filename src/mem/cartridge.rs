@@ -37,7 +37,7 @@ impl Cartridge {
         let f = try!(File::open(rom_file).map_err(|e| e.to_string()));
 
         let mut reader = BufReader::new(f);
-        let mut buf: [u8; 0x4000] = [0; 0x4000];
+        let mut buf = [0_u8; 0x4000];
         //try!(reader.read_exact(&mut buf).map_err(|e| e.to_string()));
         try!(reader.read(&mut buf).map_err(|e| e.to_string()));
 
@@ -95,12 +95,12 @@ impl Cartridge {
         if self.ram_enable {
             match self.mem_bank {
                 MBC::_3(ref mb) => if mb.ram_select {self.ram[self.ram_offset + (loc as usize)]}
-                                       else {mb.get_rtc_reg()},
-                _ => return self.ram[self.ram_offset + (loc as usize)],
+                                   else {mb.get_rtc_reg()},
+                _ => self.ram[self.ram_offset + (loc as usize)],
             }
         }
         else {
-            return 0;
+            0
         }
     }
 

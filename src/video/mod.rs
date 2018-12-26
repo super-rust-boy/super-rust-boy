@@ -123,16 +123,28 @@ impl VideoDevice for GBVideo {
                     } as usize;
 
                     let tex = {
-                        let raw_tex = &self.raw_tile_mem[tile_loc..(tile_loc*16)];
+                        let raw_tex = &self.raw_tile_mem[tile_loc..(tile_loc + 16)];
                         self.bg_palette.make_texture(&raw_tex, &self.display)
                     };
                     self.draw_square(&mut target, x*8, y*8, &tex);
                 };
             };
-        };
+        }
 
         // render sprites
+        if self.sprite_enable {
+            /*for s in (0..self.sprite_mem.size()).step_by(4) {
+                let y_pos = self.sprite_mem[s] - 16;
+                let x_pos = self.sprite_mem[s+1] - 8;
+                let
+            }*/
+        }
+
         // render window
+        if self.window_enable {
+
+        }
+
         target.finish().unwrap();
     }
 }
@@ -155,9 +167,9 @@ impl GBVideo {
 
         GBVideo {
             display_enable:     true,
-            window_offset:      0x9800,
+            window_offset:      0x0,
             window_enable:      false,
-            bg_offset:          0x9800,
+            bg_offset:          0x0,
             bg_enable:          false,
             tile_data_select:   false,
             sprite_size:        false,
@@ -186,6 +198,7 @@ impl GBVideo {
 
 
     fn lcd_control_write(&mut self, val: u8) {
+        println!("{:b}", val);
         self.display_enable     = val & 0x80 == 0x80;
         self.window_offset      = if val & 0x40 == 0x40 {0x400} else {0x0};
         self.window_enable      = val & 0x20 == 0x20;
@@ -226,6 +239,7 @@ impl GBVideo {
 
         let (x_a, y_a) = (byte_to_float(x, BG_X), byte_to_float(y, BG_Y));
         let (x_b, y_b) = (byte_to_float(x + 8, BG_X), byte_to_float(y + 8, BG_Y));
+        println!("{},{}", x_a,x_b);
 
         let uniforms = uniform!{tex: texture};
 
