@@ -39,6 +39,7 @@ pub struct GBVideo {
     sprite_size:        bool,
     sprite_enable:      bool,
 
+    lcd_status:         u8,
     scroll_y:           u8,
     scroll_x:           u8,
     lcdc_y:             u8,
@@ -66,7 +67,7 @@ impl MemDevice for GBVideo {
             0x9800...0x9FFF =>  self.tile_map_mem[(loc - 0x9800) as usize],
             0xFE00...0xFE9F =>  self.sprite_mem[(loc - 0xFE00) as usize],
             0xFF40 =>           self.lcd_control_read(),
-            0xFF41 =>           self.lcd_status_read(),
+            0xFF41 =>           self.lcd_status,
             0xFF42 =>           self.scroll_y,
             0xFF43 =>           self.scroll_x,
             0xFF44 =>           self.lcdc_y,
@@ -86,7 +87,7 @@ impl MemDevice for GBVideo {
             0x9800...0x9FFF =>  self.tile_map_mem[(loc - 0x9800) as usize] = val,
             0xFE00...0xFE9F =>  self.sprite_mem[(loc - 0xFE00) as usize] = val,
             0xFF40 =>           self.lcd_control_write(val),
-            0xFF41 =>           self.lcd_status_write(val),
+            0xFF41 =>           self.lcd_status = val,
             0xFF42 =>           self.scroll_y = val,
             0xFF43 =>           self.scroll_x = val,
             0xFF44 =>           self.lcdc_y = val,
@@ -175,6 +176,7 @@ impl GBVideo {
             sprite_size:        false,
             sprite_enable:      false,
 
+            lcd_status:         0, // TODO: check
             scroll_y:           0,
             scroll_x:           0,
             lcdc_y:             0,
