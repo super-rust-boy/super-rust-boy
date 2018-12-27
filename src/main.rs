@@ -40,9 +40,8 @@ fn main() {
 
     loop {
         let frame = PreciseTime::now();
-        while frame.to(PreciseTime::now()) < Duration::microseconds(16750) {
-            state.step();
-        };
-        state.v_blank();
+        while state.step() {}   // Execute up to v-blanking
+        state.v_blank();        // Draw video
+        while frame.to(PreciseTime::now()) < Duration::microseconds(16750) {};  // Wait until next frame.
     }
 }

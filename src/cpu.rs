@@ -23,20 +23,22 @@ mod int {
     pub const JOYPAD_VECT: u16   = 0x0060;
 }
 
+// Video mode constants
 mod video {
+    // Mode cycle counts
     pub const H_CYCLES: i32     = 456;
-    pub const MODE_0: i32       = H_CYCLES;
-    pub const MODE_1: i32       = 10 * H_CYCLES;
+    pub const MODE_1: i32       = -10 * H_CYCLES;
     pub const MODE_2: i32       = 80;
     pub const MODE_3: i32       = MODE_2 + 172;
     pub const FRAME_CYCLE: i32  = 144 * H_CYCLES;
 
+    // Modes
     #[derive(PartialEq)]
     pub enum Mode {
-        _0,
-        _1,
-        _2,
-        _3
+        _0, // H-blank
+        _1, // V-blank
+        _2, // Reading
+        _3  // Drawing
     }
 }
 
@@ -100,7 +102,7 @@ impl Cond {
     }
 }
 
-// Double registers
+// Double (16-bit) registers
 enum Reg {
     AF,
     BC,
@@ -131,9 +133,6 @@ impl With {
         }
     }
 }
-
-// Interrupt Procedures
-
 
 
 // Public interface
@@ -167,7 +166,7 @@ impl<V: VideoDevice> CPU<V> {
     // If it returns false, wait.
     pub fn step(&mut self) -> bool {
         if !self.video_mode() {
-            return false;
+            return false;   // Wait until frame is ready.
         }
 
         if self.handle_interrupts() {
@@ -180,7 +179,7 @@ impl<V: VideoDevice> CPU<V> {
             return true;
         }
 
-        //println!("INSTR: ");
+        println!("INSTR: ");
         self.exec_instruction();
 
         return true;
@@ -202,10 +201,13 @@ impl<V: VideoDevice> CPU<V> {
                 self.update_mode(Mode::_1);
                 self.trigger_interrupt(int::V_BLANK);
                 return false;
-            } else if frame_cycle < MODE_2 {
+            } else if frame_cycle < MODE_3 {
+                let ly = self.mem.read(0xFF44) + 1;
+                self.mem.write(0xFF44, ly);
                 self.update_mode(Mode::_2);
             },
             Mode::_1 => if self.cycle_count >= 0 {
+                self.mem.write(0xFF44, 0);
                 self.update_mode(Mode::_2);
             },
         }
@@ -525,7 +527,7 @@ impl<V: VideoDevice> CPU<V> {
 
     pub fn v_blank(&mut self) {
         self.mem.trigger_frame();
-        self.cycle_count = -video::MODE_0;
+        self.cycle_count = video::MODE_1;
     }
 }
 
@@ -589,7 +591,7 @@ impl<V: VideoDevice> CPU<V> {
         self.cycle_count += 4;
         let result = self.mem.read(self.pc);
         self.pc = ((self.pc as u32) + 1) as u16;
-        //println!("{:X}", result);
+        println!("{:X}", result);
 
         result
     }
@@ -600,7 +602,7 @@ impl<V: VideoDevice> CPU<V> {
         self.pc = ((self.pc as u32) + 1) as u16;
         let hi_byte = (self.mem.read(self.pc) as u16) << 8;
         self.pc = ((self.pc as u32) + 1) as u16;
-        //println!("{:X}", lo_byte | hi_byte);
+        println!("{:X}", lo_byte | hi_byte);
 
         lo_byte | hi_byte
     }

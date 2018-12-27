@@ -222,13 +222,6 @@ impl GBVideo {
         let val_0 = if self.bg_enable               {0x1} else {0};
         val_7 | val_6 | val_5 | val_4 | val_3 | val_2 | val_1 | val_0
     }
-
-    fn lcd_status_write(&mut self, val: u8) {
-    }
-
-    fn lcd_status_read(&self) -> u8 {
-        0
-    }
 }
 
 
