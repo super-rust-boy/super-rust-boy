@@ -173,6 +173,10 @@ impl<V: VideoDevice> CPU<V> {
             return true;
         }
 
+        if self.mem.update_timers(self.cycle_count) {
+            self.trigger_interrupt(int::TIMER);
+        }
+
         // Keep cycling
         if !self.cont {
             self.cycle_count += 4;

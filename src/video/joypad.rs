@@ -39,18 +39,18 @@ impl Joypad {
 
     pub fn read(&self) -> u8 {
         match self.selector {
-            Select::Direction   => {
-                let right = if self.right {1} else {0};
-                let left =  if self.left {2} else {0};
-                let up =    if self.up {4} else {0};
-                let down =  if self.down {8} else {0};
+            Select::Direction => {
+                let right = if self.right {0b0001} else {0};
+                let left =  if self.left  {0b0010} else {0};
+                let up =    if self.up    {0b0100} else {0};
+                let down =  if self.down  {0b1000} else {0};
                 right | left | up | down
             },
-            Select::Button      => {
-                let a =         if self.a {1} else {0};
-                let b =         if self.b {2} else {0};
-                let select =    if self.select {4} else {0};
-                let start =     if self.start {8} else {0};
+            Select::Button => {
+                let a =      if self.a      {0b0001} else {0};
+                let b =      if self.b      {0b0010} else {0};
+                let select = if self.select {0b0100} else {0};
+                let start =  if self.start  {0b1000} else {0};
                 a | b | select | start
             },
             Select::None        => 0

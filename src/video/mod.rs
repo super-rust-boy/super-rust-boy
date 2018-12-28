@@ -256,9 +256,6 @@ impl GBVideo {
         }
     }
 
-
-
-
     fn lcd_control_write(&mut self, val: u8) {
         println!("LCD write: {:b}", val);
         self.display_enable     = val & 0x80 == 0x80;

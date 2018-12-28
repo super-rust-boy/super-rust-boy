@@ -6,7 +6,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::fs::File;
 
-use time::{Duration, PreciseTime};
+use time::PreciseTime;
 
 use super::MemDevice;
 

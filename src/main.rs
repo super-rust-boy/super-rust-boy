@@ -2,6 +2,7 @@
 mod cpu;
 mod mem;
 mod video;
+mod timer;
 
 extern crate time;
 #[macro_use]
