@@ -38,6 +38,7 @@ impl<V: VideoDevice> MemBus<V> {
             x @ 0xC000...0xDFFF => self.ram.read(x - 0xC000),
             x @ 0xE000...0xFDFF => self.ram.read(x - 0xE000),
             x @ 0xFE00...0xFE9F => self.video_device.read(x),
+            x @ 0xFF00          => self.video_device.read(x),
             x @ 0xFF40...0xFF4B => self.video_device.read(x),
             _ => self.ram.read(0),
         }
@@ -51,13 +52,18 @@ impl<V: VideoDevice> MemBus<V> {
             x @ 0xC000...0xDFFF => self.ram.write(x - 0xC000, val),
             x @ 0xE000...0xFDFF => self.ram.write(x - 0xE000, val),
             x @ 0xFE00...0xFE9F => self.video_device.write(x, val),
+            x @ 0xFF00          => self.video_device.write(x, val),
             x @ 0xFF40...0xFF4B => self.video_device.write(x, val),
             _ => return,
         }
     }
 
-    pub fn trigger_frame(&mut self) {
+    pub fn render_frame(&mut self) {
         self.video_device.render_frame();
+    }
+
+    pub fn read_inputs(&mut self) {
+        self.video_device.read_inputs();
     }
 }
 

@@ -12,7 +12,7 @@ macro_rules! pixel {
     };
 }
 
-const WHITE: Pixel      = pixel!(0xFF);
+const WHITE: Pixel      = pixel!(0x80);//pixel!(0xFF);
 const LIGHTGREY: Pixel  = pixel!(0x7F);
 const DARKGREY: Pixel   = pixel!(0x3F);
 const BLACK: Pixel      = pixel!(0x00);
@@ -40,7 +40,7 @@ pub trait Palette {
                     let pixel_select = least_sig | (most_sig << 1);
                     let pixel = self.get_pixel(pixel_select);
                     row.push(pixel);
-                };
+                }
                 row.reverse();
                 texture_pixels.push(row);
             }

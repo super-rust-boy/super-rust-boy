@@ -1,14 +1,19 @@
 mod palette;
 mod shaders;
+mod joypad;
 
 use glium;
 use glium::{Display, Surface};
+use glium::glutin::EventsLoop;
 use glium::texture::texture2d::Texture2d;
-use self::palette::{BWPalette, Palette};
+
 use mem::MemDevice;
 
-const BG_X: u8 = 255;
-const BG_Y: u8 = 255;
+use self::palette::{BWPalette, Palette};
+use self::joypad::Joypad;
+
+const BG_X: u16 = 256;
+const BG_Y: u16 = 256;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -18,7 +23,7 @@ struct Vertex {
 
 implement_vertex!(Vertex, position, texcoord);
 
-fn byte_to_float(byte: u8, scale: u8) -> f32 {
+fn byte_to_float(byte: u16, scale: u16) -> f32 {
     let (byte_f, scale_f) = (byte as f32, scale as f32);
     let out_f = (byte_f * 2.0) / scale_f;
     out_f - 1.0
@@ -26,6 +31,7 @@ fn byte_to_float(byte: u8, scale: u8) -> f32 {
 
 pub trait VideoDevice: MemDevice {
     fn render_frame(&mut self);
+    fn read_inputs(&mut self);
 }
 
 pub struct GBVideo {
@@ -50,6 +56,9 @@ pub struct GBVideo {
     obj_palette_0:      BWPalette,
     obj_palette_1:      BWPalette,
 
+    // joypad inputs
+    joypad:             Joypad,
+
     // raw tiles used for background & sprites
     raw_tile_mem:       Vec<u8>,
     // map for background & window
@@ -57,6 +66,7 @@ pub struct GBVideo {
     sprite_mem:         Vec<u8>,
 
     display:            Display,
+    events_loop:        EventsLoop,
     program:            glium::Program,
 }
 
@@ -66,6 +76,9 @@ impl MemDevice for GBVideo {
             0x8000...0x97FF =>  self.raw_tile_mem[(loc - 0x8000) as usize],
             0x9800...0x9FFF =>  self.tile_map_mem[(loc - 0x9800) as usize],
             0xFE00...0xFE9F =>  self.sprite_mem[(loc - 0xFE00) as usize],
+
+            0xFF00 =>           self.joypad.read(),
+
             0xFF40 =>           self.lcd_control_read(),
             0xFF41 =>           self.lcd_status,
             0xFF42 =>           self.scroll_y,
@@ -86,6 +99,9 @@ impl MemDevice for GBVideo {
             0x8000...0x97FF =>  self.raw_tile_mem[(loc - 0x8000) as usize] = val,
             0x9800...0x9FFF =>  self.tile_map_mem[(loc - 0x9800) as usize] = val,
             0xFE00...0xFE9F =>  self.sprite_mem[(loc - 0xFE00) as usize] = val,
+
+            0xFF00 =>           self.joypad.write(val),
+
             0xFF40 =>           self.lcd_control_write(val),
             0xFF41 =>           self.lcd_status = val,
             0xFF42 =>           self.scroll_y = val,
@@ -110,9 +126,8 @@ impl VideoDevice for GBVideo {
 
         // render background
         if self.bg_enable {
-            println!("frame");
-            for x in 0..32 {
-                for y in 0..32 {
+            for y in 0..32 {
+                for x in 0..32 {
                     // get tile number from background map
                     let offset = (x + (y*32)) as usize;
                     let tile = self.tile_map_mem[self.bg_offset + offset];
@@ -148,6 +163,48 @@ impl VideoDevice for GBVideo {
 
         target.finish().unwrap();
     }
+
+    // Read inputs and store
+    fn read_inputs(&mut self) {
+        use glium::glutin::{Event, WindowEvent, ElementState, VirtualKeyCode};
+
+        let joypad = &mut self.joypad;
+
+        self.events_loop.poll_events(|e| {
+            match e {
+                Event::WindowEvent {
+                    window_id: _,
+                    event: w,
+                } => match w {
+                    WindowEvent::CloseRequested => {
+                        ::std::process::exit(0);
+                    },
+                    WindowEvent::KeyboardInput {
+                        device_id: _,
+                        input: k,
+                    } => {
+                        let pressed = match k.state {
+                            ElementState::Pressed => true,
+                            ElementState::Released => false,
+                        };
+                        match k.virtual_keycode {
+                            Some(VirtualKeyCode::Z)         => joypad.a = pressed,
+                            Some(VirtualKeyCode::X)         => joypad.b = pressed,
+                            Some(VirtualKeyCode::Space)     => joypad.select = pressed,
+                            Some(VirtualKeyCode::Return)    => joypad.start = pressed,
+                            Some(VirtualKeyCode::Up)        => joypad.up = pressed,
+                            Some(VirtualKeyCode::Down)      => joypad.down = pressed,
+                            Some(VirtualKeyCode::Left)      => joypad.left = pressed,
+                            Some(VirtualKeyCode::Right)     => joypad.right = pressed,
+                            _ => {},
+                        }
+                    },
+                    _ => {},
+                },
+                _ => {},
+            }
+        });
+    }
 }
 
 // Control functions
@@ -170,11 +227,11 @@ impl GBVideo {
             display_enable:     true,
             window_offset:      0x0,
             window_enable:      false,
+            tile_data_select:   true,
             bg_offset:          0x0,
-            bg_enable:          false,
-            tile_data_select:   false,
             sprite_size:        false,
             sprite_enable:      false,
+            bg_enable:          true,
 
             lcd_status:         0, // TODO: check
             scroll_y:           0,
@@ -187,11 +244,14 @@ impl GBVideo {
             obj_palette_0:      BWPalette::new(),
             obj_palette_1:      BWPalette::new(),
 
+            joypad:             Joypad::new(),
+
             raw_tile_mem:       vec![0; 0x1800],
             tile_map_mem:       vec![0; 0x800],
             sprite_mem:         vec![0; 0x100],
 
             display:            display,
+            events_loop:        events_loop,
             program:            program,
         }
     }
@@ -200,7 +260,7 @@ impl GBVideo {
 
 
     fn lcd_control_write(&mut self, val: u8) {
-        println!("{:b}", val);
+        println!("LCD write: {:b}", val);
         self.display_enable     = val & 0x80 == 0x80;
         self.window_offset      = if val & 0x40 == 0x40 {0x400} else {0x0};
         self.window_enable      = val & 0x20 == 0x20;
@@ -229,12 +289,12 @@ impl GBVideo {
 impl GBVideo {
 
     // draw 8x8 textured square
-    fn draw_square(&mut self, target: &mut glium::Frame, x: u8, y: u8, texture: &Texture2d) {
+    fn draw_square(&mut self, target: &mut glium::Frame, x: u16, y: u16, texture: &Texture2d) {
         use glium::index::{NoIndices, PrimitiveType};
 
         let (x_a, y_a) = (byte_to_float(x, BG_X), byte_to_float(y, BG_Y));
         let (x_b, y_b) = (byte_to_float(x + 8, BG_X), byte_to_float(y + 8, BG_Y));
-        println!("{},{}", x_a,x_b);
+        //println!("{},{}", x_a,x_b);
 
         let uniforms = uniform!{tex: texture};
 

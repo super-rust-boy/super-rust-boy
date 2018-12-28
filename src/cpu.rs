@@ -140,22 +140,22 @@ impl<V: VideoDevice> CPU<V> {
     // Initialise CPU
     pub fn new(mem: MemBus<V>) -> Self {
         CPU {
-            a: 0,
-            b: 0,
-            c: 0,
-            d: 0,
-            e: 0,
-            h: 0,
-            l: 0,
-            f_z: false,
-            f_n: false,
-            f_h: false,
-            f_c: false,
-            ime: true,
-            cont: true,
-            sp: 0,
-            pc: 0x100,
-            mem: mem,
+            a:      0x01,
+            b:      0x00,
+            c:      0x13,
+            d:      0x00,
+            e:      0xD8,
+            h:      0x01,
+            l:      0x4D,
+            f_z:    true,
+            f_n:    false,
+            f_h:    true,
+            f_c:    true,
+            ime:    true,
+            cont:   true,
+            sp:     0xFFFE,
+            pc:     0x100,
+            mem:    mem,
             cycle_count: 0,
             video_mode: video::Mode::_2,
         }
@@ -179,7 +179,7 @@ impl<V: VideoDevice> CPU<V> {
             return true;
         }
 
-        println!("INSTR: ");
+        //println!("INSTR @ {:X}: ", self.pc);
         self.exec_instruction();
 
         return true;
@@ -267,7 +267,7 @@ impl<V: VideoDevice> CPU<V> {
             self.cont = true;
 
             if (interrupts & int::V_BLANK) != 0 {
-                self.mem.write(int::IF, int_flag & (0xFF ^ int::V_BLANK));
+                self.mem.write(int::IF, int_flag & (0xFF ^ int::V_BLANK)); // !int::V_BLANK
                 self.call(Cond::AL, int::V_BLANK_VECT);
 
             } else if (interrupts & int::LCD_STAT) != 0 {
@@ -525,9 +525,10 @@ impl<V: VideoDevice> CPU<V> {
         }
     }
 
-    pub fn v_blank(&mut self) {
-        self.mem.trigger_frame();
+    pub fn frame_update(&mut self) {
+        self.mem.render_frame();
         self.cycle_count = video::MODE_1;
+        self.mem.read_inputs();
     }
 }
 
@@ -591,7 +592,7 @@ impl<V: VideoDevice> CPU<V> {
         self.cycle_count += 4;
         let result = self.mem.read(self.pc);
         self.pc = ((self.pc as u32) + 1) as u16;
-        println!("{:X}", result);
+        //println!("{:X}", result);
 
         result
     }
@@ -602,7 +603,7 @@ impl<V: VideoDevice> CPU<V> {
         self.pc = ((self.pc as u32) + 1) as u16;
         let hi_byte = (self.mem.read(self.pc) as u16) << 8;
         self.pc = ((self.pc as u32) + 1) as u16;
-        println!("{:X}", lo_byte | hi_byte);
+        //println!("{:X}", lo_byte | hi_byte);
 
         lo_byte | hi_byte
     }
@@ -999,7 +1000,7 @@ impl<V: VideoDevice> CPU<V> {
     fn jr(&mut self, cd: Cond, loc: i8) {
         if cd.check(&self) {
             self.cycle_count += 4;
-            self.pc = ((self.pc as i32) + (loc as i32)) as u16;
+            self.pc = ((self.pc as i32) + (loc as i32) - 2) as u16;
         }
     }
 

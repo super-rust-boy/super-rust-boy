@@ -41,7 +41,7 @@ fn main() {
     loop {
         let frame = PreciseTime::now();
         while state.step() {}   // Execute up to v-blanking
-        state.v_blank();        // Draw video
+        state.frame_update();   // Draw video and read inputs
         while frame.to(PreciseTime::now()) < Duration::microseconds(16750) {};  // Wait until next frame.
     }
 }
