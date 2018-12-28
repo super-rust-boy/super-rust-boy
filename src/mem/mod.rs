@@ -58,7 +58,9 @@ impl<V: VideoDevice> MemBus<V> {
             x @ 0xFE00...0xFE9F => self.video_device.write(x, val),
             x @ 0xFF00          => self.video_device.write(x, val),
             x @ 0xFF04...0xFF07 => self.timer.write(x, val),
-            x @ 0xFF40...0xFF4B => self.video_device.write(x, val),
+            x @ 0xFF40...0xFF45 => self.video_device.write(x, val),
+                0xFF46          => self.dma(val),
+            x @ 0xFF47...0xFF4B => self.video_device.write(x, val),
             _ => return,
         }
     }
@@ -73,6 +75,16 @@ impl<V: VideoDevice> MemBus<V> {
 
     pub fn update_timers(&mut self, clock_count: i32) -> bool {
         self.timer.update_timers(clock_count)
+    }
+
+    fn dma(&mut self, val: u8) {
+        let hi_byte = (val as u16) << 8;
+        for lo_byte in 0_u16..=0x9F_u16 {
+            let src_addr = hi_byte | lo_byte;
+            let dest_addr = 0xFE00 | lo_byte;
+            let byte = self.read(src_addr);
+            self.video_device.write(dest_addr, byte);
+        }
     }
 }
 
