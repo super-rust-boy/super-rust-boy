@@ -746,10 +746,9 @@ impl<V: VideoDevice> CPU<V> {
     }
 
     fn dec(&mut self, op: u8) -> u8 {
-    // TODO: this function is potentially buggy.
         let result = ((op as i16) - 1) as i8;
-        self.f_z = (result & 0xFF) == 0;
-        self.f_n = false;
+        self.f_z = result == 0;
+        self.f_n = true;
         self.f_h = result < 0x10;
         result as u8
     }

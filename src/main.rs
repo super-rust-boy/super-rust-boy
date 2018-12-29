@@ -43,6 +43,7 @@ fn main() {
         let frame = PreciseTime::now();
         while state.step() {}   // Execute up to v-blanking
         state.frame_update();   // Draw video and read inputs
+        //println!("{:?}", frame.to(PreciseTime::now()).num_milliseconds());
         while frame.to(PreciseTime::now()) < Duration::microseconds(16750) {};  // Wait until next frame.
     }
 }

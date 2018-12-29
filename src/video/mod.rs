@@ -1,16 +1,17 @@
 mod palette;
 mod shaders;
 mod joypad;
+mod texcache;
 
 use glium;
 use glium::{Display, Surface};
 use glium::glutin::EventsLoop;
-use glium::texture::texture2d::Texture2d;
 
 use mem::MemDevice;
 
 use self::palette::{BWPalette, Palette};
 use self::joypad::Joypad;
+use self::texcache::{Hash, TexCache};
 
 const BG_X: u16 = 256;
 const BG_Y: u16 = 256;
@@ -65,6 +66,10 @@ pub struct GBVideo {
     tile_map_mem:       Vec<u8>,
     sprite_mem:         Vec<u8>,
 
+    // cache for rendered textures
+    tex_cache:          TexCache,
+
+    // Glium graphics data
     display:            Display,
     events_loop:        EventsLoop,
     program:            glium::Program,
@@ -96,7 +101,7 @@ impl MemDevice for GBVideo {
 
     fn write(&mut self, loc: u16, val: u8) {
         match loc {
-            0x8000...0x97FF =>  self.raw_tile_mem[(loc - 0x8000) as usize] = val,
+            0x8000...0x97FF =>  self.write_raw_tile(loc, val),
             0x9800...0x9FFF =>  self.tile_map_mem[(loc - 0x9800) as usize] = val,
             0xFE00...0xFE9F =>  self.sprite_mem[(loc - 0xFE00) as usize] = val,
 
@@ -108,7 +113,7 @@ impl MemDevice for GBVideo {
             0xFF43 =>           self.scroll_x = val,
             0xFF44 =>           self.lcdc_y = val,
             0xFF45 =>           self.ly_compare = val,
-            0xFF47 =>           self.bg_palette.write(val),
+            0xFF47 =>           {self.bg_palette.write(val); self.tex_cache.clear_all()},
             0xFF48 =>           self.obj_palette_0.write(val),
             0xFF49 =>           self.obj_palette_1.write(val),
             0xFF4A =>           self.window_y = val,
@@ -126,25 +131,8 @@ impl VideoDevice for GBVideo {
 
         // render background
         if self.bg_enable {
-            for y in 0..32 {
-                for x in 0..32 {
-                    // get tile number from background map
-                    let offset = (x + (y*32)) as usize;
-                    let tile = self.tile_map_mem[self.bg_offset + offset];
-                    // get tile location from number & addressing mode
-                    let tile_loc = if self.tile_data_select {
-                        (tile as isize) * 16
-                    } else {
-                        0x1000 + ((tile as i8) as isize * 16)
-                    } as usize;
-
-                    let tex = {
-                        let raw_tex = &self.raw_tile_mem[tile_loc..(tile_loc + 16)];
-                        self.bg_palette.make_texture(&raw_tex, &self.display)
-                    };
-                    self.draw_square(&mut target, x*8, y*8, &tex);
-                };
-            };
+            let bg_offset = self.bg_offset;
+            self.draw_tilespace(&mut target, bg_offset);
         }
 
         // render sprites
@@ -157,8 +145,9 @@ impl VideoDevice for GBVideo {
         }
 
         // render window
-        if self.window_enable {
-
+        if self.window_enable { // && self.bg_enable
+            let window_offset = self.window_offset;
+            self.draw_tilespace(&mut target, window_offset);
         }
 
         target.finish().unwrap();
@@ -250,6 +239,8 @@ impl GBVideo {
             tile_map_mem:       vec![0; 0x800],
             sprite_mem:         vec![0; 0x100],
 
+            tex_cache:          TexCache::new(),
+
             display:            display,
             events_loop:        events_loop,
             program:            program,
@@ -279,16 +270,56 @@ impl GBVideo {
         let val_0 = if self.bg_enable               {0x1} else {0};
         val_7 | val_6 | val_5 | val_4 | val_3 | val_2 | val_1 | val_0
     }
+
+    #[inline]
+    fn write_raw_tile(&mut self, loc: u16, val: u8) {
+        let inner_loc = (loc - 0x8000) as usize;
+        self.raw_tile_mem[inner_loc] = val;
+
+        let tile_base = inner_loc - (inner_loc % 16);
+        self.tex_cache.clear(tile_base, self.bg_palette.data);
+    }
 }
 
 
 // Internal graphics functions
 impl GBVideo {
 
+    // draw background or window
+    fn draw_tilespace(&mut self, target: &mut glium::Frame, map_offset: usize) {
+        for y in 0..32 {
+            for x in 0..32 {
+                // get tile number from background map
+                let offset = (x + (y*32)) as usize;
+                let tile = self.tile_map_mem[map_offset + offset];
+
+                // get tile location from number & addressing mode
+                let tile_loc = if self.tile_data_select {
+                    (tile as usize) * 16
+                } else {
+                    (0x1000 + ((tile as i8) as isize * 16)) as usize
+                };
+
+                // Get hash key for Texture.
+                let tex_hash = {
+                    let hash = TexCache::make_hash(tile_loc, self.bg_palette.data);
+                    if !self.tex_cache.contains_key(&hash) {
+                        let raw_tex = &self.raw_tile_mem[tile_loc..(tile_loc + 16)];
+                        let tex = self.bg_palette.make_texture(&raw_tex, &self.display);
+                        self.tex_cache.insert(hash.clone(), tex);
+                    }
+                    hash
+                };
+                self.draw_square(target, x*8, y*8, &tex_hash);
+            }
+        }
+    }
+
     // draw 8x8 textured square
-    fn draw_square(&mut self, target: &mut glium::Frame, x: u16, y: u16, texture: &Texture2d) {
+    fn draw_square(&mut self, target: &mut glium::Frame, x: u16, y: u16, hash: &Hash) {
         use glium::index::{NoIndices, PrimitiveType};
 
+        let texture = self.tex_cache.get(hash).expect("Tex cache broken.");
         let (x_a, y_a) = (byte_to_float(x, BG_X), byte_to_float(y, BG_Y));
         let (x_b, y_b) = (byte_to_float(x + 8, BG_X), byte_to_float(y + 8, BG_Y));
         //println!("{},{}", x_a,x_b);
