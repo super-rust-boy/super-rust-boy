@@ -12,6 +12,10 @@ pub struct MemBus<V: VideoDevice> {
 
     ram_bank:       WriteableMem,
     ram:            WriteableMem,
+    high_ram:       WriteableMem,
+
+    interrupt_reg:  u8,
+
     video_device:   V,
 
     timer:          Timer,
@@ -28,6 +32,8 @@ impl<V: VideoDevice> MemBus<V> {
             cart:           rom,
             ram_bank:       WriteableMem::new(0x2000),
             ram:            WriteableMem::new(0x2000),
+            high_ram:       WriteableMem::new(0x80),
+            interrupt_reg:  0,
             video_device:   video_device,
             timer:          Timer::new(),
         }
@@ -43,7 +49,9 @@ impl<V: VideoDevice> MemBus<V> {
             x @ 0xFE00...0xFE9F => self.video_device.read(x),
             x @ 0xFF00          => self.video_device.read(x),
             x @ 0xFF04...0xFF07 => self.timer.read(x),
+                0xFF0F          => self.interrupt_reg,
             x @ 0xFF40...0xFF4B => self.video_device.read(x),
+            x @ 0xFF80...0xFFFF => self.high_ram.read(x - 0xFF80),
             _ => self.ram.read(0),
         }
     }
@@ -58,9 +66,11 @@ impl<V: VideoDevice> MemBus<V> {
             x @ 0xFE00...0xFE9F => self.video_device.write(x, val),
             x @ 0xFF00          => self.video_device.write(x, val),
             x @ 0xFF04...0xFF07 => self.timer.write(x, val),
+                0xFF0F          => self.interrupt_reg = val,
             x @ 0xFF40...0xFF45 => self.video_device.write(x, val),
                 0xFF46          => self.dma(val),
             x @ 0xFF47...0xFF4B => self.video_device.write(x, val),
+            x @ 0xFF80...0xFFFF => self.high_ram.write(x - 0xFF80, val),
             _ => return,
         }
     }
@@ -73,7 +83,15 @@ impl<V: VideoDevice> MemBus<V> {
         self.video_device.read_inputs();
     }
 
-    pub fn update_timers(&mut self, clock_count: i32) -> bool {
+    pub fn inc_lcdc_y(&mut self) {
+        self.video_device.inc_lcdc_y();
+    }
+
+    pub fn set_lcdc_y(&mut self, val: u8) {
+        self.video_device.set_lcdc_y(val);
+    }
+
+    pub fn update_timers(&mut self, clock_count: u32) -> bool {
         self.timer.update_timers(clock_count)
     }
 

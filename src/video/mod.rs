@@ -33,6 +33,9 @@ fn byte_to_float(byte: u16, scale: u16) -> f32 {
 pub trait VideoDevice: MemDevice {
     fn render_frame(&mut self);
     fn read_inputs(&mut self);
+
+    fn inc_lcdc_y(&mut self);
+    fn set_lcdc_y(&mut self, val: u8);
 }
 
 pub struct GBVideo {
@@ -111,7 +114,7 @@ impl MemDevice for GBVideo {
             0xFF41 =>           self.lcd_status = val,
             0xFF42 =>           self.scroll_y = val,
             0xFF43 =>           self.scroll_x = val,
-            0xFF44 =>           self.lcdc_y = val,
+            0xFF44 =>           self.lcdc_y = 0,
             0xFF45 =>           self.ly_compare = val,
             0xFF47 =>           {self.bg_palette.write(val); self.tex_cache.clear_all()},
             0xFF48 =>           self.obj_palette_0.write(val),
@@ -194,6 +197,14 @@ impl VideoDevice for GBVideo {
             }
         });
     }
+
+    fn inc_lcdc_y(&mut self) {
+        self.lcdc_y += 1;
+    }
+
+    fn set_lcdc_y(&mut self, val: u8) {
+        self.lcdc_y = val;
+    }
 }
 
 // Control functions
@@ -248,7 +259,6 @@ impl GBVideo {
     }
 
     fn lcd_control_write(&mut self, val: u8) {
-        println!("LCD write: {:b}", val);
         self.display_enable     = val & 0x80 == 0x80;
         self.window_offset      = if val & 0x40 == 0x40 {0x400} else {0x0};
         self.window_enable      = val & 0x20 == 0x20;
@@ -322,7 +332,6 @@ impl GBVideo {
         let texture = self.tex_cache.get(hash).expect("Tex cache broken.");
         let (x_a, y_a) = (byte_to_float(x, BG_X), byte_to_float(y, BG_Y));
         let (x_b, y_b) = (byte_to_float(x + 8, BG_X), byte_to_float(y + 8, BG_Y));
-        //println!("{},{}", x_a,x_b);
 
         let uniforms = uniform!{tex: texture};
 

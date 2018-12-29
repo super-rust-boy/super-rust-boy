@@ -1,4 +1,5 @@
-const COUNT_INC: i32 = 16384 / 256;
+const COUNT_INC: u32 = 16384 / 256;
+const MAX_CYCLES: u32 = 154 * 456;
 
 pub struct Timer {
     divider:        u16,
@@ -8,8 +9,8 @@ pub struct Timer {
     timer_enable:   bool,
     clock_select:   u8,
 
-    prev_cycles:    i32,
-    cycle_count:    i32,
+    prev_cycles:    u32,
+    cycle_count:    u32,
 }
 
 impl Timer {
@@ -53,8 +54,13 @@ impl Timer {
         }
     }
 
-    pub fn update_timers(&mut self, cycles: i32) -> bool {
-        let diff = cycles - self.prev_cycles; // TODO: make this more accurate
+    pub fn update_timers(&mut self, cycles: u32) -> bool {
+        let diff = if cycles < self.prev_cycles {
+            (MAX_CYCLES - self.prev_cycles) + cycles
+        } else {
+            cycles - self.prev_cycles
+        };
+
         self.prev_cycles = cycles;
         self.cycle_count += diff;
 

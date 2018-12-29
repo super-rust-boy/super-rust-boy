@@ -26,14 +26,14 @@ mod int {
 // Video mode constants
 mod video {
     // Mode cycle counts
-    pub const H_CYCLES: i32     = 456;
-    pub const MODE_1: i32       = -10 * H_CYCLES;
-    pub const MODE_2: i32       = 80;
-    pub const MODE_3: i32       = MODE_2 + 172;
-    pub const FRAME_CYCLE: i32  = 144 * H_CYCLES;
+    pub const H_CYCLES: u32     = 456;
+    pub const MODE_1: u32       = 154 * H_CYCLES;
+    pub const MODE_2: u32       = 80;
+    pub const MODE_3: u32       = MODE_2 + 172;
+    pub const FRAME_CYCLE: u32  = 144 * H_CYCLES;
 
     // Modes
-    #[derive(PartialEq)]
+    #[derive(PartialEq, Debug)]
     pub enum Mode {
         _0, // H-blank
         _1, // V-blank
@@ -74,7 +74,7 @@ pub struct CPU<V: VideoDevice> {
     mem: MemBus<V>,
 
     // Internals
-    cycle_count: i32,
+    cycle_count: u32,
     video_mode: video::Mode,
 }
 
@@ -183,7 +183,7 @@ impl<V: VideoDevice> CPU<V> {
             return true;
         }
 
-        //println!("INSTR @ {:X}: ", self.pc);
+        println!("INSTR @ {:X}: ", self.pc);
         self.exec_instruction();
 
         return true;
@@ -202,17 +202,21 @@ impl<V: VideoDevice> CPU<V> {
                 self.update_mode(Mode::_0);
             },
             Mode::_0 => if self.cycle_count >= FRAME_CYCLE {
+                self.mem.inc_lcdc_y();
                 self.update_mode(Mode::_1);
                 self.trigger_interrupt(int::V_BLANK);
                 return false;
             } else if frame_cycle < MODE_3 {
-                let ly = self.mem.read(0xFF44) + 1;
-                self.mem.write(0xFF44, ly);
+                self.mem.inc_lcdc_y();
                 self.update_mode(Mode::_2);
             },
-            Mode::_1 => if self.cycle_count >= 0 {
-                self.mem.write(0xFF44, 0);
+            Mode::_1 => if self.cycle_count >= MODE_1 {
+                self.mem.set_lcdc_y(0);
                 self.update_mode(Mode::_2);
+                self.cycle_count -= MODE_1;
+            } else {
+                let new_ly = (self.cycle_count / H_CYCLES) as u8;
+                self.mem.set_lcdc_y(new_ly);
             },
         }
 
@@ -531,7 +535,7 @@ impl<V: VideoDevice> CPU<V> {
 
     pub fn frame_update(&mut self) {
         self.mem.render_frame();
-        self.cycle_count = video::MODE_1;
+        //self.cycle_count = video::MODE_1;
         self.mem.read_inputs();
     }
 }
@@ -596,7 +600,7 @@ impl<V: VideoDevice> CPU<V> {
         self.cycle_count += 4;
         let result = self.mem.read(self.pc);
         self.pc = ((self.pc as u32) + 1) as u16;
-        //println!("{:X}", result);
+        println!("{:X}", result);
 
         result
     }
@@ -607,7 +611,7 @@ impl<V: VideoDevice> CPU<V> {
         self.pc = ((self.pc as u32) + 1) as u16;
         let hi_byte = (self.mem.read(self.pc) as u16) << 8;
         self.pc = ((self.pc as u32) + 1) as u16;
-        //println!("{:X}", lo_byte | hi_byte);
+        println!("{:X}", lo_byte | hi_byte);
 
         lo_byte | hi_byte
     }
@@ -1003,7 +1007,8 @@ impl<V: VideoDevice> CPU<V> {
     fn jr(&mut self, cd: Cond, loc: i8) {
         if cd.check(&self) {
             self.cycle_count += 4;
-            self.pc = ((self.pc as i32) + (loc as i32) - 2) as u16;
+            //self.pc = ((self.pc as i32) + (loc as i32) - 2) as u16;
+            self.pc = ((self.pc as i32) + (loc as i32)) as u16;
         }
     }
 
