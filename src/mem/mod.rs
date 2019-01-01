@@ -98,6 +98,7 @@ impl<V: VideoDevice> MemBus<V> {
     }
 
     pub fn update_timers(&mut self, clock_count: u32) -> bool {
+        self.audio_device.send_update(clock_count);
         self.timer.update_timers(clock_count)
     }
 

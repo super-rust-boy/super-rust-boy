@@ -1,16 +1,17 @@
 use std::sync::mpsc::Receiver;
 use std::thread;
+use std::collections::VecDeque;
 
-use super::AudioCommand;
+use super::{AudioCommand, AudioChannelGen};
 
-use square1::Square1Gen;
-use square2::Square2Gen;
-use wave::WaveGen;
-use noise::NoiseGen;
+use super::square1::{Square1Regs, Square1Gen};
+use super::square2::{Square2Regs, Square2Gen};
+use super::wave::{WaveRegs, WaveGen};
+use super::noise::{NoiseRegs, NoiseGen};
 
 use cpal;
 
-const DIV_4_BIT: f32 = 1 / 7.5;
+const DIV_4_BIT: f32 = 1.0 / 7.5;
 // Convert 4-bit sample to float
 macro_rules! sample {
     ( $x:expr ) => {
@@ -36,11 +37,11 @@ pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
 
         let stream_id = event_loop.build_output_stream(&device, &format).unwrap();
 
-        let handler = AudioHandler::new();
-
         let sample_rate = format.sample_rate.0 as usize;
         let mut process = true;
-        let mut right_sample = 0_u8;
+        let mut right_sample = 0.0;
+
+        let mut handler = AudioHandler::new(recv, sample_rate / 60);
 
         event_loop.play_stream(stream_id);
 
@@ -55,8 +56,10 @@ pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
                             let frame = handler.process_frame();
                             *elem = (frame.0 * u16::max_value() as f32) as u16;
                             right_sample = frame.1;
+                            process = false;
                         } else {
                             *elem = (right_sample * u16::max_value() as f32) as u16;
+                            process = true;
                         }
                     }
                 },
@@ -64,10 +67,12 @@ pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
                     for elem in buffer.iter_mut() {
                         if process {
                             let frame = handler.process_frame();
-                            *elem = (frame.0 * i16::max_value() as f32) as u16;
+                            *elem = (frame.0 * i16::max_value() as f32) as i16;
                             right_sample = frame.1;
+                            process = false;
                         } else {
-                            *elem = (right_sample * i16::max_value() as f32) as u16;
+                            *elem = (right_sample * i16::max_value() as f32) as i16;
+                            process = true;
                         }
                     }
                 },
@@ -77,8 +82,10 @@ pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
                             let frame = handler.process_frame();
                             *elem = frame.0;
                             right_sample = frame.1;
+                            process = false;
                         } else {
                             *elem = right_sample;
+                            process = true;
                         }
                     }
                 },
@@ -92,6 +99,12 @@ pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
 // Receives updates from the AudioDevice, and processes and generates signals.
 struct AudioHandler {
     receiver:   Receiver<AudioCommand>,
+
+    // Data lists for each note
+    square1_data:   VecDeque<(Square1Regs, f32)>,
+    square2_data:   VecDeque<(Square2Regs, f32)>,
+    wave_data:      VecDeque<(WaveRegs, f32)>,
+    noise_data:     VecDeque<(NoiseRegs, f32)>,
 
     // Signal generators
     square1:    Square1Gen,
@@ -117,14 +130,19 @@ struct AudioHandler {
 }
 
 impl AudioHandler {
-    fn new(recv: Receiver<AudioCommand>, buffer_size: usize) -> Self {
+    fn new(recv: Receiver<AudioCommand>, sample_rate: usize) -> Self {
         AudioHandler {
             receiver:   recv,
 
-            square1:    Square1Gen::new(),
-            square2:    Square2Gen::new(),
-            wave:       WaveGen::new(),
-            noise:      NoiseGen::new(),
+            square1_data:   VecDeque::new(),
+            square2_data:   VecDeque::new(),
+            wave_data:      VecDeque::new(),
+            noise_data:     VecDeque::new(),
+
+            square1:    Square1Gen::new(sample_rate),
+            square2:    Square2Gen::new(sample_rate),
+            wave:       WaveGen::new(sample_rate),
+            noise:      NoiseGen::new(sample_rate),
 
             sound_on:   false,
             left_vol:   0.0,
@@ -138,18 +156,55 @@ impl AudioHandler {
             right_3:    false,
             right_4:    false,
 
-            buffers:    AudioBuffers::new(buffer_size),
+            buffers:    AudioBuffers::new(sample_rate / 60),
         }
     }
 
     // Generator function that produces the next two samples (left & right channel)
     fn process_frame(&mut self) -> (f32, f32) {
-        match self.buffers.get_next() {
+        let n = self.buffers.get_next();
+        match n {
             Some(vals) => self.mix_output(vals),
             None => {
-                // Fetch updates - keep waiting until we get control update
+                // Fetch updates - keep waiting until we get control update.
+                loop {
+                    let command = self.receiver.recv().unwrap();
+                    match command {
+                        AudioCommand::Control{
+                            channel_control,
+                            output_select,
+                            on_off,
+                        } => {
+                            self.set_controls(channel_control, output_select, on_off);
+                            break;
+                        },
+                        AudioCommand::NR1(regs, time) => self.square1_data.push_back((regs, time)),
+                        AudioCommand::NR2(regs, time) => self.square2_data.push_back((regs, time)),
+                        AudioCommand::NR3(regs, time) => self.wave_data.push_back((regs, time)),
+                        AudioCommand::NR4(regs, time) => self.noise_data.push_back((regs, time)),
+                    }
+                }
+
                 // Generate signals for each buffer
+                for i in 0..self.square1_data.len() {
+                    self.square1.init_signal(&self.square1_data[i].0);
+                    // If a later note interrupts this one...
+                    if i + 1 < self.square1_data.len() {
+                        let start_time = self.square1_data[i].1;
+                        let end_time = self.square1_data[i + 1].1;
+                        self.square1.generate_signal(&mut self.buffers.square1, start_time, end_time);
+                    } else {
+                        let start_time = self.square1_data[i].1;
+                        self.square1.generate_signal(&mut self.buffers.square1, start_time, 1.0);
+                        self.square1_data[i].1 = 0.0;
+                    }
+                }
+
                 // get next and mix
+                match self.buffers.get_next() {
+                    Some(vals) => self.mix_output(vals),
+                    None => panic!("Can't find any audio."),
+                }
             },
         }
     }

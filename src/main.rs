@@ -22,7 +22,7 @@ fn main() {
 
     println!("Super Rust Boy: {}", cart);
 
-    let (send, recv) = channel::new();
+    let (send, recv) = channel();
 
     let vd = video::GBVideo::new();
     let ad = audio::AudioDevice::new(send);

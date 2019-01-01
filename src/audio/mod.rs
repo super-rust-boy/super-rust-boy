@@ -7,17 +7,18 @@ mod square2;
 mod wave;
 mod noise;
 
-use square1::Square1Regs;
-use square2::Square2Regs;
-use wave::WaveRegs;
-use noise::NoiseRegs;
+use self::square1::Square1Regs;
+use self::square2::Square2Regs;
+use self::wave::WaveRegs;
+use self::noise::NoiseRegs;
 
 use mem::MemDevice;
 
 use std::sync::mpsc::Sender;
 
-pub use handler::start_audio_handler_thread;
+pub use self::handler::start_audio_handler_thread;
 
+const MAX_CYCLES_FLOAT: f32 = super::timer::MAX_CYCLES as f32;
 
 // The structure that exists in memory. Sends data to the audio thread.
 pub struct AudioDevice {
@@ -58,29 +59,28 @@ impl AudioDevice {
     pub fn send_update(&mut self, cycle_count: u32) {
         // If trigger bit was just written, send timed update
         if self.update {
-            if nr1.triggered() {
-                sender.send(AudioCommand::NR1(self.nr1.clone())),
-            } else if nr2.triggered() {
-                sender.send(AudioCommand::NR2(self.nr2.clone())),
-            } else if nr3.triggered() {
-                sender.send(AudioCommand::NR3(self.nr3.clone())),
-            } else if nr4.triggered() {
-                sender.send(AudioCommand::NR4(self.nr4.clone())),
+            let time_in_frame = (cycle_count as f32) / MAX_CYCLES_FLOAT;
+            if self.nr1.triggered() {
+                self.sender.send(AudioCommand::NR1(self.nr1.clone(), time_in_frame)).unwrap();
+            } else if self.nr2.triggered() {
+                self.sender.send(AudioCommand::NR2(self.nr2.clone(), time_in_frame)).unwrap();
+            } else if self.nr3.triggered() {
+                self.sender.send(AudioCommand::NR3(self.nr3.clone(), time_in_frame)).unwrap();
+            } else if self.nr4.triggered() {
+                self.sender.send(AudioCommand::NR4(self.nr4.clone(), time_in_frame)).unwrap();
             }
+            self.update = false;
         }
     }
 
     // Send frame batch update
     pub fn frame_update(&self) {
-        // End of last frame...
-        sender.send(AudioCommand::Control{
+        // End of last frame
+        self.sender.send(AudioCommand::Control{
             channel_control: self.channel_control,
             output_select:   self.output_select,
             on_off:          self.on_off,
         }).unwrap();
-
-        // ... start of the next frame
-        sender.send(AudioCommand::Start).unwrap();
     }
 }
 
@@ -162,23 +162,22 @@ impl MemDevice for AudioDevice {
 
             0xFF30...0xFF3F => self.nr3.write_wave(loc - 0xFF30, val),
 
-            _   => 0,
+            _   => {},
         }
     }
 }
 
 // Commands to be sent to the AudioHandler asynchronously.
-enum AudioCommand {
+pub enum AudioCommand {
     Control{
         channel_control: u8,
         output_select:   u8,
         on_off:          u8,
     },
-    NR1(Square1Regs, u32),
-    NR2(Square2Regs, u32),
-    NR3(WaveRegs,    u32),
-    NR4(NoiseRegs,   u32),
-    Start,
+    NR1(Square1Regs, f32),
+    NR2(Square2Regs, f32),
+    NR3(WaveRegs,    f32),
+    NR4(NoiseRegs,   f32),
 }
 
 // All 4 channels implement these traits:
@@ -199,5 +198,5 @@ trait AudioChannelRegs {
 
 // This trait is for the audio handler-side.
 trait AudioChannelGen {
-    fn generate_signal(&mut self, buffer: &mut [u8]);
+    fn generate_signal(&mut self, buffer: &mut [u8], start: f32, end: f32);
 }

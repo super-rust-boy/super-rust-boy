@@ -1,5 +1,5 @@
 const COUNT_INC: u32 = 16384 / 256;
-const MAX_CYCLES: u32 = 154 * 456;
+pub const MAX_CYCLES: u32 = 154 * 456;
 
 pub struct Timer {
     divider:        u16,

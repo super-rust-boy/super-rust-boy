@@ -1,5 +1,5 @@
 use super::{AudioChannelRegs, AudioChannelGen};
-use common::*;
+use super::common::*;
 
 #[derive(Clone)]
 pub struct Square2Regs {
@@ -82,25 +82,25 @@ impl Square2Gen {
             amplitude:      0,
             amp_sweep_step: 0,
             amp_counter:    0,
-            amp_sweep_dir:  Direction::None,
+            amp_sweep_dir:  AmpDirection::None,
         }
     }
 
-    pub fn init_signal(&mut self, regs: Square2Regs) {
+    pub fn init_signal(&mut self, regs: &Square2Regs) {
         let freq_n = ((regs.freq_hi_reg as usize) << 8) | (regs.freq_lo_reg as usize);
         let frequency = FREQ_MAX / (FREQ_MOD - freq_n);
 
         self.phase_len = self.sample_rate / frequency;
         self.duty_len = match regs.duty_length_reg & 0xC0 {
-            DUTY_12_5   => phase_len / 8,
-            DUTY_25     => phase_len / 4,
-            DUTY_50     => phase_len / 2,
-            DUTY_75     => (phase_len / 4) * 3,
-            _           => phase_len / 2,
+            DUTY_12_5   => self.phase_len / 8,
+            DUTY_25     => self.phase_len / 4,
+            DUTY_50     => self.phase_len / 2,
+            DUTY_75     => (self.phase_len / 4) * 3,
+            _           => self.phase_len / 2,
         };
 
         self.amplitude = (regs.vol_envelope_reg & 0xF0) >> 4;
-        self.amp_sweep_step = (self.sample_rate * (regs.vol_envelope_reg & 0x7)) / 64;
+        self.amp_sweep_step = (self.sample_rate * (regs.vol_envelope_reg & 0x7) as usize) / 64;
         self.amp_counter = 0;
         self.amp_sweep_dir = if self.amp_sweep_step == 0 {
             AmpDirection::None
@@ -113,11 +113,12 @@ impl Square2Gen {
 }
 
 impl AudioChannelGen for Square2Gen {
-    fn generate_signal(&mut self, buffer: &mut [u8], start: f32) {
-        let skip = ((self.sample_rate as f32) * start) as usize;
+    fn generate_signal(&mut self, buffer: &mut [u8], start: f32, end: f32) {
+        let take = (buffer.len() as f32 * end) as usize;
+        let skip = (buffer.len() as f32 * start) as usize;
 
-        for i in buffer.iter_mut().skip(skip) {
-            if self.phase > self.on_len {
+        for i in buffer.iter_mut().take(take).skip(skip) {
+            if self.phase > self.duty_len {
                 *i = 0;
             } else {
                 *i = self.amplitude;
@@ -126,9 +127,9 @@ impl AudioChannelGen for Square2Gen {
 
             self.amp_counter += 1;
             if self.amp_counter >= self.amp_sweep_step {
-                self.amplitude = match self.dir {
+                self.amplitude = match self.amp_sweep_dir {
                     AmpDirection::Increase => ((self.amplitude as u16) + 1) as u8,
-                    AmpDirection::Increase => ((self.amplitude as i16) - 1) as u8,
+                    AmpDirection::Decrease => ((self.amplitude as i16) - 1) as u8,
                     AmpDirection::None => self.amplitude,
                 };
             }
