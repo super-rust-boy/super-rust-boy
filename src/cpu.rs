@@ -183,7 +183,7 @@ impl<V: VideoDevice> CPU<V> {
             return true;
         }
 
-        println!("INSTR @ {:X}: ", self.pc);
+        //println!("INSTR @ {:X}: ", self.pc);
         self.exec_instruction();
 
         return true;
@@ -275,23 +275,23 @@ impl<V: VideoDevice> CPU<V> {
             self.cont = true;
 
             if (interrupts & int::V_BLANK) != 0 {
-                self.mem.write(int::IF, int_flag & (0xFF ^ int::V_BLANK)); // !int::V_BLANK
+                self.mem.write(int::IF, int_flag & (!int::V_BLANK));
                 self.call(Cond::AL, int::V_BLANK_VECT);
 
             } else if (interrupts & int::LCD_STAT) != 0 {
-                self.mem.write(int::IF, int_flag & (0xFF ^ int::LCD_STAT));
+                self.mem.write(int::IF, int_flag & (!int::LCD_STAT));
                 self.call(Cond::AL, int::LCD_STAT_VECT);
 
             } else if (interrupts & int::TIMER) != 0 {
-                self.mem.write(int::IF, int_flag & (0xFF ^ int::TIMER));
+                self.mem.write(int::IF, int_flag & (!int::TIMER));
                 self.call(Cond::AL, int::TIMER_VECT);
 
             } else if (interrupts & int::SERIAL) != 0 {
-                self.mem.write(int::IF, int_flag & (0xFF ^ int::SERIAL));
+                self.mem.write(int::IF, int_flag & (!int::SERIAL));
                 self.call(Cond::AL, int::SERIAL_VECT);
 
             } else if (interrupts & int::JOYPAD) != 0 {
-                self.mem.write(int::IF, int_flag & (0xFF ^ int::JOYPAD));
+                self.mem.write(int::IF, int_flag & (!int::JOYPAD));
                 self.call(Cond::AL, int::JOYPAD_VECT);
             }
 
@@ -462,7 +462,7 @@ impl<V: VideoDevice> CPU<V> {
             0xE6 => {let imm = self.fetch(); self.and(imm)},
             0xE7 => self.call(Cond::AL, 0x20),
             0xE8 => {let imm = self.fetch(); self.sp = self.add_sp(imm)},
-            0xE9 => {let loc = self.get_16(Reg::HL); self.jp(Cond::C, loc)}, // jpHL
+            0xE9 => {let loc = self.get_16(Reg::HL); self.jp(Cond::AL, loc)}, // jpHL
             0xEA => {let loc = self.fetch_16();
                      let op = self.a;
                      self.write_mem(loc, op)},
@@ -600,7 +600,7 @@ impl<V: VideoDevice> CPU<V> {
         self.cycle_count += 4;
         let result = self.mem.read(self.pc);
         self.pc = ((self.pc as u32) + 1) as u16;
-        println!("{:X}", result);
+        //println!("{:X}", result);
 
         result
     }
@@ -611,7 +611,7 @@ impl<V: VideoDevice> CPU<V> {
         self.pc = ((self.pc as u32) + 1) as u16;
         let hi_byte = (self.mem.read(self.pc) as u16) << 8;
         self.pc = ((self.pc as u32) + 1) as u16;
-        println!("{:X}", lo_byte | hi_byte);
+        //println!("{:X}", lo_byte | hi_byte);
 
         lo_byte | hi_byte
     }
@@ -809,7 +809,6 @@ impl<V: VideoDevice> CPU<V> {
         self.cycle_count += 8;
         let lo_byte = self.stack_pop();
         let hi_byte = self.stack_pop();
-        self.sp += 2;
         match which {
             Reg::AF => {self.a = hi_byte; self.set_f(lo_byte);},
             Reg::BC => {self.b = hi_byte; self.c = lo_byte;},
@@ -1007,7 +1006,6 @@ impl<V: VideoDevice> CPU<V> {
     fn jr(&mut self, cd: Cond, loc: i8) {
         if cd.check(&self) {
             self.cycle_count += 4;
-            //self.pc = ((self.pc as i32) + (loc as i32) - 2) as u16;
             self.pc = ((self.pc as i32) + (loc as i32)) as u16;
         }
     }
@@ -1025,6 +1023,7 @@ impl<V: VideoDevice> CPU<V> {
 
     fn ret(&mut self, cd: Cond) {
         self.cycle_count += 4;
+
         if cd.check(&self) {
             if cd == Cond::AL {
                 self.cycle_count += 8;
@@ -1039,12 +1038,12 @@ impl<V: VideoDevice> CPU<V> {
 
     fn reti(&mut self) {
         self.cycle_count += 12;
+
         self.ime = true;
         let lo_byte = self.stack_pop() as u16;
         let hi_byte = self.stack_pop() as u16;
         self.pc = (hi_byte << 8) | lo_byte;
     }
-
 }
 
 

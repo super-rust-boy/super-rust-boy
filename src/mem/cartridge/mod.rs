@@ -84,8 +84,8 @@ impl MemDevice for Cartridge {
                     }
                 },
                 MBC::_2 => match loc {
-                    0x0000...0x1FFF => {self.ram_enable = (val & 1) == 1; Swap::None},
-                    0x2000...0x3FFF => Swap::ROM(val & 0xF),
+                    0x0000...0x1FFF => {self.ram_enable = (loc & 0x10) == 0; Swap::None},
+                    0x2000...0x3FFF => Swap::ROM(val & 0xF), // If loc & 0x10 == 0x10
                     _ => Swap::None,
                 },
                 MBC::_3(ref mut mb) => match (loc, val) {
@@ -139,7 +139,7 @@ impl Cartridge {
             _           => 0,
         };
 
-        let ret = Cartridge {
+        let mut ret = Cartridge {
             rom_bank_0: buf,
             rom_bank_n: [0; 0x4000],
             ram:        vec!(0; ram_size),
@@ -149,6 +149,9 @@ impl Cartridge {
             ram_offset: 0,
             battery:    false,
         };
+
+        ret.swap_rom_bank(1);
+
         Ok(ret)
     }
 

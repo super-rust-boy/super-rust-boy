@@ -5,4 +5,4 @@ authors = ["coopersimon <simon.d.cooper@hotmail.co.uk>"]
 
 [dependencies]
 time = "0.1"
-glium = "0.22.0"
+glium = "0.23.0"

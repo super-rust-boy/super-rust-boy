@@ -130,27 +130,33 @@ impl VideoDevice for GBVideo {
     // Drawing for a single frame
     fn render_frame(&mut self) {
         let mut target = self.display.draw();
-        target.clear_color(1.0, 1.0, 1.0, 1.0);
 
-        // render background
-        if self.bg_enable {
-            let bg_offset = self.bg_offset;
-            self.draw_tilespace(&mut target, bg_offset);
-        }
+        if self.display_enable {
+            target.clear_color(1.0, 1.0, 1.0, 1.0);
 
-        // render sprites
-        if self.sprite_enable {
-            /*for s in (0..self.sprite_mem.size()).step_by(4) {
-                let y_pos = self.sprite_mem[s] - 16;
-                let x_pos = self.sprite_mem[s+1] - 8;
-                let
-            }*/
-        }
+            // render background
+            if self.bg_enable {
+                let bg_offset = self.bg_offset;
+                self.draw_tilespace(&mut target, bg_offset);
+            }
 
-        // render window
-        if self.window_enable { // && self.bg_enable
-            let window_offset = self.window_offset;
-            self.draw_tilespace(&mut target, window_offset);
+            // render sprites
+            if self.sprite_enable {
+                /*for s in (0..self.sprite_mem.size()).step_by(4) {
+                    let y_pos = self.sprite_mem[s] - 16;
+                    let x_pos = self.sprite_mem[s+1] - 8;
+                    let
+                }*/
+                //println!("sprites please");
+            }
+
+            // render window
+            if self.window_enable { // && self.bg_enable
+                let window_offset = self.window_offset;
+                self.draw_tilespace(&mut target, window_offset);
+            }
+        } else {
+            target.clear_color(0.0, 0.0, 0.0, 1.0);
         }
 
         target.finish().unwrap();
@@ -213,7 +219,9 @@ impl GBVideo {
         let events_loop = glium::glutin::EventsLoop::new();
 
         // create display
-        let window = glium::glutin::WindowBuilder::new();
+        let window = glium::glutin::WindowBuilder::new()
+            .with_dimensions(glium::glutin::dpi::LogicalSize::new(320.0, 288.0))
+            .with_title("Super Rust Boy");
         let context = glium::glutin::ContextBuilder::new();
         let display = glium::Display::new(window, context, &events_loop).unwrap();
 
@@ -342,6 +350,7 @@ impl GBVideo {
             Vertex { position: [x_b, y_b], texcoord: [1.0, 1.0] }
         ];
         let vertex_buffer = glium::VertexBuffer::new(&self.display, &tile).unwrap();
+        //println!("{},{}", x_a,y_a);
 
         target.draw(&vertex_buffer, NoIndices(PrimitiveType::TriangleStrip),
                     &self.program, &uniforms, &Default::default()).unwrap();
