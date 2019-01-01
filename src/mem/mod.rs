@@ -3,6 +3,7 @@
 mod cartridge;
 
 use video::VideoDevice;
+use audio::AudioDevice;
 use timer::Timer;
 use self::cartridge::Cartridge;
 
@@ -18,11 +19,13 @@ pub struct MemBus<V: VideoDevice> {
 
     video_device:   V,
 
+    audio_device:   AudioDevice,
+
     timer:          Timer,
 }
 
 impl<V: VideoDevice> MemBus<V> {
-    pub fn new(rom_file: &str, video_device: V) -> MemBus<V> {
+    pub fn new(rom_file: &str, video_device: V, audio_device: AudioDevice) -> MemBus<V> {
         let rom = match Cartridge::new(rom_file) {
             Ok(r) => r,
             Err(s) => panic!("Could not construct ROM: {}", s),
@@ -35,6 +38,7 @@ impl<V: VideoDevice> MemBus<V> {
             high_ram:       WriteableMem::new(0x80),
             interrupt_reg:  0,
             video_device:   video_device,
+            audio_device:   audio_device,
             timer:          Timer::new(),
         }
     }
@@ -50,6 +54,7 @@ impl<V: VideoDevice> MemBus<V> {
             x @ 0xFF00          => self.video_device.read(x),
             x @ 0xFF04...0xFF07 => self.timer.read(x),
                 0xFF0F          => self.interrupt_reg,
+            x @ 0xFF10...0xFF3F => self.audio_device.read(x),
             x @ 0xFF40...0xFF4B => self.video_device.read(x),
             x @ 0xFF80...0xFFFF => self.high_ram.read(x - 0xFF80),
             _ => self.ram.read(0),
@@ -67,6 +72,7 @@ impl<V: VideoDevice> MemBus<V> {
             x @ 0xFF00          => self.video_device.write(x, val),
             x @ 0xFF04...0xFF07 => self.timer.write(x, val),
                 0xFF0F          => self.interrupt_reg = val,
+            x @ 0xFF10...0xFF3F => self.audio_device.write(x, val),
             x @ 0xFF40...0xFF45 => self.video_device.write(x, val),
                 0xFF46          => self.dma(val),
             x @ 0xFF47...0xFF4B => self.video_device.write(x, val),
