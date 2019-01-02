@@ -68,3 +68,32 @@ impl NoiseGen {
         }
     }
 }
+
+impl AudioChannelGen<NoiseRegs> for NoiseGen {
+    fn init_signal(&mut self, regs: &NoiseRegs) {
+
+    }
+
+    fn generate_signal(&mut self, buffer: &mut [u8], start: f32, end: f32) {
+        let take = (buffer.len() as f32 * end) as usize;
+        let skip = (buffer.len() as f32 * start) as usize;
+
+        for i in buffer.iter_mut().take(take).skip(skip) {
+            /*if self.phase > self.duty_len {
+                *i = 0;
+            } else {
+                *i = self.amplitude;
+            }
+            self.phase = (self.phase + 1) % self.phase_len;
+
+            self.amp_counter += 1;
+            if self.amp_counter >= self.amp_sweep_step {
+                self.amplitude = match self.amp_sweep_dir {
+                    AmpDirection::Increase => ((self.amplitude as u16) + 1) as u8,
+                    AmpDirection::Decrease => ((self.amplitude as i16) - 1) as u8,
+                    AmpDirection::None => self.amplitude,
+                };
+            }*/
+        }
+    }
+}

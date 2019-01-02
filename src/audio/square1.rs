@@ -99,8 +99,10 @@ impl Square1Gen {
             amp_sweep_dir:  AmpDirection::None,
         }
     }
+}
 
-    pub fn init_signal(&mut self, regs: &Square1Regs) {
+impl AudioChannelGen<Square1Regs> for Square1Gen {
+    fn init_signal(&mut self, regs: &Square1Regs) {
         let freq_n = ((regs.freq_hi_reg as usize) << 8) | (regs.freq_lo_reg as usize);
         self.frequency = FREQ_MAX / (FREQ_MOD - freq_n);
 
@@ -124,9 +126,7 @@ impl Square1Gen {
             AmpDirection::Decrease
         };
     }
-}
 
-impl AudioChannelGen for Square1Gen {
     fn generate_signal(&mut self, buffer: &mut [u8], start: f32, end: f32) {
         let take = (buffer.len() as f32 * end) as usize;
         let skip = (buffer.len() as f32 * start) as usize;

@@ -2,7 +2,7 @@ use std::sync::mpsc::Receiver;
 use std::thread;
 use std::collections::VecDeque;
 
-use super::{AudioCommand, AudioChannelGen};
+use super::{AudioCommand, AudioChannelGen, AudioChannelRegs};
 
 use super::square1::{Square1Regs, Square1Gen};
 use super::square2::{Square2Regs, Square2Gen};
@@ -186,21 +186,12 @@ impl AudioHandler {
                 }
 
                 // Generate signals for each buffer
-                for i in 0..self.square1_data.len() {
-                    self.square1.init_signal(&self.square1_data[i].0);
-                    // If a later note interrupts this one...
-                    if i + 1 < self.square1_data.len() {
-                        let start_time = self.square1_data[i].1;
-                        let end_time = self.square1_data[i + 1].1;
-                        self.square1.generate_signal(&mut self.buffers.square1, start_time, end_time);
-                    } else {
-                        let start_time = self.square1_data[i].1;
-                        self.square1.generate_signal(&mut self.buffers.square1, start_time, 1.0);
-                        self.square1_data[i].1 = 0.0;
-                    }
-                }
+                process_command_buffer(&mut self.square1, &mut self.square1_data, &mut self.buffers.square1);
+                process_command_buffer(&mut self.square2, &mut self.square2_data, &mut self.buffers.square2);
+                process_command_buffer(&mut self.wave, &mut self.wave_data, &mut self.buffers.wave);
+                process_command_buffer(&mut self.noise, &mut self.noise_data, &mut self.buffers.noise);
 
-                // get next and mix
+                // Mix first samples of new data.
                 match self.buffers.get_next() {
                     Some(vals) => self.mix_output(vals),
                     None => panic!("Can't find any audio."),
@@ -253,6 +244,26 @@ impl AudioHandler {
         self.right_2 = (output_select & 0x02) != 0;
         self.right_1 = (output_select & 0x01) != 0;
     }
+}
+
+#[inline]
+fn process_command_buffer<G, R>(gen: &mut G, data: &mut VecDeque<(R, f32)>, buffer: &mut [u8])
+    where R: AudioChannelRegs, G: AudioChannelGen<R>
+{
+    // First note:
+    let end_time = if data.len() > 0 {data[0].1} else {1.0};
+    gen.generate_signal(buffer, 0.0, end_time);
+
+    for i in 0..data.len() {
+        gen.init_signal(&data[i].0);
+
+        let start_time = data[i].1;
+        let end_time = if i + 1 < data.len() {data[i + 1].1} else {1.0};
+
+        gen.generate_signal(buffer, start_time, end_time);
+    }
+
+    data.clear();
 }
 
 struct AudioBuffers {

@@ -197,6 +197,8 @@ trait AudioChannelRegs {
 }
 
 // This trait is for the audio handler-side.
-trait AudioChannelGen {
+trait AudioChannelGen<T: AudioChannelRegs> {
+    fn init_signal(&mut self, regs: &T);
+
     fn generate_signal(&mut self, buffer: &mut [u8], start: f32, end: f32);
 }
