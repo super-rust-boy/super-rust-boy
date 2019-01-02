@@ -64,6 +64,8 @@ pub struct Square2Gen {
     phase_len:      usize,
     duty_len:       usize,
 
+    length:         Option<usize>,
+
     amplitude:      u8,
     amp_sweep_step: usize,
     amp_counter:    usize,
@@ -78,6 +80,8 @@ impl Square2Gen {
             phase:          0,
             phase_len:      0,
             duty_len:       0,
+
+            length:         None,
 
             amplitude:      0,
             amp_sweep_step: 0,
@@ -101,6 +105,12 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
             _           => self.phase_len / 2,
         };
 
+        self.length = if (regs.freq_hi_reg & 0x40) != 0 {
+            Some((self.sample_rate * (64 - (regs.duty_length_reg & 0x3F) as usize)) / 256)
+        } else {
+            None
+        };
+
         self.amplitude = (regs.vol_envelope_reg & 0xF0) >> 4;
         self.amp_sweep_step = (self.sample_rate * (regs.vol_envelope_reg & 0x7) as usize) / 64;
         self.amp_counter = 0;
@@ -118,12 +128,17 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
         let skip = (buffer.len() as f32 * start) as usize;
 
         for i in buffer.iter_mut().take(take).skip(skip) {
-            if self.phase > self.duty_len {
-                *i = 0;
-            } else {
+            if (self.length.unwrap_or(1) > 0) && (self.phase < self.duty_len) {
                 *i = self.amplitude;
+            } else {
+                *i = 0
             }
             self.phase = (self.phase + 1) % self.phase_len;
+
+            match self.length {
+                Some(n) if n > 0 => self.length = Some(n - 1),
+                _ => {},
+            }
 
             self.amp_counter += 1;
             if self.amp_counter >= self.amp_sweep_step {
