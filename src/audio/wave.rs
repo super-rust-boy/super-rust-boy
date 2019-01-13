@@ -116,6 +116,7 @@ impl AudioChannelGen<WaveRegs> for WaveGen {
                     AmpDirection::None => self.amplitude,
                 };
             }*/
+            *i = 0;
         }
     }
 }

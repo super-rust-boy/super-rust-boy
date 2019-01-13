@@ -13,12 +13,13 @@ use self::wave::WaveRegs;
 use self::noise::NoiseRegs;
 
 use mem::MemDevice;
+use timer;
 
 use std::sync::mpsc::Sender;
 
 pub use self::handler::start_audio_handler_thread;
 
-const MAX_CYCLES_FLOAT: f32 = super::timer::MAX_CYCLES as f32;
+const MAX_CYCLES_FLOAT: f32 = timer::MAX_CYCLES as f32;
 
 // The structure that exists in memory. Sends data to the audio thread.
 pub struct AudioDevice {
@@ -35,6 +36,7 @@ pub struct AudioDevice {
 
     // Managing audio handler
     update:          bool,
+    control_update:  bool,
     sender:          Sender<AudioCommand>,
 }
 
@@ -50,8 +52,9 @@ impl AudioDevice {
             output_select:   0,
             on_off:          0,
 
-            update: false,
-            sender: sender,
+            update:         false,
+            control_update: false,
+            sender:         sender,
         }
     }
 
@@ -59,7 +62,12 @@ impl AudioDevice {
     pub fn send_update(&mut self, cycle_count: u32) {
         // If trigger bit was just written, send timed update
         if self.update {
-            let time_in_frame = (cycle_count as f32) / MAX_CYCLES_FLOAT;
+            // Moment of V-blank needs to be 0.0
+            let offset_cycle = (cycle_count + timer::V_BLANK_TIME) % timer::MAX_CYCLES;
+            let time_in_frame = (offset_cycle as f32) / MAX_CYCLES_FLOAT;
+
+            println!("sending update at {}", time_in_frame);
+
             if self.nr1.triggered() {
                 self.sender.send(AudioCommand::NR1(self.nr1.clone(), time_in_frame)).unwrap();
             } else if self.nr2.triggered() {
@@ -74,13 +82,21 @@ impl AudioDevice {
     }
 
     // Send frame batch update
-    pub fn frame_update(&self) {
+    pub fn frame_update(&mut self) {
         // End of last frame
-        self.sender.send(AudioCommand::Control{
-            channel_control: self.channel_control,
-            output_select:   self.output_select,
-            on_off:          self.on_off,
-        }).unwrap();
+        if self.control_update {
+            println!("frame update");
+
+            self.sender.send(AudioCommand::Control{
+                channel_control: self.channel_control,
+                output_select:   self.output_select,
+                on_off:          self.on_off,
+            }).unwrap();
+
+            self.control_update = false;
+        } else {
+            self.sender.send(AudioCommand::Frame).unwrap();
+        }
     }
 }
 
@@ -120,6 +136,7 @@ impl MemDevice for AudioDevice {
     }
 
     fn write(&mut self, loc: u16, val: u8) {
+        println!("Writing {:X} to {:X}", val, loc);
         match loc {
             0xFF10  => self.nr1.write_nrx0(val),
             0xFF11  => self.nr1.write_nrx1(val),
@@ -156,9 +173,18 @@ impl MemDevice for AudioDevice {
             },
 
             // If any of the below change, send an update at the end of the frame.
-            0xFF24  => self.channel_control = val,
-            0xFF25  => self.output_select = val,
-            0xFF26  => self.on_off = val,
+            0xFF24  => {
+                self.channel_control = val;
+                self.control_update = true;
+            },
+            0xFF25  => {
+                self.output_select = val;
+                self.control_update = true;
+            },
+            0xFF26  => {
+                self.on_off = val;
+                self.control_update = true;
+            },
 
             0xFF30...0xFF3F => self.nr3.write_wave(loc - 0xFF30, val),
 
@@ -174,6 +200,7 @@ pub enum AudioCommand {
         output_select:   u8,
         on_off:          u8,
     },
+    Frame,
     NR1(Square1Regs, f32),
     NR2(Square2Regs, f32),
     NR3(WaveRegs,    f32),

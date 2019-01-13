@@ -535,7 +535,6 @@ impl<V: VideoDevice> CPU<V> {
 
     pub fn frame_update(&mut self) {
         self.mem.render_frame();
-        //self.cycle_count = video::MODE_1;
         self.mem.read_inputs();
     }
 }

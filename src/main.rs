@@ -30,6 +30,8 @@ fn main() {
 
     let mut state = cpu::CPU::new(mem);
 
+    audio::start_audio_handler_thread(recv);
+
     loop {
         let frame = PreciseTime::now();
 

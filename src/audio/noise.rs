@@ -94,6 +94,7 @@ impl AudioChannelGen<NoiseRegs> for NoiseGen {
                     AmpDirection::None => self.amplitude,
                 };
             }*/
+            *i = 0;
         }
     }
 }

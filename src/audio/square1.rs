@@ -92,7 +92,7 @@ impl Square1Gen {
             frequency:      0,
 
             phase:          0,
-            phase_len:      0,
+            phase_len:      1,
             duty_len:       0,
 
             length:         None,
@@ -107,7 +107,7 @@ impl Square1Gen {
 
 impl AudioChannelGen<Square1Regs> for Square1Gen {
     fn init_signal(&mut self, regs: &Square1Regs) {
-        let freq_n = ((regs.freq_hi_reg as usize) << 8) | (regs.freq_lo_reg as usize);
+        let freq_n = (((regs.freq_hi_reg & 0x7) as usize) << 8) | (regs.freq_lo_reg as usize);
         self.frequency = FREQ_MAX / (FREQ_MOD - freq_n);
 
         self.phase_len = self.sample_rate / self.frequency;
@@ -156,11 +156,19 @@ impl AudioChannelGen<Square1Regs> for Square1Gen {
 
             self.amp_counter += 1;
             if self.amp_counter >= self.amp_sweep_step {
-                self.amplitude = match self.amp_sweep_dir {
-                    AmpDirection::Increase => ((self.amplitude as u16) + 1) as u8,
-                    AmpDirection::Decrease => ((self.amplitude as i16) - 1) as u8,
-                    AmpDirection::None => self.amplitude,
-                };
+                match self.amp_sweep_dir {
+                    AmpDirection::Increase => {
+                        if self.amplitude < 15 {
+                            self.amplitude += 1;
+                        }
+                    },
+                    AmpDirection::Decrease => {
+                        if self.amplitude > 0 {
+                            self.amplitude -= 1;
+                        }
+                    },
+                    AmpDirection::None => {},
+                }
             }
         }
     }

@@ -7,3 +7,6 @@ authors = ["coopersimon <simon.d.cooper@hotmail.co.uk>"]
 time = "0.1"
 glium = "0.23"
 cpal = "0.8"
+
+[features]
+test = []

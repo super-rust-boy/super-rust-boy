@@ -11,12 +11,12 @@ use super::noise::{NoiseRegs, NoiseGen};
 
 use cpal;
 
-const DIV_4_BIT: f32 = 1.0 / 7.5;
+const DIV_4_BIT: f32 = 1.0/15.0;//1.0 / 7.5;
 // Convert 4-bit sample to float
 macro_rules! sample {
     ( $x:expr ) => {
         {
-            ((($x as f32) / DIV_4_BIT) - 1.0) * 0.25
+            ((($x as f32) * DIV_4_BIT)/* - 1.0*/) * 0.25
         }
     };
 }
@@ -41,7 +41,7 @@ pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
         let mut process = true;
         let mut right_sample = 0.0;
 
-        let mut handler = AudioHandler::new(recv, sample_rate / 60);
+        let mut handler = AudioHandler::new(recv, sample_rate);
 
         event_loop.play_stream(stream_id);
 
@@ -112,7 +112,12 @@ struct AudioHandler {
     wave:       WaveGen,
     noise:      NoiseGen,
 
-    // Controls
+    // Control reg buffers
+    /*channel_control: Some<u8>,
+    output_select:   Some<u8>,
+    on_off:          Some<u8>,*/
+
+    // Control values
     sound_on:   bool,
     left_vol:   f32,
     right_vol:  f32,
@@ -178,6 +183,7 @@ impl AudioHandler {
                             self.set_controls(channel_control, output_select, on_off);
                             break;
                         },
+                        AudioCommand::Frame => break,
                         AudioCommand::NR1(regs, time) => self.square1_data.push_back((regs, time)),
                         AudioCommand::NR2(regs, time) => self.square2_data.push_back((regs, time)),
                         AudioCommand::NR3(regs, time) => self.wave_data.push_back((regs, time)),
@@ -221,6 +227,10 @@ impl AudioHandler {
     }
 
     fn set_controls(&mut self, channel_control: u8, output_select: u8, on_off: u8) {
+        /*self.channel_control = channel_control;
+        self.output_select = output_select;
+        self.on_off = on_off;*/
+
         self.sound_on = (on_off & 0x80) != 0;
 
         self.left_vol = if (channel_control & 0x80) != 0 {

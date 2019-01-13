@@ -20,13 +20,12 @@ enum MBC {
     _1(MB1),
     _2,
     _3(MB3),
-    _4(u8),
-    _5(u8),
+    _5(u16),
 }
 
 // Swap Bank instructions
 enum Swap {
-    ROM(u8),
+    ROM(u16),
     RAM(u8),
     Both(u8, u8),
     None
@@ -76,7 +75,7 @@ impl MemDevice for Cartridge {
                     if diff_rom_bank && diff_ram_bank {
                         Swap::Both(new_rom_bank, new_ram_bank)
                     } else if diff_rom_bank {
-                        Swap::ROM(new_rom_bank)
+                        Swap::ROM(new_rom_bank as u16)
                     } else if diff_ram_bank {
                         Swap::RAM(new_ram_bank)
                     } else {
@@ -84,17 +83,28 @@ impl MemDevice for Cartridge {
                     }
                 },
                 MBC::_2 => match loc {
-                    0x0000...0x1FFF => {self.ram_enable = (loc & 0x10) == 0; Swap::None},
-                    0x2000...0x3FFF => Swap::ROM(val & 0xF), // If loc & 0x10 == 0x10
+                    0x0000...0x1FFF => {self.ram_enable = (loc & 0x100) == 0; Swap::None},
+                    0x2000...0x3FFF => if (loc & 0x100) != 0 {
+                        Swap::ROM((val & 0xF) as u16)
+                    } else {
+                        Swap::None
+                    },
                     _ => Swap::None,
                 },
                 MBC::_3(ref mut mb) => match (loc, val) {
                     (0x0000...0x1FFF, x)            => {self.ram_enable = (x & 0xF) == 0xA; Swap::None},
                     (0x2000...0x3FFF, 0)            => Swap::ROM(1),
-                    (0x2000...0x3FFF, x)            => Swap::ROM(x),
-                    (0x4000...0x5FFF, x @ 0...3)    => Swap::RAM(x),
+                    (0x2000...0x3FFF, x)            => Swap::ROM(x as u16),
+                    (0x4000...0x5FFF, x @ 0...7)    => Swap::RAM(x),
                     (0x4000...0x5FFF, x @ 8...0xC)  => {mb.select_rtc(x); Swap::None},
                     (0x6000...0x7FFF, 1)            => {mb.latch_clock(); Swap::None},
+                    _ => Swap::None,
+                },
+                MBC::_5(ref mut rom) => match (loc, val) {
+                    (0x0000...0x1FFF, x)    => {self.ram_enable = (x & 0xF) == 0xA; Swap::None},
+                    (0x2000...0x2FFF, x)    => {*rom &= 0xFF00; *rom |= x as u16; Swap::ROM(*rom)},
+                    (0x3000...0x3FFF, x)    => {*rom &= 0xFF; *rom |= 0x100; Swap::ROM(*rom)},
+                    (0x4000...0x5FFF, x)    => Swap::RAM(x),
                     _ => Swap::None,
                 },
                 _ => Swap::None,
@@ -102,7 +112,7 @@ impl MemDevice for Cartridge {
 
             match swap_instr {
                 Swap::Both(rom,ram) => {
-                    self.swap_rom_bank(rom);
+                    self.swap_rom_bank(rom as u16);
                     self.swap_ram_bank(ram);
                 },
                 Swap::ROM(rom) => self.swap_rom_bank(rom),
@@ -126,17 +136,19 @@ impl Cartridge {
             0x1...0x3   => MBC::_1(MB1::new()),
             0x5...0x6   => MBC::_2,
             0xF...0x13  => MBC::_3(MB3::new()),
-            0x15...0x17 => MBC::_4(0),
             0x19...0x1E => MBC::_5(0),
             _           => MBC::_0,
         };
 
         let ram_size = match (&bank_type, buf[0x149]) {
-            (MBC::_2,_) => 0x200,
-            (_,0x1)     => 0x800,
-            (_,0x2)     => 0x2000,
-            (_,0x3)     => 0x8000,
-            _           => 0,
+            (MBC::_2,_)     => 0x200,
+            (MBC::_3(_),_)  => 0x10000,
+            (_,0x1)         => 0x800,
+            (_,0x2)         => 0x2000,
+            (_,0x3)         => 0x8000,
+            (_,0x4)         => 0x20000,
+            (_,0x5)         => 0x10000,
+            _               => 0,
         };
 
         let mut ret = Cartridge {
@@ -155,7 +167,7 @@ impl Cartridge {
         Ok(ret)
     }
 
-    pub fn swap_rom_bank(&mut self, bank: u8)/* -> Result<(), String>*/ {
+    pub fn swap_rom_bank(&mut self, bank: u16)/* -> Result<(), String>*/ {
         //println!("Swapping in bank: {}", bank);
         let pos = (bank as u64) * 0x4000;
         match self.rom_file.seek(SeekFrom::Start(pos)) {

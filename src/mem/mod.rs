@@ -47,7 +47,7 @@ impl<V: VideoDevice> MemBus<V> {
         match loc {
             x @ 0x0000...0x7FFF => self.cart.read(x),
             x @ 0x8000...0x9FFF => self.video_device.read(x),
-            x @ 0xA000...0xBFFF => self.ram_bank.read(x - 0xA000),
+            x @ 0xA000...0xBFFF => self.cart.read(x),
             x @ 0xC000...0xDFFF => self.ram.read(x - 0xC000),
             x @ 0xE000...0xFDFF => self.ram.read(x - 0xE000),
             x @ 0xFE00...0xFE9F => self.video_device.read(x),
@@ -65,7 +65,7 @@ impl<V: VideoDevice> MemBus<V> {
         match loc {
             x @ 0x0000...0x7FFF => self.cart.write(x, val),
             x @ 0x8000...0x9FFF => self.video_device.write(x, val),
-            x @ 0xA000...0xBFFF => self.ram_bank.write(x - 0xA000, val),
+            x @ 0xA000...0xBFFF => self.cart.write(x, val),
             x @ 0xC000...0xDFFF => self.ram.write(x - 0xC000, val),
             x @ 0xE000...0xFDFF => self.ram.write(x - 0xE000, val),
             x @ 0xFE00...0xFE9F => self.video_device.write(x, val),
@@ -77,12 +77,16 @@ impl<V: VideoDevice> MemBus<V> {
                 0xFF46          => self.dma(val),
             x @ 0xFF47...0xFF4B => self.video_device.write(x, val),
             x @ 0xFF80...0xFFFF => self.high_ram.write(x - 0xFF80, val),
-            _ => return,
+            _ => {},
         }
+
+        #[cfg(feature = "test")]
+        self.update_debug_string(loc);
     }
 
     pub fn render_frame(&mut self) {
-        self.video_device.render_frame();
+        self.audio_device.frame_update();
+        //self.video_device.render_frame();
     }
 
     pub fn read_inputs(&mut self) {
@@ -109,6 +113,28 @@ impl<V: VideoDevice> MemBus<V> {
             let dest_addr = 0xFE00 | lo_byte;
             let byte = self.read(src_addr);
             self.video_device.write(dest_addr, byte);
+        }
+    }
+
+    #[cfg(feature = "test")]
+    fn update_debug_string(&self, loc: u16) {
+        if self.ram.read(0) == 0x80 {
+            if (loc > 0xC003) && (loc < 0xC100) {
+                for i in 0..0xFF {
+                    if self.ram.read(i) != 0 {
+                        print!("{}", self.ram.read(i) as char);
+                    } else {
+                        println!("");
+                        break;
+                    }
+                }
+            }
+        }
+
+        //println!("Writing to {:X}", loc);
+
+        if loc == 0xC000 {
+            println!("DEBUG: {:X}", self.ram.read(0));
         }
     }
 }
