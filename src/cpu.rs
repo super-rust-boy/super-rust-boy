@@ -1,7 +1,7 @@
 // CPU Module
 
-use mem::MemBus;
-use video::VideoDevice;
+use crate::mem::MemBus;
+use crate::video::VideoDevice;
 
 // Interrupt constants
 mod int {

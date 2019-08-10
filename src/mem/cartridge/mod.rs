@@ -3,8 +3,8 @@
 mod mb1;
 mod mb3;
 
-use self::mb1::MB1;
-use self::mb3::MB3;
+use mb1::MB1;
+use mb3::MB3;
 
 use std::io::BufReader;
 use std::io::Read;
@@ -125,12 +125,12 @@ impl MemDevice for Cartridge {
 
 impl Cartridge {
     pub fn new(rom_file: &str) -> Result<Cartridge, String> {
-        let f = try!(File::open(rom_file).map_err(|e| e.to_string()));
+        let f = File::open(rom_file).map_err(|e| e.to_string())?;
 
         let mut reader = BufReader::new(f);
         let mut buf = [0_u8; 0x4000];
         //try!(reader.read_exact(&mut buf).map_err(|e| e.to_string()));
-        try!(reader.read(&mut buf).map_err(|e| e.to_string()));
+        reader.read(&mut buf).map_err(|e| e.to_string())?;
 
         let bank_type = match buf[0x147] {
             0x1...0x3   => MBC::_1(MB1::new()),

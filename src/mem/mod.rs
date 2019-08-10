@@ -2,11 +2,10 @@
 
 mod cartridge;
 
-use video::VideoDevice;
-use audio::AudioDevice;
-use timer::Timer;
-use self::cartridge::Cartridge;
-
+use crate::video::VideoDevice;
+use crate::audio::AudioDevice;
+use crate::timer::Timer;
+use cartridge::Cartridge;
 
 pub struct MemBus<V: VideoDevice> {
     cart:           Cartridge,
@@ -45,48 +44,48 @@ impl<V: VideoDevice> MemBus<V> {
 
     pub fn read(&self, loc: u16) -> u8 {
         match loc {
-            x @ 0x0000...0x7FFF => self.cart.read(x),
-            x @ 0x8000...0x9FFF => self.video_device.read(x),
-            x @ 0xA000...0xBFFF => self.cart.read(x),
-            x @ 0xC000...0xDFFF => self.ram.read(x - 0xC000),
-            x @ 0xE000...0xFDFF => self.ram.read(x - 0xE000),
-            x @ 0xFE00...0xFE9F => self.video_device.read(x),
-            x @ 0xFF00          => self.video_device.read(x),
-            x @ 0xFF04...0xFF07 => self.timer.read(x),
-                0xFF0F          => self.interrupt_reg,
-            x @ 0xFF10...0xFF3F => self.audio_device.read(x),
-            x @ 0xFF40...0xFF4B => self.video_device.read(x),
-            x @ 0xFF80...0xFFFF => self.high_ram.read(x - 0xFF80),
+            0x0000...0x7FFF => self.cart.read(loc),
+            0x8000...0x9FFF => self.video_device.read(loc),
+            0xA000...0xBFFF => self.cart.read(loc),
+            0xC000...0xDFFF => self.ram.read(loc - 0xC000),
+            0xE000...0xFDFF => self.ram.read(loc - 0xE000),
+            0xFE00...0xFE9F => self.video_device.read(loc),
+            0xFF00          => self.video_device.read(loc),
+            0xFF04...0xFF07 => self.timer.read(loc),
+            0xFF0F          => self.interrupt_reg,
+            0xFF10...0xFF3F => self.audio_device.read(loc),
+            0xFF40...0xFF4B => self.video_device.read(loc),
+            0xFF80...0xFFFF => self.high_ram.read(loc - 0xFF80),
             _ => self.ram.read(0),
         }
     }
 
     pub fn write(&mut self, loc: u16, val: u8) {
         match loc {
-            x @ 0x0000...0x7FFF => self.cart.write(x, val),
-            x @ 0x8000...0x9FFF => self.video_device.write(x, val),
-            x @ 0xA000...0xBFFF => self.cart.write(x, val),
-            x @ 0xC000...0xDFFF => self.ram.write(x - 0xC000, val),
-            x @ 0xE000...0xFDFF => self.ram.write(x - 0xE000, val),
-            x @ 0xFE00...0xFE9F => self.video_device.write(x, val),
-            x @ 0xFF00          => self.video_device.write(x, val),
-            x @ 0xFF04...0xFF07 => self.timer.write(x, val),
-                0xFF0F          => self.interrupt_reg = val,
-            x @ 0xFF10...0xFF3F => self.audio_device.write(x, val),
-            x @ 0xFF40...0xFF45 => self.video_device.write(x, val),
-                0xFF46          => self.dma(val),
-            x @ 0xFF47...0xFF4B => self.video_device.write(x, val),
-            x @ 0xFF80...0xFFFF => self.high_ram.write(x - 0xFF80, val),
+            0x0000...0x7FFF => self.cart.write(loc, val),
+            0x8000...0x9FFF => self.video_device.write(loc, val),
+            0xA000...0xBFFF => self.cart.write(loc, val),
+            0xC000...0xDFFF => self.ram.write(loc - 0xC000, val),
+            0xE000...0xFDFF => self.ram.write(loc - 0xE000, val),
+            0xFE00...0xFE9F => self.video_device.write(loc, val),
+            0xFF00          => self.video_device.write(loc, val),
+            0xFF04...0xFF07 => self.timer.write(loc, val),    
+            0xFF0F          => self.interrupt_reg = val,
+            0xFF10...0xFF3F => self.audio_device.write(loc, val),
+            0xFF40...0xFF45 => self.video_device.write(loc, val), 
+            0xFF46          => self.dma(val),
+            0xFF47...0xFF4B => self.video_device.write(loc, val),
+            0xFF80...0xFFFF => self.high_ram.write(loc - 0xFF80, val),
             _ => {},
         }
 
-        #[cfg(feature = "test")]
-        self.update_debug_string(loc);
+        //#[cfg(feature = "test")]
+        //self.update_debug_string(loc);
     }
 
     pub fn render_frame(&mut self) {
         self.audio_device.frame_update();
-        //self.video_device.render_frame();
+        self.video_device.render_frame();
     }
 
     pub fn read_inputs(&mut self) {
@@ -116,7 +115,7 @@ impl<V: VideoDevice> MemBus<V> {
         }
     }
 
-    #[cfg(feature = "test")]
+    /*#[cfg(feature = "test")]
     fn update_debug_string(&self, loc: u16) {
         if self.ram.read(0) == 0x80 {
             if (loc > 0xC003) && (loc < 0xC100) {
@@ -136,7 +135,7 @@ impl<V: VideoDevice> MemBus<V> {
         if loc == 0xC000 {
             println!("DEBUG: {:X}", self.ram.read(0));
         }
-    }
+    }*/
 }
 
 

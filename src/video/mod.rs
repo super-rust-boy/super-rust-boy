@@ -7,7 +7,7 @@ use glium;
 use glium::{Display, Surface};
 use glium::glutin::EventsLoop;
 
-use mem::MemDevice;
+use crate::mem::MemDevice;
 
 use self::palette::{BWPalette, Palette};
 use self::joypad::Joypad;
@@ -138,6 +138,7 @@ impl VideoDevice for GBVideo {
             if self.bg_enable {
                 let bg_offset = self.bg_offset;
                 self.draw_tilespace(&mut target, bg_offset);
+                println!("bg please");
             }
 
             // render sprites
@@ -147,13 +148,14 @@ impl VideoDevice for GBVideo {
                     let x_pos = self.sprite_mem[s+1] - 8;
                     let
                 }*/
-                //println!("sprites please");
+                println!("sprites please");
             }
 
             // render window
             if self.window_enable { // && self.bg_enable
-                let window_offset = self.window_offset;
-                self.draw_tilespace(&mut target, window_offset);
+                //let window_offset = self.window_offset;
+                //self.draw_tilespace(&mut target, window_offset);
+                println!("window please");
             }
         } else {
             target.clear_color(0.0, 0.0, 0.0, 1.0);

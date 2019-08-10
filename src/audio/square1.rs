@@ -145,7 +145,7 @@ impl AudioChannelGen<Square1Regs> for Square1Gen {
             if (self.length.unwrap_or(1) > 0) && (self.phase < self.duty_len) {
                 *i = self.amplitude;
             } else {
-                *i = 0
+                *i = 0;
             }
             self.phase = (self.phase + 1) % self.phase_len;
 

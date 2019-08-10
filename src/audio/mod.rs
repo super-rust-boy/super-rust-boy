@@ -7,13 +7,13 @@ mod square2;
 mod wave;
 mod noise;
 
-use self::square1::Square1Regs;
-use self::square2::Square2Regs;
-use self::wave::WaveRegs;
-use self::noise::NoiseRegs;
+use square1::Square1Regs;
+use square2::Square2Regs;
+use wave::WaveRegs;
+use noise::NoiseRegs;
 
-use mem::MemDevice;
-use timer;
+use crate::mem::MemDevice;
+use crate::timer;
 
 use std::sync::mpsc::Sender;
 

@@ -53,17 +53,17 @@ impl Joypad {
                 let start =  if self.start  {0b1000} else {0};
                 a | b | select | start
             },
-            Select::None        => 0
+            Select::None => 0
         }
     }
 
     pub fn write(&mut self, val: u8) {
-        if (val & SELECT_DIRECTION) != 0 {
-            self.selector = Select::Direction;
+        self.selector = if (val & SELECT_DIRECTION) != 0 {
+            Select::Direction
         } else if (val & SELECT_BUTTONS) != 0 {
-            self.selector = Select::Button;
+            Select::Button
         } else {
-            self.selector = Select::None;
-        }
+            Select::None
+        };
     }
 }

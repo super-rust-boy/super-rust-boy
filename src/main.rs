@@ -5,12 +5,6 @@ mod video;
 mod timer;
 mod audio;
 
-extern crate time;
-#[macro_use]
-extern crate glium;
-
-extern crate cpal;
-
 use time::{Duration, PreciseTime};
 use std::sync::mpsc::channel;
 

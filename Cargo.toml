@@ -2,11 +2,16 @@
 name = "rustboy"
 version = "0.1.0"
 authors = ["coopersimon <simon.d.cooper@hotmail.co.uk>"]
+edition = "2018"
 
 [dependencies]
 time = "0.1"
-glium = "0.23"
 cpal = "0.8"
+vulkano = "0.13"
+vulkano-shaders = "0.13"
+vulkano-win = "0.13"
+winit = "0.19"
+cgmath = "0.17"
 
 [features]
 test = []

@@ -1,3 +1,5 @@
 target
 testcart.gb
 test/
+/.DS_Store
+*.txt
