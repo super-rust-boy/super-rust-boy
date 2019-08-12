@@ -7,7 +7,7 @@ use crate::audio::AudioDevice;
 use crate::timer::Timer;
 use cartridge::Cartridge;
 
-pub struct MemBus<V: VideoDevice> {
+pub struct MemBus {
     cart:           Cartridge,
 
     ram_bank:       WriteableMem,
@@ -16,15 +16,15 @@ pub struct MemBus<V: VideoDevice> {
 
     interrupt_reg:  u8,
 
-    video_device:   V,
+    video_device:   VideoDevice,
 
     audio_device:   AudioDevice,
 
     timer:          Timer,
 }
 
-impl<V: VideoDevice> MemBus<V> {
-    pub fn new(rom_file: &str, video_device: V, audio_device: AudioDevice) -> MemBus<V> {
+impl MemBus {
+    pub fn new(rom_file: &str, video_device: VideoDevice, audio_device: AudioDevice) -> MemBus {
         let rom = match Cartridge::new(rom_file) {
             Ok(r) => r,
             Err(s) => panic!("Could not construct ROM: {}", s),

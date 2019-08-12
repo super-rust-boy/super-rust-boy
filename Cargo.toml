@@ -12,6 +12,7 @@ vulkano-shaders = "0.13"
 vulkano-win = "0.13"
 winit = "0.19"
 cgmath = "0.17"
+bitflags = "1.1"
 
 [features]
 test = []

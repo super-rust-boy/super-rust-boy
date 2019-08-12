@@ -1,7 +1,6 @@
 // CPU Module
 
 use crate::mem::MemBus;
-use crate::video::VideoDevice;
 
 // Interrupt constants
 mod int {
@@ -44,7 +43,7 @@ mod video {
 
 
 // LR35902 CPU
-pub struct CPU<V: VideoDevice> {
+pub struct CPU {
     // Accumulator
     a: u8,
 
@@ -71,7 +70,7 @@ pub struct CPU<V: VideoDevice> {
     pc: u16,
 
     // Memory Bus (ROM,RAM,Peripherals etc)
-    mem: MemBus<V>,
+    mem: MemBus,
 
     // Internals
     cycle_count: u32,
@@ -90,7 +89,7 @@ enum Cond {
 }
 
 impl Cond {
-    fn check<V: VideoDevice>(&self, cpu: &CPU<V>) -> bool {
+    fn check(&self, cpu: &CPU) -> bool {
         use self::Cond::*;
         match self {
             AL  => true,
@@ -118,7 +117,7 @@ enum With {
 }
 
 impl With {
-    fn resolve<V: VideoDevice>(self, hl: u16, cpu: &mut CPU<V>) {
+    fn resolve(self, hl: u16, cpu: &mut CPU) {
         use self::With::*;
         match self {
             Inc => {
@@ -136,9 +135,9 @@ impl With {
 
 
 // Public interface
-impl<V: VideoDevice> CPU<V> {
+impl CPU {
     // Initialise CPU
-    pub fn new(mem: MemBus<V>) -> Self {
+    pub fn new(mem: MemBus) -> Self {
         CPU {
             a:      0x01,
             b:      0x00,
@@ -540,7 +539,7 @@ impl<V: VideoDevice> CPU<V> {
 }
 
 // Internal
-impl<V: VideoDevice> CPU<V> {
+impl CPU {
     // Special access registers
     fn get_f(&self) -> u8 {
         let z = if self.f_z {0b10000000} else {0};
@@ -672,7 +671,7 @@ impl<V: VideoDevice> CPU<V> {
 }
 
 // Instructions
-impl<V: VideoDevice> CPU<V> {
+impl CPU {
     // Arithmetic
     fn add(&mut self, carry: bool, op: u8) {
         let c = if self.f_c && carry {1} else {0};
@@ -1047,7 +1046,7 @@ impl<V: VideoDevice> CPU<V> {
 
 
 // TEST
-impl<V: VideoDevice> CPU<V> {
+impl CPU {
     pub fn to_string(&self) -> String {
         format!("a:{:X} b:{:X} c:{:X} d:{:X} e:{:X} h:{:X} l:{:X}\n\
                 z:{} h:{} n:{} c:{}\n\

@@ -1,28 +1,62 @@
-pub const VERTEX_SRC: &'static str = r#"
-    #version 140
+pub mod vs {
+    vulkano_shaders::shader!{
+        ty: "vertex",
+        src: r#"
+#version 450
 
-    in vec2 position;
-    in vec2 texcoord;
+const int MAX_TEX_NUM = 384;
+const int SIGNED_OFFSET = 256;
+const int TEX_SIZE_X_I = 16;
+const float TEX_SIZE_X_F = 16.0;
+const int TEX_SIZE_Y_I = 24;
+const float TEX_SIZE_Y_F = 24.0;
 
-    out vec2 frag_tex;
+layout(location = 0) in vec2 position;
+layout(location = 1) in vec2 tex_corner_offset;
+layout(location = 2) in int tex_num;
 
-    void main() {
-        frag_tex = texcoord;
-        gl_Position = vec4(position, 0.0, 1.0);
+layout(push_constant) uniform PushConstants {
+    vec2 vertex_offset;
+    int tex_offset;
+} push_constants;
+
+layout(location = 0) out vec2 texCoordOut;
+
+vec2 calc_tex_coords(int tex_num, int offset) {
+    tex_num += offset;
+    tex_num = tex_num >= MAX_TEX_NUM ? tex_num - SIGNED_OFFSET : tex_num;
+    float x = float(tex_num % TEX_SIZE_X_I) / TEX_SIZE_X_F;
+    float y = float(tex_num / TEX_SIZE_Y_I) / TEX_SIZE_Y_F;
+    return vec2(x, y) + tex_corner_offset;
+}
+
+void main() {
+    gl_Position = vec4(position + push_constants.vertex_offset, 0.0, 1.0);
+    texCoordOut = calc_tex_coords(tex_num, push_constants.tex_offset);
+}
+"#
     }
-"#;
+}
 
-pub const FRAGMENT_SRC: &'static str = r#"
-    #version 140
+pub mod fs {
+    vulkano_shaders::shader!{
+        ty: "fragment",
+        src: r#"
+#version 450
 
-    in vec2 frag_tex;
+layout(location = 0) in vec2 texCoord;
 
-    out vec4 outColor;
+layout(set = 0, binding = 0) uniform usampler2D atlas;
+layout(set = 1, binding = 0) uniform Palette {
+    mat4 colours;
+} PaletteTable;
 
-    uniform sampler2D tex;
+layout(location = 0) out vec4 outColor;
 
-    void main() {
-        outColor = texture(tex, frag_tex);
+void main() {
+    uint texel = texture(atlas, texCoord).x;
+    outColor = PaletteTable.colours[texel];
+}
+"#
     }
-"#;
-
+}

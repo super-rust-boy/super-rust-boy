@@ -18,7 +18,7 @@ fn main() {
 
     let (send, recv) = channel();
 
-    let vd = video::GBVideo::new();
+    let vd = video::VideoDevice::new();
     let ad = audio::AudioDevice::new(send);
     let mem = mem::MemBus::new(cart.as_str(), vd, ad);
 
