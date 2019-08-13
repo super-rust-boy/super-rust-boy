@@ -36,7 +36,7 @@ pub fn debug_mode(cpu: &mut crate::cpu::CPU) {
         let mut input = String::new();
         match std::io::stdin().read_line(&mut input) {
             Ok(_) => if input.starts_with("b:") {
-                // Breakpoint
+                // Add breakpoint
                 match u16::from_str_radix(&input[2..].trim(), 16) {
                     Ok(num) => {
                         println!("Inserted breakpoint at 0x{:X}", num);
@@ -44,6 +44,19 @@ pub fn debug_mode(cpu: &mut crate::cpu::CPU) {
                     },
                     Err(e) => println!("Invalid breakpoint: {}", e),
                 }
+            } else if input.starts_with("c:") {
+                // Remove breakpoint
+                match u16::from_str_radix(&input[2..].trim(), 16) {
+                    Ok(num) => {
+                        println!("Cleared breakpoint at 0x{:X}", num);
+                        breaks.remove(&num);
+                    },
+                    Err(e) => println!("Invalid breakpoint: {}", e),
+                }
+            } else if input.starts_with("c") {
+                // Remove all breakpoints
+                println!("Cleared all breakpoints");
+                breaks.clear();
             } else if input.starts_with("r") {
                 // Run
                 loop {
@@ -86,6 +99,7 @@ pub fn debug_mode(cpu: &mut crate::cpu::CPU) {
             } else if input.starts_with("h") {
                 // Help
                 println!("b:x: New breakpoint at memory location x (hex).");
+                println!("c:x: Clear breakpoint at memory location x (hex).");
                 println!("r: Keep running until a breakpoint is hit.");
                 println!("s: Step a single instruction.");
                 println!("p: Print the current state of the CPU.");

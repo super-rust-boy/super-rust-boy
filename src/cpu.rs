@@ -168,7 +168,6 @@ impl CPU {
             self.ime = false;
             self.cont = true;
 
-            println!("Interrupt!");
             if interrupts.contains(InterruptFlags::V_BLANK) {
                 self.mem.clear_interrupt_flag(InterruptFlags::V_BLANK);
                 self.call(Cond::AL, int::V_BLANK_VECT);
@@ -211,7 +210,7 @@ impl CPU {
             _ => self.a,
         };
 
-        let op16 = match (instr >> 4) % 2 {
+        let op16 = match (instr >> 4) % 4 {
             0 => self.get_16(Reg::BC),
             1 => self.get_16(Reg::DE),
             2 => self.get_16(Reg::HL),
