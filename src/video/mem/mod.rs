@@ -274,14 +274,30 @@ impl MemDevice for VideoMem {
                 let base = (loc - 0x8000) as usize;
 
                 if base % 2 == 0 {  // Lower bit
-                    let base_pixel = base * 4;
+                    let tile_x = (base % 0x100) / 0x10;
+                    let tile_y = base / 0x100;
+
+                    let pixel_row_num = (base / 2) % 8;
+
+                    // tile_x * 8 pixels across per tile
+                    // tile_y * 64 pixels per tile * 16 tiles per row
+                    // pixel_row_num * 8 pixels across per tile * 16 tiles per row
+                    let base_pixel = (tile_x * 8) + (tile_y * 64 * 16) + (pixel_row_num * 8 * 16);
+
                     for i in 0..8 {
                         let lower_bit = (val >> (7 - i)) & 1;
                         let upper_bit = self.tile_mem.atlas[base_pixel + i] & 0b10;
                         self.tile_mem.atlas[base_pixel + i] = upper_bit | lower_bit;
                     }
                 } else {    // Upper bit
-                    let base_pixel = (base - 1) * 4;
+                    let base = base - 1;
+                    let tile_x = (base % 0x100) / 0x10;
+                    let tile_y = base / 0x100;
+
+                    let pixel_row_num = (base / 2) % 8;
+
+                    let base_pixel = (tile_x * 8) + (tile_y * 64 * 16) + (pixel_row_num * 8 * 16);
+
                     for i in 0..8 {
                         let upper_bit = (val >> (7 - i)) & 1;
                         let lower_bit = self.tile_mem.atlas[base_pixel + i] & 0b01;
@@ -324,3 +340,19 @@ impl MemDevice for VideoMem {
         }
     }
 }
+
+// Writing raw tile data explained:
+// We have to convert a number in the range (0x8000, 0x9800) to 8 adjacent pixels.
+// We then convert that 1D array of pixels to a 2D image (the texture atlas).
+// The image is 16x24 tiles, and each tile is 8x8 pixels. So the total size is 128x192 pixels.
+// As explained in tilemem.rs (in hex):
+    // the tile x coord is nibble xxXx
+    // the tile y coord is nibble xXxx
+    // the row is 2 bytes of nibble xxxX
+// The first 128 bytes (pixels) of the atlas is the first row of the first 16 tiles.
+// So to get the exact pixel:
+    // Subtract 0x8000 (ignore the top nibble)
+    // Get the tile x coord, multiply by 8 to get the x offset
+    // Get the row of the tile, multiply by (8x16) to get the inner tile y offset
+    // Get the tile y coord, multiply by (8x16x8) to get the tile y offset
+    // And then just add these offsets together as we are working with a 1D array.
