@@ -15,4 +15,4 @@ cgmath = "0.17"
 bitflags = "1.1"
 
 [features]
-test = []
+debug = []

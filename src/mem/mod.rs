@@ -150,6 +150,11 @@ impl MemDevice for MemBus {
     }
 
     fn write(&mut self, loc: u16, val: u8) {
+        if loc == 0xFF01 {
+            println!("Writing {} to SB", val as char);
+        } else if loc == 0xFFFF {
+            println!("Interrupt enable: {:X}", val);
+        }
         match loc {
             0x0000...0x7FFF => self.cart.write(loc, val),
             0x8000...0x9FFF => self.video_device.write(loc, val),

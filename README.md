@@ -2,15 +2,16 @@
 
 Game Boy emulator written in Rust.
 
+### Debug Mode
+The emulator can be built in debug mode by enabling the `debug` feature at compile time: `cargo run --features "debug" -- [cart_name]`
 
 ## TODO:
 * General cleanup
-* Use bitflags library
 
 ### TODO video:
-* Implement in vulkan
 * Sprites
 * Tests
+* Wraparound
 
 ### TODO audio:
 * Test wave/noise generators

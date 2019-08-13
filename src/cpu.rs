@@ -18,7 +18,7 @@ bitflags! {
     pub struct CPUFlags: u8 {
         const ZERO  = 0b10000000;
         const NEG   = 0b01000000;
-        const HI    = 0b00100000;
+        const HC    = 0b00100000;
         const CARRY = 0b00010000;
     }
 }
@@ -123,7 +123,7 @@ impl CPU {
             e:      0xD8,
             h:      0x01,
             l:      0x4D,
-            flags:  CPUFlags::ZERO | CPUFlags::HI | CPUFlags::CARRY,
+            flags:  CPUFlags::ZERO | CPUFlags::HC | CPUFlags::CARRY,
             ime:    true,
             cont:   true,
             sp:     0xFFFE,
@@ -168,6 +168,7 @@ impl CPU {
             self.ime = false;
             self.cont = true;
 
+            println!("Interrupt!");
             if interrupts.contains(InterruptFlags::V_BLANK) {
                 self.mem.clear_interrupt_flag(InterruptFlags::V_BLANK);
                 self.call(Cond::AL, int::V_BLANK_VECT);
@@ -526,7 +527,7 @@ impl CPU {
         let offset = imm as i8;
         let result = (self.sp as i32) + (offset as i32);
         self.flags = CPUFlags::default();
-        self.flags.set(CPUFlags::HI, result > 0xF);
+        self.flags.set(CPUFlags::HC, result > 0xF);
         self.flags.set(CPUFlags::CARRY, result > 0xFFFF);
         result as u16
     }
@@ -561,7 +562,7 @@ impl CPU {
         let result = (self.a as u16) + (op as u16) + c;
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, (result & 0xFF) == 0);
-        self.flags.set(CPUFlags::HI, result > 0xF);
+        self.flags.set(CPUFlags::HC, result > 0xF);
         self.flags.set(CPUFlags::CARRY, result > 0xFF);
         self.a = result as u8;
     }
@@ -570,7 +571,7 @@ impl CPU {
         self.cycle_count += 4;
         let result = (self.get_16(Reg::HL) as u32) + (op as u32);
         self.flags.remove(CPUFlags::NEG);
-        self.flags.set(CPUFlags::HI, result > 0xF);
+        self.flags.set(CPUFlags::HC, result > 0xF);
         self.flags.set(CPUFlags::CARRY, result > 0xFFFF);
         self.set_16(Reg::HL, result as u16);
     }
@@ -580,14 +581,14 @@ impl CPU {
         let result = (self.a as i16) - (op as i16) - c;
         self.flags = CPUFlags::NEG;
         self.flags.set(CPUFlags::ZERO, result == 0);
-        self.flags.set(CPUFlags::HI, result < 0x10);
+        self.flags.set(CPUFlags::HC, result < 0x10);
         self.flags.set(CPUFlags::CARRY, result < 0);
         self.a = result as u8;
     }
 
     fn and(&mut self, op: u8) {
         let result = self.a & op;
-        self.flags = CPUFlags::HI;
+        self.flags = CPUFlags::HC;
         self.flags.set(CPUFlags::ZERO, result == 0);
         self.a = result;
     }
@@ -610,7 +611,7 @@ impl CPU {
         let result = (self.a as i16) - (op as i16);
         self.flags = CPUFlags::NEG;
         self.flags.set(CPUFlags::ZERO, result == 0);
-        self.flags.set(CPUFlags::HI, result < 0x10);
+        self.flags.set(CPUFlags::HC, result < 0x10);
         self.flags.set(CPUFlags::CARRY, result < 0);
         self.a = result as u8;
     }
@@ -620,7 +621,7 @@ impl CPU {
         let result = (op as u16) + 1;
         self.flags.remove(CPUFlags::NEG);
         self.flags.set(CPUFlags::ZERO, (result & 0xFF) == 0);
-        self.flags.set(CPUFlags::HI, result > 0xF);
+        self.flags.set(CPUFlags::HC, result > 0xF);
         result as u8
     }
 
@@ -628,7 +629,7 @@ impl CPU {
         let result = ((op as i16) - 1) as i8;
         self.flags.insert(CPUFlags::NEG);
         self.flags.set(CPUFlags::ZERO, result == 0);
-        self.flags.set(CPUFlags::HI, result < 0x10);
+        self.flags.set(CPUFlags::HC, result < 0x10);
         result as u8
     }
 
@@ -648,14 +649,14 @@ impl CPU {
     fn daa(&mut self) {
         let lo_nib = (self.a & 0xF) as u16;
         let hi_nib = (self.a & 0xF0) as u16;
-        let lo_inc = match (lo_nib, self.flags.contains(CPUFlags::NEG), self.flags.contains(CPUFlags::HI)) {
+        let lo_inc = match (lo_nib, self.flags.contains(CPUFlags::NEG), self.flags.contains(CPUFlags::HC)) {
             // TODO: improve matches
             (10...15,false,false) => 0x06,
             (0...3,false,true) => 0x06,
             (6...15,true,true) => 0x0A,
             _ => 0x00,
         };
-        let hi_inc = match (hi_nib, self.flags.contains(CPUFlags::CARRY), self.flags.contains(CPUFlags::NEG), self.flags.contains(CPUFlags::HI)) {
+        let hi_inc = match (hi_nib, self.flags.contains(CPUFlags::CARRY), self.flags.contains(CPUFlags::NEG), self.flags.contains(CPUFlags::HC)) {
             // TODO: improve matches
             (10...15,false,false,_) => 0x60,
             (9...15,false,false,false) if lo_inc==6 => 0x60,
@@ -668,13 +669,13 @@ impl CPU {
         };
         let result = (hi_nib | lo_nib) + lo_inc + hi_inc;
         self.flags.set(CPUFlags::ZERO, (result & 0xFF) == 0);
-        self.flags.remove(CPUFlags::HI);
+        self.flags.remove(CPUFlags::HC);
         self.flags.set(CPUFlags::CARRY, result > 0xFF);
         self.a = (result & 0xFF) as u8;
     }
 
     fn cpl(&mut self) {
-        self.flags.insert(CPUFlags::NEG | CPUFlags::HI);
+        self.flags.insert(CPUFlags::NEG | CPUFlags::HC);
         self.a = self.a ^ 0xFF;
     }
 
@@ -822,18 +823,18 @@ impl CPU {
     fn bit(&mut self, b: u8, op: u8) -> Option<u8> {
         self.flags.set(CPUFlags::ZERO, (op & (1 << b)) == 0);
         self.flags.remove(CPUFlags::NEG);
-        self.flags.insert(CPUFlags::HI);
+        self.flags.insert(CPUFlags::HC);
         None
     }
 
     // Control commands
     fn scf(&mut self) {
-        self.flags.remove(CPUFlags::NEG | CPUFlags::HI);
+        self.flags.remove(CPUFlags::NEG | CPUFlags::HC);
         self.flags.insert(CPUFlags::CARRY);
     }
 
     fn ccf(&mut self) {
-        self.flags.remove(CPUFlags::NEG | CPUFlags::HI);
+        self.flags.remove(CPUFlags::NEG | CPUFlags::HC);
         self.flags.toggle(CPUFlags::CARRY);
     }
 
@@ -901,20 +902,29 @@ impl CPU {
     }
 }
 
-
-// TEST
 impl CPU {
-    pub fn to_string(&self) -> String {
-        format!("a:{:X} b:{:X} c:{:X} d:{:X} e:{:X} h:{:X} l:{:X}\n\
-                zhnc:{:b}\n\
-                pc:{:X} sp:{:X}",
-                self.a, self.b, self.c, self.d, self.e, self.h, self.l,
-                self.flags.bits(),
-                self.pc, self.sp)
+    #[cfg(feature = "debug")]
+    pub fn get_state(&self) -> crate::debug::CPUState {
+        crate::debug::CPUState {
+            a: self.a,
+            b: self.b,
+            c: self.c,
+            d: self.d,
+            e: self.e,
+            h: self.h,
+            l: self.l,
+            flags: self.flags.bits(),
+            pc: self.pc,
+            sp: self.sp
+        }
     }
 
-    pub fn test_mem(&self, loc: u16) -> String {
-        let data = self.mem.read(loc);
-        format!("data at {:X}:{:X}", loc, data)
+    #[cfg(feature = "debug")]
+    pub fn get_instr(&self) -> [u8; 3] {
+        [
+            self.mem.read(self.pc),
+            self.mem.read(self.pc + 1),
+            self.mem.read(self.pc + 2)
+        ]
     }
 }
