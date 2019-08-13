@@ -1,5 +1,5 @@
 target
-testcart.gb
+*.gb
 test/
 /.DS_Store
 *.txt

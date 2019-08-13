@@ -136,7 +136,7 @@ impl MemDevice for AudioDevice {
     }
 
     fn write(&mut self, loc: u16, val: u8) {
-        println!("Writing {:X} to {:X}", val, loc);
+        //println!("Writing {:X} to {:X}", val, loc);
         match loc {
             0xFF10  => self.nr1.write_nrx0(val),
             0xFF11  => self.nr1.write_nrx1(val),

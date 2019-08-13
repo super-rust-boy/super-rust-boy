@@ -30,25 +30,64 @@ const OFFSET_FRAC_Y: f32 = (MAP_SIZE as f32 / VIEW_HEIGHT as f32) / 256.0;  // M
 bitflags! {
     #[derive(Default)]
     struct LCDControl: u8 {
-        const Enable                = 0b10000000;
-        const WindowTileMapSelect   = 0b01000000;
-        const WindowDisplayEnable   = 0b00100000;
-        const TileDataSelect        = 0b00010000;
-        const BGTileMapSelect       = 0b00001000;
-        const ObjSize               = 0b00000100;
-        const ObjDisplayEnable      = 0b00000010;
-        const DisplayPriority       = 0b00000001;
+        const ENABLE                    = 0b10000000;
+        const WINDOW_TILE_MAP_SELECT    = 0b01000000;
+        const WINDOW_DISPLAY_ENABLE     = 0b00100000;
+        const TILE_DATA_SELECT          = 0b00010000;
+        const BG_TILE_MAP_SELECT        = 0b00001000;
+        const OBJ_SIZE                  = 0b00000100;
+        const OBJ_DISPLAY_ENABLE        = 0b00000010;
+        const DISPLAY_PRIORITY          = 0b00000001;
     }
 }
 
 bitflags! {
     #[derive(Default)]
-    struct LCDStatus: u8 {
-        const CoincedenceInt        = 0b01000000;
-        const OAMInt                = 0b00100000;
-        const VBlankInt             = 0b00010000;
-        const HBlankInt             = 0b00001000;
-        const CoincedenceFlag       = 0b00000100;
+    pub struct LCDStatusFlags: u8 {
+        const COINCEDENCE_INT   = 0b01000000;
+        const OAM_INT           = 0b00100000;
+        const V_BLANK_INT       = 0b00010000;
+        const H_BLANK_INT       = 0b00001000;
+        const COINCEDENCE_FLAG  = 0b00000100;
+    }
+}
+
+pub struct LCDStatus {
+    flags: LCDStatusFlags,
+    video_mode: super::constants::Mode,
+}
+
+impl LCDStatus {
+    fn new() -> Self {
+        LCDStatus {
+            flags: LCDStatusFlags::default(),
+            video_mode: super::constants::Mode::_2
+        }
+    }
+
+    fn read(&self) -> u8 {
+        self.flags.bits() | self.video_mode.clone() as u8
+    }
+
+    fn write(&mut self, val: u8) {
+        self.flags = LCDStatusFlags::from_bits_truncate(val);
+        self.video_mode = super::constants::Mode::from(val);
+    }
+
+    pub fn read_flags(&self) -> LCDStatusFlags {
+        self.flags
+    }
+
+    pub fn write_flags(&mut self, flags: LCDStatusFlags) {
+        self.flags = flags;
+    }
+
+    pub fn read_mode(&self) -> super::constants::Mode {
+        self.video_mode.clone()
+    }
+
+    pub fn write_mode(&mut self, mode: super::constants::Mode) {
+        self.video_mode = mode;
     }
 }
 
@@ -62,11 +101,11 @@ pub struct VideoMem {
 
     // Flags / registers
     lcd_control: LCDControl,
-    lcd_status: LCDStatus,
+    pub lcd_status: LCDStatus,
     scroll_y: u8,
     scroll_x: u8,
-    lcdc_y: u8,
-    ly_compare: u8,
+    pub lcdc_y: u8,
+    pub ly_compare: u8,
 
     bg_palette: Palette,
     obj_0_palette: Palette,
@@ -80,11 +119,11 @@ impl VideoMem {
     pub fn new(device: &Arc<Device>) -> Self {
         VideoMem {
             tile_mem: TileAtlas::new((TILE_DATA_WIDTH, TILE_DATA_HEIGHT), TILE_SIZE),
-            tile_map_0: VertexGrid::new(device, (VIEW_WIDTH, VIEW_HEIGHT), (TILE_DATA_WIDTH, TILE_DATA_HEIGHT), (MAP_SIZE, MAP_SIZE)),
-            tile_map_1: VertexGrid::new(device, (VIEW_WIDTH, VIEW_HEIGHT), (TILE_DATA_WIDTH, TILE_DATA_HEIGHT), (MAP_SIZE, MAP_SIZE)),
+            tile_map_0: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT), (TILE_DATA_WIDTH, TILE_DATA_HEIGHT)),
+            tile_map_1: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT), (TILE_DATA_WIDTH, TILE_DATA_HEIGHT)),
 
             lcd_control: LCDControl::default(),
-            lcd_status: LCDStatus::default(),
+            lcd_status: LCDStatus::new(),
             scroll_y: 0,
             scroll_x: 0,
             lcdc_y: 0,
@@ -101,7 +140,7 @@ impl VideoMem {
 
     // Get background vertices.
     pub fn get_background(&mut self) -> VertexBuffer {
-        if !self.lcd_control.contains(LCDControl::BGTileMapSelect) {
+        if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
             self.tile_map_0.get_vertex_buffer()
         } else {
             self.tile_map_1.get_vertex_buffer()
@@ -110,8 +149,8 @@ impl VideoMem {
 
     // Get window
     pub fn get_window(&mut self) -> Option<VertexBuffer> {
-        if self.lcd_control.contains(LCDControl::WindowDisplayEnable) {
-            Some(if !self.lcd_control.contains(LCDControl::WindowTileMapSelect) {
+        if self.lcd_control.contains(LCDControl::WINDOW_DISPLAY_ENABLE) {
+            Some(if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
                 self.tile_map_0.get_vertex_buffer()
             } else {
                 self.tile_map_1.get_vertex_buffer()
@@ -142,7 +181,7 @@ impl VideoMem {
     }
 
     pub fn get_tile_data_offset(&self) -> i32 {
-        if self.lcd_control.contains(LCDControl::TileDataSelect) {
+        if self.lcd_control.contains(LCDControl::TILE_DATA_SELECT) {
             0
         } else {
             256
@@ -152,6 +191,7 @@ impl VideoMem {
 
 impl MemDevice for VideoMem {
     fn read(&self, loc: u16) -> u8 {
+        //println!("Reading from {:X}", loc);
         match loc {
             // Raw tile data
             0x8000...0x97FF => {
@@ -185,11 +225,24 @@ impl MemDevice for VideoMem {
             0xFE00...0xFE9F => {
                 0
             },
+            // Registers
+            0xFF40 => self.lcd_control.bits(),
+            0xFF41 => self.lcd_status.read(),
+            0xFF42 => self.scroll_y,
+            0xFF43 => self.scroll_x,
+            0xFF44 => self.lcdc_y,
+            0xFF45 => self.ly_compare,
+            0xFF47 => self.bg_palette.read(),
+            0xFF48 => self.obj_0_palette.read(),
+            0xFF49 => self.obj_1_palette.read(),
+            0xFF4A => self.window_y,
+            0xFF4B => self.window_x,
             _ => 0
         }
     }
 
     fn write(&mut self, loc: u16, val: u8) {
+        //println!("Writing {:X} to {:X}", val, loc);
         match loc {
             // Raw tile data
             0x8000...0x97FF => {
@@ -231,6 +284,17 @@ impl MemDevice for VideoMem {
             0xFE00...0xFE9F => {
 
             },
+            0xFF40 => self.lcd_control = LCDControl::from_bits_truncate(val),
+            0xFF41 => self.lcd_status.write(val),
+            0xFF42 => self.scroll_y = val,
+            0xFF43 => self.scroll_x = val,
+            0xFF44 => self.lcdc_y = 0,
+            0xFF45 => self.ly_compare = val,
+            0xFF47 => self.bg_palette.write(val),
+            0xFF48 => self.obj_0_palette.write(val),
+            0xFF49 => self.obj_1_palette.write(val),
+            0xFF4A => self.window_y = val,
+            0xFF4B => self.window_x = val,
             _ => {}
         }
     }

@@ -203,7 +203,7 @@ impl Renderer {
         //Box::new(now(device.clone()).join(palette_future)) as Box<GpuFuture>;
 
         Renderer {
-            device: device,
+            device: device.clone(),
             queue: queue,
             pipeline: pipeline,
             render_pass: render_pass,
@@ -221,20 +221,16 @@ impl Renderer {
 
     // Re-create the swapchain and framebuffers.
     pub fn create_swapchain(&mut self) {
-        let caps = self.surface.capabilities(self.device.physical_device())
-                .expect("Failed to get surface capabilities");
-        let dimensions = caps.current_extent.unwrap_or([512, 512]);
+        let window = self.surface.window();
+        let dimensions = if let Some(dimensions) = window.get_inner_size() {
+            let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+            [dimensions.0, dimensions.1]
+        } else {
+            return;
+        };
 
         // Get a swapchain and images for use with the swapchain.
-        let (swapchain, images) = {
-            let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-            let format = caps.supported_formats[0].0;
-
-            Swapchain::new(self.device.clone(), self.surface.clone(),
-                caps.min_image_count, format, dimensions, 1, caps.supported_usage_flags, &self.queue,
-                SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, None
-            ).expect("Failed to create swapchain")
-        };
+        let (new_swapchain, images) = self.swapchain.recreate_with_dimension(dimensions).unwrap();
 
         let viewport = Viewport {
             origin: [0.0, 0.0],
@@ -252,7 +248,7 @@ impl Renderer {
             ) as Arc<FramebufferAbstract + Send + Sync>
         }).collect::<Vec<_>>();
 
-        self.swapchain = swapchain;
+        self.swapchain = new_swapchain;
     }
 
     // Render a frame
@@ -268,14 +264,14 @@ impl Renderer {
         let (image, write_future) = video_mem.get_tile_atlas(self.queue.clone());
 
         // Make descriptor set to bind texture atlas.
-        let set0 = self.set_pools[0].next()
+        let set0 = Arc::new(self.set_pools[0].next()
             .add_sampled_image(image.clone(), self.sampler.clone()).unwrap()
-            .build().unwrap();
+            .build().unwrap());
 
         // Make descriptor set for palettes.
-        let set1 = self.set_pools[1].next()
+        let set1 = Arc::new(self.set_pools[1].next()
             .add_buffer(video_mem.get_palette_buffer().clone()).unwrap()
-            .build().unwrap();
+            .build().unwrap());
         
         // Start building command buffer using pipeline and framebuffer, starting with the background vertices.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap()
@@ -284,17 +280,17 @@ impl Renderer {
                 self.pipeline.clone(),
                 &self.dynamic_state,
                 video_mem.get_background().clone(),
-                (set0, set1),
+                (set0.clone(), set1.clone()),
                 PushConstants {vertex_offset: video_mem.get_bg_scroll(), tex_offset: video_mem.get_tile_data_offset()}
             ).unwrap();
 
         // Add the window if it is enabled.
         if let Some(window_vertices) = video_mem.get_window() {
-            command_buffer_builder.draw(
+            command_buffer_builder = command_buffer_builder.draw(
                 self.pipeline.clone(),
                 &self.dynamic_state,
                 window_vertices.clone(),
-                (set0, set1),
+                (set0.clone(), set1.clone()),
                 PushConstants {vertex_offset: video_mem.get_window_position(), tex_offset: video_mem.get_tile_data_offset()}
             ).unwrap();
         }

@@ -3,17 +3,46 @@ mod joypad;
 mod renderer;
 mod shaders;
 
+// Video mode constants
+mod constants {
+    // Mode cycle counts
+    pub const H_CYCLES: u32     = 456;
+    pub const MODE_1: u32       = 154 * H_CYCLES;
+    pub const MODE_2: u32       = 80;
+    pub const MODE_3: u32       = MODE_2 + 172;
+    pub const FRAME_CYCLE: u32  = 144 * H_CYCLES;
+
+    // Modes
+    #[derive(PartialEq, Debug, Clone)]
+    pub enum Mode {
+        _0 = 0, // H-blank
+        _1 = 1, // V-blank
+        _2 = 2, // Reading
+        _3 = 3  // Drawing
+    }
+
+    impl From<u8> for Mode {
+        fn from(val: u8) -> Self {
+            match val & 0b11 {
+                0 => Mode::_0,
+                1 => Mode::_1,
+                2 => Mode::_2,
+                _ => Mode::_3
+            }
+        }
+    }
+}
+
 use winit::{
     EventsLoop,
     Event,
     WindowEvent,
-    KeyboardInput,
     ElementState,
     ControlFlow,
     VirtualKeyCode
 };
 
-use crate::mem::MemDevice;
+use crate::mem::{InterruptFlags, MemDevice};
 
 use self::joypad::Joypad;
 use self::mem::VideoMem;
@@ -31,47 +60,15 @@ pub struct VideoDevice {
 impl MemDevice for VideoDevice {
     fn read(&self, loc: u16) -> u8 {
         match loc {
-            0x8000...0x97FF =>  self.raw_tile_mem[(loc - 0x8000) as usize],
-            0x9800...0x9FFF =>  self.tile_map_mem[(loc - 0x9800) as usize],
-            0xFE00...0xFE9F =>  self.sprite_mem[(loc - 0xFE00) as usize],
-
-            0xFF00 =>           self.joypad.read(),
-
-            0xFF40 =>           self.lcd_control_read(),
-            0xFF41 =>           self.lcd_status,
-            0xFF42 =>           self.scroll_y,
-            0xFF43 =>           self.scroll_x,
-            0xFF44 =>           self.lcdc_y,
-            0xFF45 =>           self.ly_compare,
-            0xFF47 =>           self.bg_palette.read(),
-            0xFF48 =>           self.obj_palette_0.read(),
-            0xFF49 =>           self.obj_palette_1.read(),
-            0xFF4A =>           self.window_y,
-            0xFF4B =>           self.window_x,
-            _ => 0,
+            0xFF00 =>   self.joypad.read(),
+            _ =>        self.mem.read(loc)
         }
     }
 
     fn write(&mut self, loc: u16, val: u8) {
         match loc {
-            0x8000...0x97FF =>  self.write_raw_tile(loc, val),
-            0x9800...0x9FFF =>  self.tile_map_mem[(loc - 0x9800) as usize] = val,
-            0xFE00...0xFE9F =>  self.sprite_mem[(loc - 0xFE00) as usize] = val,
-
-            0xFF00 =>           self.joypad.write(val),
-
-            0xFF40 =>           self.lcd_control_write(val),
-            0xFF41 =>           self.lcd_status = val,
-            0xFF42 =>           self.scroll_y = val,
-            0xFF43 =>           self.scroll_x = val,
-            0xFF44 =>           self.lcdc_y = 0,
-            0xFF45 =>           self.ly_compare = val,
-            0xFF47 =>           self.bg_palette.write(val),
-            0xFF48 =>           self.obj_palette_0.write(val),
-            0xFF49 =>           self.obj_palette_1.write(val),
-            0xFF4A =>           self.window_y = val,
-            0xFF4B =>           self.window_x = val,
-            _ => return,
+            0xFF00 =>   self.joypad.write(val),
+            _ =>        self.mem.write(loc, val)
         }
     }
 }
@@ -79,12 +76,13 @@ impl MemDevice for VideoDevice {
 impl VideoDevice {
     // Drawing for a single frame
     pub fn render_frame(&mut self) {
-        self.renderer.render(self.video_mem);
+        self.renderer.render(&mut self.mem);
     }
 
     // Read inputs and store
     pub fn read_inputs(&mut self) {
         let joypad = &mut self.joypad;
+        let renderer = &mut self.renderer;
 
         self.events_loop.poll_events(|e| {
             match e {
@@ -116,7 +114,7 @@ impl VideoDevice {
                         }
                     },
                     WindowEvent::Resized(_) => {
-                        self.renderer.create_swapchain();
+                        renderer.create_swapchain();
                     },
                     _ => {}
                 },
@@ -125,12 +123,86 @@ impl VideoDevice {
         });
     }
 
+    // Set the current video mode based on the cycle count.
+    // May trigger an interrupt.
+    pub fn video_mode(&mut self, cycle_count: &mut u32) -> (bool, InterruptFlags) {
+        use self::constants::*;
+
+        let frame_cycle = *cycle_count % H_CYCLES;
+        let int = match self.mem.lcd_status.read_mode() {
+            Mode::_2 => if frame_cycle >= MODE_2 {
+                self.update_mode(Mode::_3)
+            } else { InterruptFlags::default() },
+            Mode::_3 => if frame_cycle >= MODE_3 {
+                self.update_mode(Mode::_0)
+            } else { InterruptFlags::default() },
+            Mode::_0 => if *cycle_count >= FRAME_CYCLE {
+                self.inc_lcdc_y();
+                self.update_mode(Mode::_1) | InterruptFlags::V_BLANK
+            } else if frame_cycle < MODE_3 {
+                self.inc_lcdc_y();
+                self.update_mode(Mode::_2)
+            } else { InterruptFlags::default() },
+            Mode::_1 => if *cycle_count >= MODE_1 {
+                self.set_lcdc_y(0);
+                *cycle_count -= MODE_1;
+                self.update_mode(Mode::_2)
+            } else {
+                let new_ly = (*cycle_count / H_CYCLES) as u8;
+                self.set_lcdc_y(new_ly);
+                InterruptFlags::default()
+            },
+        };
+
+        (if int.contains(InterruptFlags::V_BLANK) {
+            false
+        } else {
+            true
+        }, int)
+    }
+
+    // Update status reg, Trigger LCDC Status interrupt if necessary
+    fn update_mode(&mut self, mode: constants::Mode) -> InterruptFlags {
+        use self::constants::*;
+        use mem::LCDStatusFlags;
+
+        self.mem.lcd_status.write_mode(mode.clone());
+        let stat_flags = self.mem.lcd_status.read_flags();
+
+        // Trigger STAT interrupt
+        if !stat_flags.is_empty() {
+            // LY Coincidence interrupt
+            if stat_flags.contains(LCDStatusFlags::COINCEDENCE_INT) {
+                let ly = self.mem.lcdc_y;
+                let lyc = self.mem.ly_compare;
+                if (stat_flags.contains(LCDStatusFlags::COINCEDENCE_FLAG) && (ly == lyc)) ||
+                   (!stat_flags.contains(LCDStatusFlags::COINCEDENCE_FLAG) && (ly != lyc)) {
+                    return InterruptFlags::LCD_STAT;
+                }
+            } else if stat_flags.contains(LCDStatusFlags::OAM_INT) {
+                if mode == Mode::_2 {
+                    return InterruptFlags::LCD_STAT;
+                }
+            } else if stat_flags.contains(LCDStatusFlags::V_BLANK_INT) {
+                if mode == Mode::_1 {
+                    return InterruptFlags::LCD_STAT;
+                }
+            } else if stat_flags.contains(LCDStatusFlags::H_BLANK_INT) {
+                if mode == Mode::_0 {
+                    return InterruptFlags::LCD_STAT;
+                }
+            }
+        }
+
+        InterruptFlags::default()
+    }
+
     pub fn inc_lcdc_y(&mut self) {
-        self.lcdc_y += 1;
+        self.mem.lcdc_y += 1;
     }
 
     pub fn set_lcdc_y(&mut self, val: u8) {
-        self.lcdc_y = val;
+        self.mem.lcdc_y = val;
     }
 }
 

@@ -7,6 +7,25 @@ use crate::audio::AudioDevice;
 use crate::timer::Timer;
 use cartridge::Cartridge;
 
+use bitflags::bitflags;
+
+
+bitflags! {
+    #[derive(Default)]
+    pub struct InterruptFlags: u8 {
+        const V_BLANK  = 1 << 0;
+        const LCD_STAT = 1 << 1;
+        const TIMER    = 1 << 2;
+        const SERIAL   = 1 << 3;
+        const JOYPAD   = 1 << 4;
+    }
+}
+
+pub trait MemDevice {
+    fn read(&self, loc: u16) -> u8;
+    fn write(&mut self, loc: u16, val: u8);
+}
+
 pub struct MemBus {
     cart:           Cartridge,
 
@@ -14,7 +33,7 @@ pub struct MemBus {
     ram:            WriteableMem,
     high_ram:       WriteableMem,
 
-    interrupt_reg:  u8,
+    interrupt_reg:  InterruptFlags,
 
     video_device:   VideoDevice,
 
@@ -35,74 +54,34 @@ impl MemBus {
             ram_bank:       WriteableMem::new(0x2000),
             ram:            WriteableMem::new(0x2000),
             high_ram:       WriteableMem::new(0x80),
-            interrupt_reg:  0,
+            interrupt_reg:  InterruptFlags::default(),
             video_device:   video_device,
             audio_device:   audio_device,
             timer:          Timer::new(),
         }
     }
 
-    pub fn read(&self, loc: u16) -> u8 {
-        match loc {
-            0x0000...0x7FFF => self.cart.read(loc),
-            0x8000...0x9FFF => self.video_device.read(loc),
-            0xA000...0xBFFF => self.cart.read(loc),
-            0xC000...0xDFFF => self.ram.read(loc - 0xC000),
-            0xE000...0xFDFF => self.ram.read(loc - 0xE000),
-            0xFE00...0xFE9F => self.video_device.read(loc),
-            0xFF00          => self.video_device.read(loc),
-            0xFF04...0xFF07 => self.timer.read(loc),
-            0xFF0F          => self.interrupt_reg,
-            0xFF10...0xFF3F => self.audio_device.read(loc),
-            0xFF40...0xFF4B => self.video_device.read(loc),
-            0xFF80...0xFFFF => self.high_ram.read(loc - 0xFF80),
-            _ => self.ram.read(0),
-        }
-    }
-
-    pub fn write(&mut self, loc: u16, val: u8) {
-        match loc {
-            0x0000...0x7FFF => self.cart.write(loc, val),
-            0x8000...0x9FFF => self.video_device.write(loc, val),
-            0xA000...0xBFFF => self.cart.write(loc, val),
-            0xC000...0xDFFF => self.ram.write(loc - 0xC000, val),
-            0xE000...0xFDFF => self.ram.write(loc - 0xE000, val),
-            0xFE00...0xFE9F => self.video_device.write(loc, val),
-            0xFF00          => self.video_device.write(loc, val),
-            0xFF04...0xFF07 => self.timer.write(loc, val),    
-            0xFF0F          => self.interrupt_reg = val,
-            0xFF10...0xFF3F => self.audio_device.write(loc, val),
-            0xFF40...0xFF45 => self.video_device.write(loc, val), 
-            0xFF46          => self.dma(val),
-            0xFF47...0xFF4B => self.video_device.write(loc, val),
-            0xFF80...0xFFFF => self.high_ram.write(loc - 0xFF80, val),
-            _ => {},
-        }
-
-        //#[cfg(feature = "test")]
-        //self.update_debug_string(loc);
-    }
-
     pub fn render_frame(&mut self) {
-        self.audio_device.frame_update();
+        //self.audio_device.frame_update();
         self.video_device.render_frame();
+    }
+
+    pub fn update_timers(&mut self, clock_count: u32) {
+        self.audio_device.send_update(clock_count);
+        if self.timer.update_timers(clock_count) {
+            self.interrupt_reg.insert(InterruptFlags::TIMER);
+        }
+    }
+
+    // Set the current video mode based on the cycle count.
+    pub fn video_mode(&mut self, cycle_count: &mut u32) -> bool {
+        let (ret, int) = self.video_device.video_mode(cycle_count);
+        self.interrupt_reg.insert(int);
+        ret
     }
 
     pub fn read_inputs(&mut self) {
         self.video_device.read_inputs();
-    }
-
-    pub fn inc_lcdc_y(&mut self) {
-        self.video_device.inc_lcdc_y();
-    }
-
-    pub fn set_lcdc_y(&mut self, val: u8) {
-        self.video_device.set_lcdc_y(val);
-    }
-
-    pub fn update_timers(&mut self, clock_count: u32) -> bool {
-        self.audio_device.send_update(clock_count);
-        self.timer.update_timers(clock_count)
     }
 
     fn dma(&mut self, val: u8) {
@@ -138,12 +117,48 @@ impl MemBus {
     }*/
 }
 
+impl MemDevice for MemBus {
+    fn read(&self, loc: u16) -> u8 {
+        match loc {
+            0x0000...0x7FFF => self.cart.read(loc),
+            0x8000...0x9FFF => self.video_device.read(loc),
+            0xA000...0xBFFF => self.cart.read(loc),
+            0xC000...0xDFFF => self.ram.read(loc - 0xC000),
+            0xE000...0xFDFF => self.ram.read(loc - 0xE000),
+            0xFE00...0xFE9F => self.video_device.read(loc),
+            0xFF00          => self.video_device.read(loc),
+            0xFF04...0xFF07 => self.timer.read(loc),
+            0xFF0F          => self.interrupt_reg.bits(),
+            0xFF10...0xFF3F => self.audio_device.read(loc),
+            0xFF40...0xFF4B => self.video_device.read(loc),
+            0xFF80...0xFFFF => self.high_ram.read(loc - 0xFF80),
+            _ => self.ram.read(0),
+        }
+    }
 
-pub trait MemDevice {
-    fn read(&self, loc: u16) -> u8;
-    fn write(&mut self, loc: u16, val: u8);
+    fn write(&mut self, loc: u16, val: u8) {
+        match loc {
+            0x0000...0x7FFF => self.cart.write(loc, val),
+            0x8000...0x9FFF => self.video_device.write(loc, val),
+            0xA000...0xBFFF => self.cart.write(loc, val),
+            0xC000...0xDFFF => self.ram.write(loc - 0xC000, val),
+            0xE000...0xFDFF => self.ram.write(loc - 0xE000, val),
+            0xFE00...0xFE9F => self.video_device.write(loc, val),
+            0xFF00          => self.video_device.write(loc, val),
+            0xFF04...0xFF07 => self.timer.write(loc, val),    
+            0xFF0F          => self.interrupt_reg = InterruptFlags::from_bits_truncate(val),
+            0xFF10...0xFF3F => self.audio_device.write(loc, val),
+            0xFF40...0xFF45 => self.video_device.write(loc, val), 
+            0xFF46          => self.dma(val),
+            0xFF47...0xFF4B => self.video_device.write(loc, val),
+            0xFF80...0xFFFF => self.high_ram.write(loc - 0xFF80, val),
+            _ => {},
+        }
+
+        //#[cfg(feature = "test")]
+        //self.update_debug_string(loc);
+    }
 }
-
 
 struct WriteableMem {
     mem: Vec<u8>,

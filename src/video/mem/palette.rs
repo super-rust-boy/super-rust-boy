@@ -10,8 +10,6 @@ use cgmath::{
     Vector4
 };
 
-use crate::mem::MemDevice;
-
 use std::sync::Arc;
 
 pub type PaletteBuffer = CpuBufferPoolSubbuffer<Matrix4<f32>, Arc<StdMemoryPool>>;
@@ -42,12 +40,16 @@ impl Palette {
         if let Some(buf) = &self.current_buffer {
             buf.clone()
         } else {
+            let colour_0 = self.raw & 0b00000011;
+            let colour_1 = (self.raw & 0b00001100) >> 2;
+            let colour_2 = (self.raw & 0b00110000) >> 4;
+            let colour_3 = (self.raw & 0b11000000) >> 6;
             let buf = self.buffer_pool.next(
                 Matrix4::from_cols(
-                    self.colours[(self.raw & 0b00000011) as usize],
-                    self.colours[(self.raw & 0b00001100) as usize],
-                    self.colours[(self.raw & 0b00110000) as usize],
-                    self.colours[(self.raw & 0b11000000) as usize]
+                    self.colours[colour_0 as usize],
+                    self.colours[colour_1 as usize],
+                    self.colours[colour_2 as usize],
+                    self.colours[colour_3 as usize]
                 )
             ).unwrap();
             self.current_buffer = Some(buf.clone());
@@ -59,12 +61,15 @@ impl Palette {
         if let Some(buf) = &self.current_buffer {
             buf.clone()
         } else {
+            let colour_1 = (self.raw & 0b00001100) >> 2;
+            let colour_2 = (self.raw & 0b00110000) >> 4;
+            let colour_3 = (self.raw & 0b11000000) >> 6;
             let buf = self.buffer_pool.next(
                 Matrix4::from_cols(
                     Vector4::new(0.0, 0.0, 0.0, 0.0),
-                    self.colours[(self.raw & 0b00001100) as usize],
-                    self.colours[(self.raw & 0b00110000) as usize],
-                    self.colours[(self.raw & 0b11000000) as usize]
+                    self.colours[colour_1 as usize],
+                    self.colours[colour_2 as usize],
+                    self.colours[colour_3 as usize]
                 )
             ).unwrap();
             self.current_buffer = Some(buf.clone());
@@ -73,12 +78,12 @@ impl Palette {
     }
 }
 
-impl MemDevice for Palette {
-    fn read(&self, loc: u16) -> u8 {
+impl Palette {
+    pub fn read(&self) -> u8 {
         self.raw
     }
 
-    fn write(&mut self, loc: u16, val: u8) {
+    pub fn write(&mut self, val: u8) {
         self.raw = val;
         self.current_buffer = None;
     }

@@ -1,6 +1,6 @@
 // CPU Module
 
-use crate::mem::MemBus;
+use crate::mem::{MemBus, MemDevice};
 
 // Interrupt constants
 mod int {
@@ -21,26 +21,6 @@ mod int {
     pub const SERIAL_VECT: u16   = 0x0058;
     pub const JOYPAD_VECT: u16   = 0x0060;
 }
-
-// Video mode constants
-mod video {
-    // Mode cycle counts
-    pub const H_CYCLES: u32     = 456;
-    pub const MODE_1: u32       = 154 * H_CYCLES;
-    pub const MODE_2: u32       = 80;
-    pub const MODE_3: u32       = MODE_2 + 172;
-    pub const FRAME_CYCLE: u32  = 144 * H_CYCLES;
-
-    // Modes
-    #[derive(PartialEq, Debug)]
-    pub enum Mode {
-        _0, // H-blank
-        _1, // V-blank
-        _2, // Reading
-        _3  // Drawing
-    }
-}
-
 
 // LR35902 CPU
 pub struct CPU {
@@ -74,7 +54,6 @@ pub struct CPU {
 
     // Internals
     cycle_count: u32,
-    video_mode: video::Mode,
 }
 
 
@@ -156,7 +135,6 @@ impl CPU {
             pc:     0x100,
             mem:    mem,
             cycle_count: 0,
-            video_mode: video::Mode::_2,
         }
     }
 
@@ -164,7 +142,7 @@ impl CPU {
     // If it returns true, keep stepping.
     // If it returns false, wait.
     pub fn step(&mut self) -> bool {
-        if !self.video_mode() {
+        if !self.mem.video_mode(&mut self.cycle_count) {
             return false;   // Wait until frame is ready.
         }
 
@@ -172,9 +150,7 @@ impl CPU {
             return true;
         }
 
-        if self.mem.update_timers(self.cycle_count) {
-            self.trigger_interrupt(int::TIMER);
-        }
+        self.mem.update_timers(self.cycle_count);
 
         // Keep cycling
         if !self.cont {
@@ -186,81 +162,6 @@ impl CPU {
         self.exec_instruction();
 
         return true;
-    }
-
-    // Set the current video mode based on the cycle count.
-    fn video_mode(&mut self) -> bool {
-        use self::video::*;
-
-        let frame_cycle = self.cycle_count % H_CYCLES;
-        match self.video_mode {
-            Mode::_2 => if frame_cycle >= MODE_2 {
-                self.update_mode(Mode::_3);
-            },
-            Mode::_3 => if frame_cycle >= MODE_3 {
-                self.update_mode(Mode::_0);
-            },
-            Mode::_0 => if self.cycle_count >= FRAME_CYCLE {
-                self.mem.inc_lcdc_y();
-                self.update_mode(Mode::_1);
-                self.trigger_interrupt(int::V_BLANK);
-                return false;
-            } else if frame_cycle < MODE_3 {
-                self.mem.inc_lcdc_y();
-                self.update_mode(Mode::_2);
-            },
-            Mode::_1 => if self.cycle_count >= MODE_1 {
-                self.mem.set_lcdc_y(0);
-                self.update_mode(Mode::_2);
-                self.cycle_count -= MODE_1;
-            } else {
-                let new_ly = (self.cycle_count / H_CYCLES) as u8;
-                self.mem.set_lcdc_y(new_ly);
-            },
-        }
-
-        return true;
-    }
-
-    // Update status reg, Trigger LCDC Status interrupt if necessary
-    fn update_mode(&mut self, mode: video::Mode) {
-        use self::video::*;
-        self.video_mode = mode;
-        let stat = self.mem.read(0xFF41);
-
-        // Trigger STAT interrupt
-        if (stat & 0x78) != 0 {
-            // LY Coincidence interrupt
-            if (stat & 0x40) != 0 {
-                let ly = self.mem.read(0xFF44);
-                let lyc = self.mem.read(0xFF45);
-                if (((stat & 0x4) != 0) && (ly == lyc)) ||
-                   (((stat & 0x4) == 0) && (ly != lyc)) {
-                    self.trigger_interrupt(int::LCD_STAT);
-                }
-            } else if (stat & 0x20) != 0 {
-                if self.video_mode == Mode::_2 {
-                    self.trigger_interrupt(int::LCD_STAT);
-                }
-            } else if (stat & 0x10) != 0 {
-                if self.video_mode == Mode::_1 {
-                    self.trigger_interrupt(int::LCD_STAT);
-                }
-            } else if (stat & 0x08) != 0 {
-                if self.video_mode == Mode::_0 {
-                    self.trigger_interrupt(int::LCD_STAT);
-                }
-            }
-        }
-
-        // Update STAT register
-        let new_stat = (stat & 0xFC) | match self.video_mode {
-            Mode::_0 => 0_u8,
-            Mode::_1 => 1_u8,
-            Mode::_2 => 2_u8,
-            Mode::_3 => 3_u8,
-        };
-        self.mem.write(0xFF41, new_stat);
     }
 
     // Check for interrupts and handle if any are enabled.
