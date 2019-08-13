@@ -27,19 +27,20 @@ pub trait MemDevice {
 }
 
 pub struct MemBus {
-    cart:           Cartridge,
+    cart:               Cartridge,
 
-    ram_bank:       WriteableMem,
-    ram:            WriteableMem,
-    high_ram:       WriteableMem,
+    ram_bank:           WriteableMem,
+    ram:                WriteableMem,
+    high_ram:           WriteableMem,
 
-    interrupt_reg:  InterruptFlags,
+    interrupt_flag:     InterruptFlags,
+    interrupt_enable:   InterruptFlags,
 
-    video_device:   VideoDevice,
+    video_device:       VideoDevice,
 
-    audio_device:   AudioDevice,
+    audio_device:       AudioDevice,
 
-    timer:          Timer,
+    timer:              Timer,
 }
 
 impl MemBus {
@@ -50,14 +51,15 @@ impl MemBus {
         };
 
         MemBus {
-            cart:           rom,
-            ram_bank:       WriteableMem::new(0x2000),
-            ram:            WriteableMem::new(0x2000),
-            high_ram:       WriteableMem::new(0x80),
-            interrupt_reg:  InterruptFlags::default(),
-            video_device:   video_device,
-            audio_device:   audio_device,
-            timer:          Timer::new(),
+            cart:               rom,
+            ram_bank:           WriteableMem::new(0x2000),
+            ram:                WriteableMem::new(0x2000),
+            high_ram:           WriteableMem::new(0x7F),
+            interrupt_flag:     InterruptFlags::default(),
+            interrupt_enable:   InterruptFlags::default(),
+            video_device:       video_device,
+            audio_device:       audio_device,
+            timer:              Timer::new(),
         }
     }
 
@@ -69,15 +71,25 @@ impl MemBus {
     pub fn update_timers(&mut self, clock_count: u32) {
         self.audio_device.send_update(clock_count);
         if self.timer.update_timers(clock_count) {
-            self.interrupt_reg.insert(InterruptFlags::TIMER);
+            self.interrupt_flag.insert(InterruptFlags::TIMER);
         }
     }
 
     // Set the current video mode based on the cycle count.
     pub fn video_mode(&mut self, cycle_count: &mut u32) -> bool {
         let (ret, int) = self.video_device.video_mode(cycle_count);
-        self.interrupt_reg.insert(int);
+        self.interrupt_flag.insert(int);
         ret
+    }
+
+    // Gets any interrupts that have been triggered and are enabled.
+    pub fn get_interrupts(&self) -> InterruptFlags {
+        self.interrupt_flag & self.interrupt_enable
+    }
+
+    // Clears an interrupt flag.
+    pub fn clear_interrupt_flag(&mut self, flag: InterruptFlags) {
+        self.interrupt_flag.remove(flag);
     }
 
     pub fn read_inputs(&mut self) {
@@ -128,10 +140,11 @@ impl MemDevice for MemBus {
             0xFE00...0xFE9F => self.video_device.read(loc),
             0xFF00          => self.video_device.read(loc),
             0xFF04...0xFF07 => self.timer.read(loc),
-            0xFF0F          => self.interrupt_reg.bits(),
+            0xFF0F          => self.interrupt_flag.bits(),
             0xFF10...0xFF3F => self.audio_device.read(loc),
             0xFF40...0xFF4B => self.video_device.read(loc),
-            0xFF80...0xFFFF => self.high_ram.read(loc - 0xFF80),
+            0xFF80...0xFFFE => self.high_ram.read(loc - 0xFF80),
+            0xFFFF          => self.interrupt_enable.bits(),
             _ => self.ram.read(0),
         }
     }
@@ -146,12 +159,13 @@ impl MemDevice for MemBus {
             0xFE00...0xFE9F => self.video_device.write(loc, val),
             0xFF00          => self.video_device.write(loc, val),
             0xFF04...0xFF07 => self.timer.write(loc, val),    
-            0xFF0F          => self.interrupt_reg = InterruptFlags::from_bits_truncate(val),
+            0xFF0F          => self.interrupt_flag = InterruptFlags::from_bits_truncate(val),
             0xFF10...0xFF3F => self.audio_device.write(loc, val),
             0xFF40...0xFF45 => self.video_device.write(loc, val), 
             0xFF46          => self.dma(val),
             0xFF47...0xFF4B => self.video_device.write(loc, val),
-            0xFF80...0xFFFF => self.high_ram.write(loc - 0xFF80, val),
+            0xFF80...0xFFFE => self.high_ram.write(loc - 0xFF80, val),
+            0xFFFF          => self.interrupt_enable = InterruptFlags::from_bits_truncate(val),
             _ => {},
         }
 
