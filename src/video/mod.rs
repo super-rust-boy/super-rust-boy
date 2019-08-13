@@ -11,24 +11,24 @@ mod constants {
     pub const MODE_2: u32       = 80;
     pub const MODE_3: u32       = MODE_2 + 172;
     pub const FRAME_CYCLE: u32  = 144 * H_CYCLES;
+}
 
-    // Modes
-    #[derive(PartialEq, Debug, Clone)]
-    pub enum Mode {
-        _0 = 0, // H-blank
-        _1 = 1, // V-blank
-        _2 = 2, // Reading
-        _3 = 3  // Drawing
-    }
+// Modes
+#[derive(PartialEq, Debug, Clone)]
+pub enum Mode {
+    _0 = 0, // H-blank
+    _1 = 1, // V-blank
+    _2 = 2, // Reading
+    _3 = 3  // Drawing
+}
 
-    impl From<u8> for Mode {
-        fn from(val: u8) -> Self {
-            match val & 0b11 {
-                0 => Mode::_0,
-                1 => Mode::_1,
-                2 => Mode::_2,
-                _ => Mode::_3
-            }
+impl From<u8> for Mode {
+    fn from(val: u8) -> Self {
+        match val & 0b11 {
+            0 => Mode::_0,
+            1 => Mode::_1,
+            2 => Mode::_2,
+            _ => Mode::_3
         }
     }
 }
@@ -137,19 +137,19 @@ impl VideoDevice {
                 self.update_mode(Mode::_0)
             } else { InterruptFlags::default() },
             Mode::_0 => if *cycle_count >= FRAME_CYCLE {
-                self.inc_lcdc_y();
+                self.mem.inc_lcdc_y();
                 self.update_mode(Mode::_1) | InterruptFlags::V_BLANK
             } else if frame_cycle < MODE_3 {
-                self.inc_lcdc_y();
+                self.mem.inc_lcdc_y();
                 self.update_mode(Mode::_2)
             } else { InterruptFlags::default() },
             Mode::_1 => if *cycle_count >= MODE_1 {
-                self.set_lcdc_y(0);
+                self.mem.set_lcdc_y(0);
                 *cycle_count -= MODE_1;
                 self.update_mode(Mode::_2)
             } else {
                 let new_ly = (*cycle_count / H_CYCLES) as u8;
-                self.set_lcdc_y(new_ly);
+                self.mem.set_lcdc_y(new_ly);
                 InterruptFlags::default()
             },
         };
@@ -162,8 +162,7 @@ impl VideoDevice {
     }
 
     // Update status reg, Trigger LCDC Status interrupt if necessary
-    fn update_mode(&mut self, mode: constants::Mode) -> InterruptFlags {
-        use self::constants::*;
+    fn update_mode(&mut self, mode: Mode) -> InterruptFlags {
         use mem::LCDStatusFlags;
 
         self.mem.lcd_status.write_mode(mode.clone());
@@ -173,10 +172,7 @@ impl VideoDevice {
         if !stat_flags.is_empty() {
             // LY Coincidence interrupt
             if stat_flags.contains(LCDStatusFlags::COINCEDENCE_INT) {
-                let ly = self.mem.lcdc_y;
-                let lyc = self.mem.ly_compare;
-                if (stat_flags.contains(LCDStatusFlags::COINCEDENCE_FLAG) && (ly == lyc)) ||
-                   (!stat_flags.contains(LCDStatusFlags::COINCEDENCE_FLAG) && (ly != lyc)) {
+                if stat_flags.contains(LCDStatusFlags::COINCEDENCE_FLAG) == self.mem.compare_ly_equal() {
                     return InterruptFlags::LCD_STAT;
                 }
             } else if stat_flags.contains(LCDStatusFlags::OAM_INT) {
@@ -195,14 +191,6 @@ impl VideoDevice {
         }
 
         InterruptFlags::default()
-    }
-
-    pub fn inc_lcdc_y(&mut self) {
-        self.mem.lcdc_y += 1;
-    }
-
-    pub fn set_lcdc_y(&mut self, val: u8) {
-        self.mem.lcdc_y = val;
     }
 }
 

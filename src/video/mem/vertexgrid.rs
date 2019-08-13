@@ -60,8 +60,9 @@ impl VertexGrid {
         }
     }
 
-    // Sets the tex coords for a tile.
+    // Sets the tex number for a tile.
     pub fn set_tile_texture(&mut self, tile_x: usize, tile_y: usize, tex_num: i32) {
+        //println!("Tile Map: Setting ({},{}) to {:X}", tile_x, tile_y, tex_num);
         let y_offset = tile_y * self.row_len * 6;
         let index = y_offset + (tile_x * 6);
 
@@ -71,6 +72,14 @@ impl VertexGrid {
 
         // Invalidate buffer chunk.
         self.current_buffer = None;
+    }
+
+    // Gets the tex number for a tile.
+    pub fn get_tile_texture(&self, tile_x: usize, tile_y: usize) -> i32 {
+        let y_offset = tile_y * self.row_len * 6;
+        let index = y_offset + (tile_x * 6);
+
+        self.vertices[index].tex_num
     }
 
     // Makes a new vertex buffer if the data has changed. Else, retrieves the current one.

@@ -54,14 +54,14 @@ bitflags! {
 
 pub struct LCDStatus {
     flags: LCDStatusFlags,
-    video_mode: super::constants::Mode,
+    video_mode: super::Mode,
 }
 
 impl LCDStatus {
     fn new() -> Self {
         LCDStatus {
             flags: LCDStatusFlags::default(),
-            video_mode: super::constants::Mode::_2
+            video_mode: super::Mode::_2
         }
     }
 
@@ -71,7 +71,7 @@ impl LCDStatus {
 
     fn write(&mut self, val: u8) {
         self.flags = LCDStatusFlags::from_bits_truncate(val);
-        self.video_mode = super::constants::Mode::from(val);
+        self.video_mode = super::Mode::from(val);
     }
 
     pub fn read_flags(&self) -> LCDStatusFlags {
@@ -82,11 +82,11 @@ impl LCDStatus {
         self.flags = flags;
     }
 
-    pub fn read_mode(&self) -> super::constants::Mode {
+    pub fn read_mode(&self) -> super::Mode {
         self.video_mode.clone()
     }
 
-    pub fn write_mode(&mut self, mode: super::constants::Mode) {
+    pub fn write_mode(&mut self, mode: super::Mode) {
         self.video_mode = mode;
     }
 }
@@ -104,8 +104,8 @@ pub struct VideoMem {
     pub lcd_status: LCDStatus,
     scroll_y: u8,
     scroll_x: u8,
-    pub lcdc_y: u8,
-    pub ly_compare: u8,
+    lcdc_y: u8,
+    ly_compare: u8,
 
     bg_palette: Palette,
     obj_0_palette: Palette,
@@ -137,7 +137,22 @@ impl VideoMem {
             window_x: 0
         }
     }
+    
+    pub fn inc_lcdc_y(&mut self) {
+        self.lcdc_y += 1;
+    }
 
+    pub fn set_lcdc_y(&mut self, val: u8) {
+        self.lcdc_y = val;
+    }
+
+    pub fn compare_ly_equal(&self) -> bool {
+        self.lcdc_y == self.ly_compare
+    }
+}
+
+// Renderer access functions.
+impl VideoMem {
     // Get background vertices.
     pub fn get_background(&mut self) -> VertexBuffer {
         if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
@@ -173,7 +188,8 @@ impl VideoMem {
 
     // Get push constants
     pub fn get_bg_scroll(&self) -> [f32; 2] {
-        [self.scroll_x as f32 * -OFFSET_FRAC_X, self.scroll_y as f32 * -OFFSET_FRAC_Y]
+        //[self.scroll_x as f32 * -OFFSET_FRAC_X, self.scroll_y as f32 * -OFFSET_FRAC_Y]
+        [0.0, 0.0] // no scroll
     }
 
     pub fn get_window_position(&self) -> [f32; 2] {
@@ -191,8 +207,7 @@ impl VideoMem {
 
 impl MemDevice for VideoMem {
     fn read(&self, loc: u16) -> u8 {
-        //println!("Reading from {:X}", loc);
-        match loc {
+        let val = match loc {
             // Raw tile data
             0x8000...0x97FF => {
                 let base = (loc - 0x8000) as usize;
@@ -215,11 +230,19 @@ impl MemDevice for VideoMem {
             },
             // Background Map A
             0x9800...0x9BFF => {
-                0
+                let base = (loc - 0x9800) as usize;
+                let x = base % 0x20;
+                let y = base / 0x20;
+
+                self.tile_map_0.get_tile_texture(x, y) as u8
             },
             // Background Map B
             0x9C00...0x9FFF => {
-                0
+                let base = (loc - 0x9C00) as usize;
+                let x = base % 0x20;
+                let y = base / 0x20;
+
+                self.tile_map_1.get_tile_texture(x, y) as u8
             },
             // Sprite data
             0xFE00...0xFE9F => {
@@ -238,7 +261,9 @@ impl MemDevice for VideoMem {
             0xFF4A => self.window_y,
             0xFF4B => self.window_x,
             _ => 0
-        }
+        };
+        //println!("Reading {:X} from {:X}", val, loc);
+        val
     }
 
     fn write(&mut self, loc: u16, val: u8) {
