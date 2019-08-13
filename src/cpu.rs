@@ -927,4 +927,9 @@ impl CPU {
             self.mem.read(self.pc + 2)
         ]
     }
+
+    #[cfg(feature = "debug")]
+    pub fn get_mem_at(&self, loc: u16) -> u8 {
+        self.mem.read(loc)
+    }
 }
