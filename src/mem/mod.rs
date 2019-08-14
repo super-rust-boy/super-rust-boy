@@ -105,28 +105,6 @@ impl MemBus {
             self.video_device.write(dest_addr, byte);
         }
     }
-
-    /*#[cfg(feature = "test")]
-    fn update_debug_string(&self, loc: u16) {
-        if self.ram.read(0) == 0x80 {
-            if (loc > 0xC003) && (loc < 0xC100) {
-                for i in 0..0xFF {
-                    if self.ram.read(i) != 0 {
-                        print!("{}", self.ram.read(i) as char);
-                    } else {
-                        println!("");
-                        break;
-                    }
-                }
-            }
-        }
-
-        //println!("Writing to {:X}", loc);
-
-        if loc == 0xC000 {
-            println!("DEBUG: {:X}", self.ram.read(0));
-        }
-    }*/
 }
 
 impl MemDevice for MemBus {
@@ -150,11 +128,6 @@ impl MemDevice for MemBus {
     }
 
     fn write(&mut self, loc: u16, val: u8) {
-        if loc == 0xFF01 {
-            println!("Writing {} to SB", val as char);
-        } else if loc == 0xFFFF {
-            println!("Interrupt enable: {:X}", val);
-        }
         match loc {
             0x0000...0x7FFF => self.cart.write(loc, val),
             0x8000...0x9FFF => self.video_device.write(loc, val),
@@ -173,9 +146,6 @@ impl MemDevice for MemBus {
             0xFFFF          => self.interrupt_enable = InterruptFlags::from_bits_truncate(val),
             _ => {},
         }
-
-        //#[cfg(feature = "test")]
-        //self.update_debug_string(loc);
     }
 }
 

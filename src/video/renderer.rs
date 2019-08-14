@@ -136,7 +136,7 @@ impl Renderer {
 
             let caps = surface.capabilities(physical)
                     .expect("Failed to get surface capabilities");
-            let dimensions = caps.current_extent.unwrap_or([512, 512]);
+            let dimensions = caps.current_extent.unwrap_or([160, 144]);
 
             let alpha = caps.supported_composite_alpha.iter().next().unwrap();
             let format = caps.supported_formats[0].0;

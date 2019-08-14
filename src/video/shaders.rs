@@ -6,10 +6,9 @@ pub mod vs {
 
 const int MAX_TEX_NUM = 384;
 const int SIGNED_OFFSET = 256;
-const int TEX_SIZE_X_I = 16;
-const float TEX_SIZE_X_F = 16.0;
-const int TEX_SIZE_Y_I = 24;
-const float TEX_SIZE_Y_F = 24.0;
+const int TEX_ROW_SIZE = 16;
+const float TEX_WIDTH = 16.0;
+const float TEX_HEIGHT = 24.0;
 
 layout(location = 0) in vec2 position;
 layout(location = 1) in vec2 tex_corner_offset;
@@ -25,8 +24,8 @@ layout(location = 0) out vec2 texCoordOut;
 vec2 calc_tex_coords(int tex_num, int offset) {
     tex_num += offset;
     tex_num = tex_num >= MAX_TEX_NUM ? tex_num - SIGNED_OFFSET : tex_num;
-    float x = float(tex_num % TEX_SIZE_X_I) / TEX_SIZE_X_F;
-    float y = float(tex_num / TEX_SIZE_Y_I) / TEX_SIZE_Y_F;
+    float x = float(tex_num % TEX_ROW_SIZE) / TEX_WIDTH;
+    float y = float(tex_num / TEX_ROW_SIZE) / TEX_HEIGHT;
     return vec2(x, y) + tex_corner_offset;
 }
 

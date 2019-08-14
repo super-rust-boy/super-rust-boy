@@ -274,6 +274,7 @@ impl MemDevice for VideoMem {
                 let base = (loc - 0x8000) as usize;
 
                 if base % 2 == 0 {  // Lower bit
+                    // TODO: shift and mask these for a more efficient operation...
                     let tile_x = (base % 0x100) / 0x10;
                     let tile_y = base / 0x100;
 

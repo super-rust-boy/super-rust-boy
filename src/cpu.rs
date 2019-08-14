@@ -153,7 +153,6 @@ impl CPU {
             return true;
         }
 
-        //println!("INSTR @ {:X}: ", self.pc);
         self.exec_instruction();
 
         return true;
@@ -199,38 +198,38 @@ impl CPU {
     fn exec_instruction(&mut self) {
         let instr = self.fetch();
 
-        let op8 = match instr % 8 {
-            0 => self.b,
-            1 => self.c,
-            2 => self.d,
-            3 => self.e,
-            4 => self.h,
-            5 => self.l,
-            6 => self.read_hl(With::None),
-            _ => self.a,
+        let op8 = |cpu: &mut CPU| match instr % 8 {
+            0 => cpu.b,
+            1 => cpu.c,
+            2 => cpu.d,
+            3 => cpu.e,
+            4 => cpu.h,
+            5 => cpu.l,
+            6 => cpu.read_hl(With::None),
+            _ => cpu.a,
         };
 
-        let op16 = match (instr >> 4) % 4 {
-            0 => self.get_16(Reg::BC),
-            1 => self.get_16(Reg::DE),
-            2 => self.get_16(Reg::HL),
-            _ => self.sp,
+        let op16 = |cpu: &mut CPU| match (instr >> 4) % 4 {
+            0 => cpu.get_16(Reg::BC),
+            1 => cpu.get_16(Reg::DE),
+            2 => cpu.get_16(Reg::HL),
+            _ => cpu.sp,
         };
 
         match instr {
             0x00 => self.nop(),
             0x01 => {let imm = self.fetch_16(); self.set_16(Reg::BC,imm)},
             0x02 => {let loc = self.get_16(Reg::BC); let op = self.a;
-                     self.write_mem(loc,op)}, // +4?
-            0x03 => {let val = self.inc_16(op16); self.set_16(Reg::BC,val)},
+                     self.write_mem(loc,op)},
+            0x03 => {let op = op16(self); let val = self.inc_16(op); self.set_16(Reg::BC,val)},
             0x04 => {let op = self.b; self.b = self.inc(op)},
             0x05 => {let op = self.b; self.b = self.dec(op)},
             0x06 => self.b = self.fetch(),
             0x07 => self.rlca(),
             0x08 => {let imm = self.fetch_16(); self.write_sp(imm)}
-            0x09 => self.add_16(op16),
+            0x09 => {let op = op16(self); self.add_16(op)},
             0x0A => {let bc = self.get_16(Reg::BC); self.a = self.read_mem(bc)},
-            0x0B => {let val = self.dec_16(op16); self.set_16(Reg::BC,val)},
+            0x0B => {let op = op16(self); let val = self.dec_16(op); self.set_16(Reg::BC,val)},
             0x0C => {let op = self.c; self.c = self.inc(op)},
             0x0D => {let op = self.c; self.c = self.dec(op)},
             0x0E => self.c = self.fetch(),
@@ -240,15 +239,15 @@ impl CPU {
             0x11 => {let imm = self.fetch_16(); self.set_16(Reg::DE,imm)},
             0x12 => {let loc = self.get_16(Reg::DE); let op = self.a;
                      self.write_mem(loc,op)},
-            0x13 => {let val = self.inc_16(op16); self.set_16(Reg::DE,val)},
+            0x13 => {let op = op16(self); let val = self.inc_16(op); self.set_16(Reg::DE,val)},
             0x14 => {let op = self.d; self.d = self.inc(op)},
             0x15 => {let op = self.d; self.d = self.dec(op)},
             0x16 => self.d = self.fetch(),
             0x17 => self.rla(),
             0x18 => {let imm = self.fetch(); self.jr(Cond::AL, imm as i8)},
-            0x19 => self.add_16(op16),
+            0x19 => {let op = op16(self); self.add_16(op)},
             0x1A => {let de = self.get_16(Reg::DE); self.a = self.read_mem(de)},
-            0x1B => {let val = self.dec_16(op16); self.set_16(Reg::DE,val)},
+            0x1B => {let op = op16(self); let val = self.dec_16(op); self.set_16(Reg::DE,val)},
             0x1C => {let op = self.e; self.e = self.inc(op)},
             0x1D => {let op = self.e; self.e = self.dec(op)},
             0x1E => self.e = self.fetch(),
@@ -257,15 +256,15 @@ impl CPU {
             0x20 => {let imm = self.fetch(); self.jr(Cond::NZ, imm as i8)},
             0x21 => {let imm = self.fetch_16(); self.set_16(Reg::HL,imm)},
             0x22 => {let op = self.a; self.write_hl(op, With::Inc)},
-            0x23 => {let val = self.inc_16(op16); self.set_16(Reg::HL,val)},
+            0x23 => {let op = op16(self); let val = self.inc_16(op); self.set_16(Reg::HL,val)},
             0x24 => {let op = self.h; self.h = self.inc(op)},
             0x25 => {let op = self.h; self.h = self.dec(op)},
             0x26 => self.h = self.fetch(),
             0x27 => self.daa(),
             0x28 => {let imm = self.fetch(); self.jr(Cond::Z, imm as i8)},
-            0x29 => self.add_16(op16),
+            0x29 => {let op = op16(self); self.add_16(op)},
             0x2A => {self.a = self.read_hl(With::Inc)},
-            0x2B => {let val = self.dec_16(op16); self.set_16(Reg::HL,val)},
+            0x2B => {let op = op16(self); let val = self.dec_16(op); self.set_16(Reg::HL,val)},
             0x2C => {let op = self.l; self.l = self.inc(op)},
             0x2D => {let op = self.l; self.l = self.dec(op)},
             0x2E => self.l = self.fetch(),
@@ -274,45 +273,45 @@ impl CPU {
             0x30 => {let imm = self.fetch(); self.jr(Cond::NC, imm as i8)},
             0x31 => self.sp = self.fetch_16(),
             0x32 => {let op = self.a; self.write_hl(op, With::Dec)},
-            0x33 => self.sp = self.inc_16(op16),
+            0x33 => {let op = op16(self); self.sp = self.inc_16(op)},
             0x34 => {let op = self.read_hl(With::None); let res = self.inc(op); self.write_hl(res, With::None)},
             0x35 => {let op = self.read_hl(With::None); let res = self.dec(op); self.write_hl(res, With::None)},
             0x36 => {let imm = self.fetch(); self.write_hl(imm, With::None)},
             0x37 => self.scf(),
             0x38 => {let imm = self.fetch(); self.jr(Cond::C, imm as i8)},
-            0x39 => self.add_16(op16),
+            0x39 => {let op = op16(self); self.add_16(op)},
             0x3A => {self.a = self.read_hl(With::Dec)},
-            0x3B => self.sp = self.dec_16(op16),
+            0x3B => {let op = op16(self); self.sp = self.dec_16(op)},
             0x3C => {let op = self.a; self.a = self.inc(op)},
             0x3D => {let op = self.a; self.a = self.dec(op)},
             0x3E => self.a = self.fetch(),
             0x3F => self.ccf(),
 
-            0x40...0x47 => self.b = op8,
-            0x48...0x4F => self.c = op8,
+            0x40...0x47 => self.b = op8(self),
+            0x48...0x4F => self.c = op8(self),
 
-            0x50...0x57 => self.d = op8,
-            0x58...0x5F => self.e = op8,
+            0x50...0x57 => self.d = op8(self),
+            0x58...0x5F => self.e = op8(self),
 
-            0x60...0x67 => self.h = op8,
-            0x68...0x6F => self.l = op8,
+            0x60...0x67 => self.h = op8(self),
+            0x68...0x6F => self.l = op8(self),
 
-            0x70...0x75 => self.write_hl(op8, With::None),
+            0x70...0x75 => {let op = op8(self); self.write_hl(op, With::None)},
             0x76 => self.cont = false,
-            0x77 => self.write_hl(op8, With::None),
-            0x78...0x7F => self.a = op8,
+            0x77 => {let op = op8(self); self.write_hl(op, With::None)},
+            0x78...0x7F => self.a = op8(self),
 
-            0x80...0x87 => self.add(false, op8),
-            0x88...0x8F => self.add(true, op8),
+            0x80...0x87 => {let op = op8(self); self.add(false, op)},
+            0x88...0x8F => {let op = op8(self); self.add(true, op)},
 
-            0x90...0x97 => self.sub(false, op8),
-            0x98...0x9F => self.sub(true, op8),
+            0x90...0x97 => {let op = op8(self); self.sub(false, op)},
+            0x98...0x9F => {let op = op8(self); self.sub(true, op)},
 
-            0xA0...0xA7 => self.and(op8),
-            0xA8...0xAF => self.xor(op8),
+            0xA0...0xA7 => {let op = op8(self); self.and(op)},
+            0xA8...0xAF => {let op = op8(self); self.xor(op)},
 
-            0xB0...0xB7 => self.or(op8),
-            0xB8...0xBF => self.cp(op8),
+            0xB0...0xB7 => {let op = op8(self); self.or(op)},
+            0xB8...0xBF => {let op = op8(self); self.cp(op)},
 
             0xC0 => self.ret(Cond::NZ),
             0xC1 => self.pop(Reg::BC),
@@ -488,7 +487,6 @@ impl CPU {
         self.cycle_count += 4;
         let result = self.mem.read(self.pc);
         self.pc = ((self.pc as u32) + 1) as u16;
-        //println!("{:X}", result);
 
         result
     }
@@ -499,7 +497,6 @@ impl CPU {
         self.pc = ((self.pc as u32) + 1) as u16;
         let hi_byte = (self.mem.read(self.pc) as u16) << 8;
         self.pc = ((self.pc as u32) + 1) as u16;
-        //println!("{:X}", lo_byte | hi_byte);
 
         lo_byte | hi_byte
     }
@@ -612,7 +609,6 @@ impl CPU {
         self.flags.set(CPUFlags::ZERO, result == 0);
         self.flags.set(CPUFlags::HC, result < 0x10);
         self.flags.set(CPUFlags::CARRY, result < 0);
-        self.a = result as u8;
     }
 
     // inc/dec
