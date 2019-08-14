@@ -27,7 +27,7 @@ fn main() {
 
     let mut state = cpu::CPU::new(mem);
 
-    //audio::start_audio_handler_thread(recv);
+    audio::start_audio_handler_thread(recv);
     
     if cfg!(feature = "debug") {
         #[cfg(feature = "debug")]

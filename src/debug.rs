@@ -20,7 +20,7 @@ pub struct CPUState {
 impl CPUState {
     pub fn to_string(&self) -> String {
         format!("a:{:02X} b:{:02X} c:{:02X} d:{:02X} e:{:02X} h:{:02X} l:{:02X}\n\
-                znhc: {:04b}\n\
+                znhc: {:08b}\n\
                 pc: {:04X} sp: {:04X}",
                 self.a, self.b, self.c, self.d, self.e, self.h, self.l,
                 self.flags,

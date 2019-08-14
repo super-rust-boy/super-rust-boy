@@ -66,7 +66,7 @@ impl AudioDevice {
             let offset_cycle = (cycle_count + timer::V_BLANK_TIME) % timer::MAX_CYCLES;
             let time_in_frame = (offset_cycle as f32) / MAX_CYCLES_FLOAT;
 
-            println!("sending update at {}", time_in_frame);
+            //println!("sending update at {}", time_in_frame);
 
             if self.nr1.triggered() {
                 self.sender.send(AudioCommand::NR1(self.nr1.clone(), time_in_frame)).unwrap();
@@ -85,7 +85,7 @@ impl AudioDevice {
     pub fn frame_update(&mut self) {
         // End of last frame
         if self.control_update {
-            println!("frame update");
+            //println!("frame update");
 
             self.sender.send(AudioCommand::Control{
                 channel_control: self.channel_control,

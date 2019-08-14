@@ -1,3 +1,25 @@
+use bitflags::bitflags;
+
+bitflags! {
+    #[derive(Default)]
+    pub struct Buttons: u8 {
+        const START     = 0b00001000;
+        const SELECT    = 0b00000100;
+        const B         = 0b00000010;
+        const A         = 0b00000001;
+    }
+}
+
+bitflags! {
+    #[derive(Default)]
+    pub struct Directions: u8 {
+        const DOWN  = 0b00001000;
+        const UP    = 0b00000100;
+        const LEFT  = 0b00000010;
+        const RIGHT = 0b00000001;
+    }
+}
+
 enum Select {
     Direction,
     Button,
@@ -8,60 +30,35 @@ const SELECT_DIRECTION: u8  = 1 << 4;
 const SELECT_BUTTONS: u8    = 1 << 5;
 
 pub struct Joypad {
-    pub a:      bool,
-    pub b:      bool,
-    pub select: bool,
-    pub start:  bool,
-    pub right:  bool,
-    pub left:   bool,
-    pub up:     bool,
-    pub down:   bool,
+    pub buttons:    Buttons,
+    pub directions: Directions,
 
-    selector:   Select,
+    selector:       Select
 }
 
 impl Joypad {
     pub fn new() -> Self {
         Joypad {
-            a:      false,
-            b:      false,
-            select: false,
-            start:  false,
+            buttons:    Buttons::default(),
+            directions: Directions::default(),
 
-            right:  false,
-            left:   false,
-            up:     false,
-            down:   false,
-
-            selector: Select::None
+            selector:   Select::None
         }
     }
 
     pub fn read(&self) -> u8 {
         match self.selector {
-            Select::Direction => {
-                let right = if self.right {0b0001} else {0};
-                let left =  if self.left  {0b0010} else {0};
-                let up =    if self.up    {0b0100} else {0};
-                let down =  if self.down  {0b1000} else {0};
-                right | left | up | down
-            },
-            Select::Button => {
-                let a =      if self.a      {0b0001} else {0};
-                let b =      if self.b      {0b0010} else {0};
-                let select = if self.select {0b0100} else {0};
-                let start =  if self.start  {0b1000} else {0};
-                a | b | select | start
-            },
+            Select::Direction => !self.directions.bits(),
+            Select::Button => !self.buttons.bits(),
             Select::None => 0
         }
     }
 
     pub fn write(&mut self, val: u8) {
-        self.selector = if (val & SELECT_DIRECTION) != 0 {
-            Select::Direction
-        } else if (val & SELECT_BUTTONS) != 0 {
+        self.selector = if (val & SELECT_BUTTONS) == 0 {
             Select::Button
+        } else if (val & SELECT_DIRECTION) == 0 {
+            Select::Direction
         } else {
             Select::None
         };

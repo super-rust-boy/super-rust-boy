@@ -64,7 +64,7 @@ impl MemBus {
     }
 
     pub fn render_frame(&mut self) {
-        //self.audio_device.frame_update();
+        self.audio_device.frame_update();
         self.video_device.render_frame();
     }
 

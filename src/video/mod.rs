@@ -44,7 +44,7 @@ use winit::{
 
 use crate::mem::{InterruptFlags, MemDevice};
 
-use self::joypad::Joypad;
+use self::joypad::{Joypad, Buttons, Directions};
 use self::mem::VideoMem;
 use self::renderer::Renderer;
 
@@ -102,14 +102,14 @@ impl VideoDevice {
                             ElementState::Released => false,
                         };
                         match k.virtual_keycode {
-                            Some(VirtualKeyCode::Z)         => joypad.a = pressed,
-                            Some(VirtualKeyCode::X)         => joypad.b = pressed,
-                            Some(VirtualKeyCode::Space)     => joypad.select = pressed,
-                            Some(VirtualKeyCode::Return)    => joypad.start = pressed,
-                            Some(VirtualKeyCode::Up)        => joypad.up = pressed,
-                            Some(VirtualKeyCode::Down)      => joypad.down = pressed,
-                            Some(VirtualKeyCode::Left)      => joypad.left = pressed,
-                            Some(VirtualKeyCode::Right)     => joypad.right = pressed,
+                            Some(VirtualKeyCode::Z)         => joypad.buttons.set(Buttons::A, pressed),
+                            Some(VirtualKeyCode::X)         => joypad.buttons.set(Buttons::B, pressed),
+                            Some(VirtualKeyCode::Space)     => joypad.buttons.set(Buttons::SELECT, pressed),
+                            Some(VirtualKeyCode::C)         => joypad.buttons.set(Buttons::START, pressed),
+                            Some(VirtualKeyCode::Up)        => joypad.directions.set(Directions::UP, pressed),
+                            Some(VirtualKeyCode::Down)      => joypad.directions.set(Directions::DOWN, pressed),
+                            Some(VirtualKeyCode::Left)      => joypad.directions.set(Directions::LEFT, pressed),
+                            Some(VirtualKeyCode::Right)     => joypad.directions.set(Directions::RIGHT, pressed),
                             _ => {},
                         }
                     },

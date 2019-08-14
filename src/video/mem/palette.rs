@@ -25,10 +25,10 @@ impl Palette {
     pub fn new_monochrome(device: &Arc<Device>) -> Self {
         Palette {
             colours: Matrix4::from_cols(
-                Vector4::new(0.0, 0.0, 0.0, 1.0),
-                Vector4::new(0.3, 0.3, 0.3, 1.0),
+                Vector4::new(1.0, 1.0, 1.0, 1.0),
                 Vector4::new(0.6, 0.6, 0.6, 1.0),
-                Vector4::new(1.0, 1.0, 1.0, 1.0)
+                Vector4::new(0.3, 0.3, 0.3, 1.0),
+                Vector4::new(0.0, 0.0, 0.0, 1.0)
             ),
             raw: 0,
             buffer_pool: CpuBufferPool::uniform_buffer(device.clone()),
