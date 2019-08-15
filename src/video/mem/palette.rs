@@ -22,7 +22,7 @@ struct Palette {
 }
 
 impl Palette {
-    pub fn new_monochrome(device: &Arc<Device>, object: bool) -> Self {
+    pub fn new_monochrome(object: bool) -> Self {
         Palette {
             colours: Matrix4::from_cols(
                 Vector4::new(1.0, 1.0, 1.0, 1.0),
@@ -74,7 +74,7 @@ pub struct PaletteMem {
 impl PaletteMem {
     pub fn new(device: &Arc<Device>) -> Self {
         PaletteMem {
-            palettes: vec![Palette::new_monochrome(device, false), Palette::new_monochrome(device, true), Palette::new_monochrome(device, true)],
+            palettes: vec![Palette::new_monochrome(false), Palette::new_monochrome(true), Palette::new_monochrome(true)],
             buffer_pool: CpuBufferPool::uniform_buffer(device.clone()),
             current_buffer: None
         }

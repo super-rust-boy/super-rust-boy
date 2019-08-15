@@ -523,7 +523,7 @@ impl CPU {
         let offset = imm as i8;
         let result = (self.sp as i32) + (offset as i32);
         self.flags = CPUFlags::default();
-        self.flags.set(CPUFlags::HC, result > 0xF);
+        self.flags.set(CPUFlags::HC, ((self.sp as i32 & 0xFFF) + offset as i32) > 0xFFF);
         self.flags.set(CPUFlags::CARRY, result > 0xFFFF);
         result as u16
     }
@@ -533,7 +533,7 @@ impl CPU {
         let lo_byte = self.sp as u8;
         let hi_byte = (self.sp >> 8) as u8;
         self.write_mem(imm, lo_byte);
-        self.write_mem(imm, hi_byte);
+        self.write_mem(imm + 1, hi_byte);
     }
 
     #[inline]
@@ -554,20 +554,21 @@ impl CPU {
 impl CPU {
     // Arithmetic
     fn add(&mut self, carry: bool, op: u8) {
-        let c = if self.flags.contains(CPUFlags::CARRY) && carry {1} else {0};
-        let result = (self.a as u16) + (op as u16) + c;
+        let c = if self.flags.contains(CPUFlags::CARRY) && carry {1_u8} else {0_u8};
+        let result = (self.a as u16) + (op as u16) + (c as u16);
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, (result & 0xFF) == 0);
-        self.flags.set(CPUFlags::HC, result > 0xF);
+        self.flags.set(CPUFlags::HC, ((self.a & 0xF) + (op & 0xF) + c) > 0xF);
         self.flags.set(CPUFlags::CARRY, result > 0xFF);
         self.a = result as u8;
     }
 
     fn add_16(&mut self, op: u16) {
         self.cycle_count += 4;
-        let result = (self.get_16(Reg::HL) as u32) + (op as u32);
+        let hl = self.get_16(Reg::HL);
+        let result = (hl as u32) + (op as u32);
         self.flags.remove(CPUFlags::NEG);
-        self.flags.set(CPUFlags::HC, result > 0xF);
+        self.flags.set(CPUFlags::HC, ((hl & 0xFFF) + (op & 0xFFF)) > 0xFFF);
         self.flags.set(CPUFlags::CARRY, result > 0xFFFF);
         self.set_16(Reg::HL, result as u16);
     }
@@ -576,8 +577,8 @@ impl CPU {
         let c = if self.flags.contains(CPUFlags::CARRY) && carry {1} else {0};
         let result = (self.a as i16) - (op as i16) - c;
         self.flags = CPUFlags::NEG;
-        self.flags.set(CPUFlags::ZERO, result == 0);
-        self.flags.set(CPUFlags::HC, result < 0x10);
+        self.flags.set(CPUFlags::ZERO, (result as u8) == 0);
+        self.flags.set(CPUFlags::HC, (self.a & 0xF) < ((result as u8) & 0xF));
         self.flags.set(CPUFlags::CARRY, result < 0);
         self.a = result as u8;
     }
@@ -606,8 +607,8 @@ impl CPU {
     fn cp(&mut self, op: u8) {
         let result = (self.a as i16) - (op as i16);
         self.flags = CPUFlags::NEG;
-        self.flags.set(CPUFlags::ZERO, result == 0);
-        self.flags.set(CPUFlags::HC, result < 0x10);
+        self.flags.set(CPUFlags::ZERO, (result as u8) == 0);
+        self.flags.set(CPUFlags::HC, (self.a & 0xF) < (result as u8 & 0xF));
         self.flags.set(CPUFlags::CARRY, result < 0);
     }
 
@@ -616,15 +617,15 @@ impl CPU {
         let result = (op as u16) + 1;
         self.flags.remove(CPUFlags::NEG);
         self.flags.set(CPUFlags::ZERO, (result & 0xFF) == 0);
-        self.flags.set(CPUFlags::HC, result > 0xF);
+        self.flags.set(CPUFlags::HC, ((op & 0xF) + 1) > 0xF);
         result as u8
     }
 
     fn dec(&mut self, op: u8) -> u8 {
         let result = ((op as i16) - 1) as i8;
         self.flags.insert(CPUFlags::NEG);
-        self.flags.set(CPUFlags::ZERO, result == 0);
-        self.flags.set(CPUFlags::HC, result < 0x10);
+        self.flags.set(CPUFlags::ZERO, (result as u8) == 0);
+        self.flags.set(CPUFlags::HC, (op & 0xF) < (result as u8 & 0xF));
         result as u8
     }
 
@@ -641,7 +642,8 @@ impl CPU {
     }
 
     // TODO: improve this
-    fn daa(&mut self) {
+    /*fn daa(&mut self) {
+        //println!("DAA in: {:02X}", self.a);
         let lo_nib = (self.a & 0xF) as u16;
         let hi_nib = (self.a & 0xF0) as u16;
         let lo_inc = match (lo_nib, self.flags.contains(CPUFlags::NEG), self.flags.contains(CPUFlags::HC)) {
@@ -665,7 +667,34 @@ impl CPU {
         let result = (hi_nib | lo_nib) + lo_inc + hi_inc;
         self.flags.set(CPUFlags::ZERO, (result & 0xFF) == 0);
         self.flags.remove(CPUFlags::HC);
-        self.flags.set(CPUFlags::CARRY, result > 0xFF);
+        self.flags.set(CPUFlags::CARRY, result > 0x99);
+        self.a = (result & 0xFF) as u8;
+        //println!("DAA out: {:02X}", self.a);
+    }*/
+
+    fn daa(&mut self) {
+        let mut result = self.a as i16;
+        if self.flags.contains(CPUFlags::NEG) {
+            // If subtract just happened:
+            if self.flags.contains(CPUFlags::CARRY) {
+                result -= 0x60;
+            }
+            if self.flags.contains(CPUFlags::HC) {
+                result -= 0x06;
+            }
+        } else {
+            // If add just happened:
+            if self.flags.contains(CPUFlags::CARRY) || result > 0x99 {
+                result += 0x60;
+                self.flags.insert(CPUFlags::CARRY);
+            }
+            if self.flags.contains(CPUFlags::HC) || (result & 0xF) > 0x9 {
+                result += 0x6;
+            }
+        }
+
+        self.flags.remove(CPUFlags::HC);
+        self.flags.set(CPUFlags::ZERO, result == 0);
         self.a = (result & 0xFF) as u8;
     }
 
@@ -782,7 +811,7 @@ impl CPU {
     }
 
     fn sra(&mut self, op: u8) -> Option<u8> {
-        let result = op >> 1;
+        let result = op >> 1 | (op & 0x80);
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, result == 0);
         self.flags.set(CPUFlags::CARRY, (op & 0x1) != 0);

@@ -80,10 +80,6 @@ impl LCDStatus {
         self.flags
     }
 
-    pub fn write_flags(&mut self, flags: LCDStatusFlags) {
-        self.flags = flags;
-    }
-
     pub fn read_mode(&self) -> super::Mode {
         self.video_mode.clone()
     }
