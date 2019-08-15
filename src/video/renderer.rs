@@ -51,10 +51,12 @@ pub struct Vertex {
     pub data: u32
 }
 
+#[derive(Clone)]
 struct PushConstants {
     pub vertex_offset: [f32; 2],
     pub tex_size: [f32; 2],
-    pub tex_offset: u32
+    pub tex_offset: u32,
+    pub palette_offset: u32
 }
 
 vulkano::impl_vertex!(Vertex, position, data);
@@ -189,6 +191,7 @@ impl Renderer {
             .vertex_shader(vs.main_entry_point(), ())
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(fs.main_entry_point(), ())
+            .blend_alpha_blending()
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())
             .unwrap()
@@ -265,7 +268,7 @@ impl Renderer {
         
         // Start building command buffer using pipeline and framebuffer, starting with the background vertices.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap()
-            .begin_render_pass(self.framebuffers[image_num].clone(), false, vec![[1.0, 1.0, 1.0, 1.0].into()]).unwrap();
+            .begin_render_pass(self.framebuffers[image_num].clone(), false, vec![video_mem.get_clear_colour().into()]).unwrap();
 
         if video_mem.display_enabled() {
             // Make descriptor set to bind texture atlas.
@@ -278,12 +281,34 @@ impl Renderer {
                 .add_buffer(video_mem.get_palette_buffer().clone()).unwrap()
                 .build().unwrap());
 
+            // Make push constants for sprites.
+            let sprite_push_constants = PushConstants {
+                vertex_offset: [0.0, 0.0],
+                tex_size: video_mem.get_tile_size(),
+                tex_offset: 0,
+                palette_offset: 0
+            };
+
+            // Add sprites below background.
+            if let Some(sprite_vertices) = video_mem.get_sprites_lo() {
+                command_buffer_builder = command_buffer_builder.draw(
+                    self.pipeline.clone(),
+                    &self.dynamic_state,
+                    sprite_vertices.clone(),
+                    (set0.clone(), set1.clone()),
+                    sprite_push_constants.clone()
+                ).unwrap();
+            }
+
+            // Make push constants for background.
             let background_push_constants = PushConstants {
                 vertex_offset: video_mem.get_bg_scroll(),
                 tex_size: video_mem.get_tile_size(),
-                tex_offset: video_mem.get_tile_data_offset()
+                tex_offset: video_mem.get_tile_data_offset(),
+                palette_offset: 0
             };
 
+            // Add the background.
             command_buffer_builder = command_buffer_builder.draw(
                 self.pipeline.clone(),
                 &self.dynamic_state,
@@ -297,7 +322,8 @@ impl Renderer {
                 let window_push_constants = PushConstants {
                     vertex_offset: video_mem.get_window_position(),
                     tex_size: video_mem.get_tile_size(),
-                    tex_offset: video_mem.get_tile_data_offset()
+                    tex_offset: video_mem.get_tile_data_offset(),
+                    palette_offset: 1
                 };
 
                 command_buffer_builder = command_buffer_builder.draw(
@@ -309,14 +335,8 @@ impl Renderer {
                 ).unwrap();
             }
 
-            // Add sprites.
-            if let Some(sprite_vertices) = video_mem.get_sprites() {
-                let sprite_push_constants = PushConstants {
-                    vertex_offset: [0.0, 0.0],
-                    tex_size: video_mem.get_tile_size(),
-                    tex_offset: 0
-                };
-
+            // Add sprites above background.
+            if let Some(sprite_vertices) = video_mem.get_sprites_hi() {
                 command_buffer_builder = command_buffer_builder.draw(
                     self.pipeline.clone(),
                     &self.dynamic_state,

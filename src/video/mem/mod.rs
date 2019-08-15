@@ -26,8 +26,8 @@ const MAP_SIZE: usize = 32;         // Width / Height of bg/window tile maps.
 const VIEW_WIDTH: usize = 20;       // Width of visible area.
 const VIEW_HEIGHT: usize = 18;      // Height of visible area.
 
-const OFFSET_FRAC_X: f32 = (MAP_SIZE as f32 / VIEW_WIDTH as f32) / 256.0;   // Mult with an offset to get the amount to offset by
-const OFFSET_FRAC_Y: f32 = (MAP_SIZE as f32 / VIEW_HEIGHT as f32) / 256.0;  // Mult with an offset to get the amount to offset by
+const OFFSET_FRAC_X: f32 = (MAP_SIZE as f32 / VIEW_WIDTH as f32) / 128.0;   // Mult with an offset to get the amount to offset by
+const OFFSET_FRAC_Y: f32 = (MAP_SIZE as f32 / VIEW_HEIGHT as f32) / 128.0;  // Mult with an offset to get the amount to offset by
 
 bitflags! {
     #[derive(Default)]
@@ -153,6 +153,15 @@ impl VideoMem {
         self.lcd_control.contains(LCDControl::ENABLE)
     }
 
+    // Get clear colour.
+    pub fn get_clear_colour(&self) -> [f32; 4] {
+        if self.display_enabled() {
+            self.palettes.get_colour_0()
+        } else {
+            [1.0, 1.0, 1.0, 1.0]
+        }
+    }
+
     // Get background vertices.
     pub fn get_background(&mut self) -> VertexBuffer {
         if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
@@ -175,11 +184,21 @@ impl VideoMem {
         }
     }
 
-    // Get sprites
-    pub fn get_sprites(&mut self) -> Option<VertexBuffer> {
+    // Get low-priority sprites (below the background).
+    pub fn get_sprites_lo(&mut self) -> Option<VertexBuffer> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            Some(self.object_mem.get_vertex_buffer(large_sprites))
+            self.object_mem.get_lo_vertex_buffer(large_sprites)
+        } else {
+            None
+        }
+    }
+
+    // Get high-priority sprites (above the background).
+    pub fn get_sprites_hi(&mut self) -> Option<VertexBuffer> {
+        if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
+            let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
+            self.object_mem.get_hi_vertex_buffer(large_sprites)
         } else {
             None
         }

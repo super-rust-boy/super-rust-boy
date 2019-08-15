@@ -16,13 +16,12 @@ pub type PaletteBuffer = CpuBufferPoolChunk<Matrix4<f32>, Arc<StdMemoryPool>>;
 
 // A single palette.
 struct Palette {
-    pub colours: Matrix4<f32>,
-    pub raw: u8,
-    pub object: bool
+    colours: Matrix4<f32>,
+    raw: u8
 }
 
 impl Palette {
-    pub fn new_monochrome(object: bool) -> Self {
+    pub fn new_monochrome() -> Self {
         Palette {
             colours: Matrix4::from_cols(
                 Vector4::new(1.0, 1.0, 1.0, 1.0),
@@ -30,20 +29,19 @@ impl Palette {
                 Vector4::new(0.3, 0.3, 0.3, 1.0),
                 Vector4::new(0.0, 0.0, 0.0, 1.0)
             ),
-            raw: 0,
-            object: object
+            raw: 0
         }
     }
 
-    pub fn get_palette(&self) -> Matrix4<f32> {
-        let colour_0 = self.raw & 0b00000011;
+    pub fn get_palette(&self, transparent: bool) -> Matrix4<f32> {
         let colour_1 = (self.raw & 0b00001100) >> 2;
         let colour_2 = (self.raw & 0b00110000) >> 4;
         let colour_3 = (self.raw & 0b11000000) >> 6;
 
-        let col_0 = if self.object {
+        let col_0 = if transparent {
             Vector4::new(0.0, 0.0, 0.0, 0.0)
         } else {
+            let colour_0 = self.raw & 0b00000011;
             self.colours[colour_0 as usize]
         };
 
@@ -53,6 +51,11 @@ impl Palette {
             self.colours[colour_2 as usize],
             self.colours[colour_3 as usize]
         )
+    }
+
+    pub fn get_colour_0(&self) -> Vector4<f32> {
+        let colour_0 = (self.raw & 0b00000011) as usize;
+        self.colours[colour_0]
     }
 
     pub fn read(&self) -> u8 {
@@ -74,7 +77,11 @@ pub struct PaletteMem {
 impl PaletteMem {
     pub fn new(device: &Arc<Device>) -> Self {
         PaletteMem {
-            palettes: vec![Palette::new_monochrome(false), Palette::new_monochrome(true), Palette::new_monochrome(true)],
+            palettes: vec![
+                Palette::new_monochrome(),
+                Palette::new_monochrome(),
+                Palette::new_monochrome()
+            ],
             buffer_pool: CpuBufferPool::uniform_buffer(device.clone()),
             current_buffer: None
         }
@@ -84,12 +91,20 @@ impl PaletteMem {
         if let Some(buf) = &self.current_buffer {
             buf.clone()
         } else {
-            let buf = self.buffer_pool.chunk(
-                self.palettes.iter().map(|p| p.get_palette())
-            ).unwrap();
+            let buf = self.buffer_pool.chunk([
+                self.palettes[0].get_palette(true),     // BG
+                self.palettes[0].get_palette(false),    // Window
+                self.palettes[1].get_palette(true),     // Sprite 0
+                self.palettes[2].get_palette(true)      // Sprite 1
+            ].iter().cloned()).unwrap();
             self.current_buffer = Some(buf.clone());
             buf
         }
+    }
+
+    pub fn get_colour_0(&self) -> [f32; 4] {
+        let colour = self.palettes[0].get_colour_0();
+        [colour[0], colour[1], colour[2], colour[3]]
     }
 
     pub fn read(&self, which: usize) -> u8 {

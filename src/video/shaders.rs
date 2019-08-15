@@ -22,6 +22,7 @@ layout(push_constant) uniform PushConstants {
     vec2 vertex_offset;
     vec2 tex_size;
     uint tex_offset;
+    uint palette_offset;
 } push_constants;
 
 layout(location = 0) out vec2 texCoordOut;
@@ -50,7 +51,7 @@ void main() {
     gl_Position = vec4(position + push_constants.vertex_offset, 0.0, 1.0);
     texCoordOut = calc_tex_coords(tex_num, push_constants.tex_offset, corner);
 
-    paletteNumOut = (data & 0xC00) >> 10;
+    paletteNumOut = ((data & 0xC00) >> 10) + push_constants.palette_offset;
 }
 "#
     }
@@ -67,7 +68,7 @@ layout(location = 1) in flat uint paletteNum;
 
 layout(set = 0, binding = 0) uniform usampler2D atlas;
 layout(set = 1, binding = 0) uniform Palette {
-    mat4 colours[3];
+    mat4 colours[4];
 } PaletteTable;
 
 layout(location = 0) out vec4 outColor;
