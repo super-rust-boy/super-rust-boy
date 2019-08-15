@@ -48,16 +48,16 @@ use std::sync::Arc;
 #[derive(Default, Copy, Clone)]
 pub struct Vertex {
     pub position: [f32; 2],
-    pub tex_corner_offset: [f32; 2],
-    pub tex_num: i32
+    pub data: u32
 }
 
 struct PushConstants {
     pub vertex_offset: [f32; 2],
-    pub tex_offset: i32
+    pub tex_size: [f32; 2],
+    pub tex_offset: u32
 }
 
-vulkano::impl_vertex!(Vertex, position, tex_corner_offset, tex_num);
+vulkano::impl_vertex!(Vertex, position, data);
 
 type RenderPipeline = GraphicsPipeline<
     SingleBufferDefinition<Vertex>,
@@ -262,42 +262,76 @@ impl Renderer {
         // Make image with current texture.
         // TODO: only re-create the image when the data has changed.
         let (image, write_future) = video_mem.get_tile_atlas(self.queue.clone());
-
-        // Make descriptor set to bind texture atlas.
-        let set0 = Arc::new(self.set_pools[0].next()
-            .add_sampled_image(image.clone(), self.sampler.clone()).unwrap()
-            .build().unwrap());
-
-        // Make descriptor set for palettes.
-        let set1 = Arc::new(self.set_pools[1].next()
-            .add_buffer(video_mem.get_palette_buffer().clone()).unwrap()
-            .build().unwrap());
         
         // Start building command buffer using pipeline and framebuffer, starting with the background vertices.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap()
-            .begin_render_pass(self.framebuffers[image_num].clone(), false, vec![[1.0, 1.0, 1.0, 1.0].into()]).unwrap()
-            .draw(
+            .begin_render_pass(self.framebuffers[image_num].clone(), false, vec![[1.0, 1.0, 1.0, 1.0].into()]).unwrap();
+
+        if video_mem.display_enabled() {
+            // Make descriptor set to bind texture atlas.
+            let set0 = Arc::new(self.set_pools[0].next()
+                .add_sampled_image(image.clone(), self.sampler.clone()).unwrap()
+                .build().unwrap());
+
+            // Make descriptor set for palette.
+            let set1 = Arc::new(self.set_pools[1].next()
+                .add_buffer(video_mem.get_palette_buffer().clone()).unwrap()
+                .build().unwrap());
+
+            let background_push_constants = PushConstants {
+                vertex_offset: video_mem.get_bg_scroll(),
+                tex_size: video_mem.get_tile_size(),
+                tex_offset: video_mem.get_tile_data_offset()
+            };
+
+            command_buffer_builder = command_buffer_builder.draw(
                 self.pipeline.clone(),
                 &self.dynamic_state,
                 video_mem.get_background().clone(),
                 (set0.clone(), set1.clone()),
-                PushConstants {vertex_offset: video_mem.get_bg_scroll(), tex_offset: video_mem.get_tile_data_offset()}
+                background_push_constants
             ).unwrap();
 
-        // Add the window if it is enabled.
-        if let Some(window_vertices) = video_mem.get_window() {
-            command_buffer_builder = command_buffer_builder.draw(
-                self.pipeline.clone(),
-                &self.dynamic_state,
-                window_vertices.clone(),
-                (set0.clone(), set1.clone()),
-                PushConstants {vertex_offset: video_mem.get_window_position(), tex_offset: video_mem.get_tile_data_offset()}
-            ).unwrap();
+            // Add the window if it is enabled.
+            if let Some(window_vertices) = video_mem.get_window() {
+                let window_push_constants = PushConstants {
+                    vertex_offset: video_mem.get_window_position(),
+                    tex_size: video_mem.get_tile_size(),
+                    tex_offset: video_mem.get_tile_data_offset()
+                };
+
+                command_buffer_builder = command_buffer_builder.draw(
+                    self.pipeline.clone(),
+                    &self.dynamic_state,
+                    window_vertices.clone(),
+                    (set0.clone(), set1.clone()),
+                    window_push_constants
+                ).unwrap();
+            }
+
+            // Make descriptor set for obj palette.
+            let sprite_set1 = Arc::new(self.set_pools[1].next()
+                .add_buffer(video_mem.get_obj_0_palette_buffer().clone()).unwrap()
+                .build().unwrap());
+
+            // Add sprites.
+            if let Some(sprite_vertices) = video_mem.get_sprites() {
+                let sprite_push_constants = PushConstants {
+                    vertex_offset: [0.0, 0.0],
+                    tex_size: video_mem.get_tile_size(),
+                    tex_offset: 0
+                };
+
+                command_buffer_builder = command_buffer_builder.draw(
+                    self.pipeline.clone(),
+                    &self.dynamic_state,
+                    sprite_vertices.clone(),
+                    (set0.clone(), sprite_set1.clone()),
+                    sprite_push_constants
+                ).unwrap();
+            }
         }
-
-        // Add sprites.
-
-
+        
         // Finish command buffer.
         let command_buffer = command_buffer_builder.end_render_pass().unwrap().build().unwrap();
 

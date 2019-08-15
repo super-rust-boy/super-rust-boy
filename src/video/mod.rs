@@ -102,10 +102,10 @@ impl VideoDevice {
                             ElementState::Released => false,
                         };
                         match k.virtual_keycode {
-                            Some(VirtualKeyCode::Z)         => joypad.buttons.set(Buttons::A, pressed),
-                            Some(VirtualKeyCode::X)         => joypad.buttons.set(Buttons::B, pressed),
+                            Some(VirtualKeyCode::X)         => joypad.buttons.set(Buttons::A, pressed),
+                            Some(VirtualKeyCode::Z)         => joypad.buttons.set(Buttons::B, pressed),
                             Some(VirtualKeyCode::Space)     => joypad.buttons.set(Buttons::SELECT, pressed),
-                            Some(VirtualKeyCode::C)         => joypad.buttons.set(Buttons::START, pressed),
+                            Some(VirtualKeyCode::Return)    => joypad.buttons.set(Buttons::START, pressed),
                             Some(VirtualKeyCode::Up)        => joypad.directions.set(Directions::UP, pressed),
                             Some(VirtualKeyCode::Down)      => joypad.directions.set(Directions::DOWN, pressed),
                             Some(VirtualKeyCode::Left)      => joypad.directions.set(Directions::LEFT, pressed),

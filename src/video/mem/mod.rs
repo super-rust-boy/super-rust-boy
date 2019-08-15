@@ -1,6 +1,7 @@
 mod tilemem;
 mod vertexgrid;
 mod palette;
+mod sprite;
 
 use vulkano::device::{
     Device,
@@ -16,6 +17,7 @@ use crate::mem::MemDevice;
 use tilemem::*;
 use vertexgrid::*;
 use palette::*;
+use sprite::ObjectMem;
 
 const TILE_SIZE: usize = 8;         // Width / Height of a tile in pixels.
 const TILE_DATA_WIDTH: usize = 16;  // Width of the tile data in tiles.
@@ -97,7 +99,7 @@ pub struct VideoMem {
     tile_mem: TileAtlas,
     tile_map_0: VertexGrid,
     tile_map_1: VertexGrid,
-    // sprites?
+    object_mem: ObjectMem,
 
     // Flags / registers
     lcd_control: LCDControl,
@@ -119,8 +121,9 @@ impl VideoMem {
     pub fn new(device: &Arc<Device>) -> Self {
         VideoMem {
             tile_mem: TileAtlas::new((TILE_DATA_WIDTH, TILE_DATA_HEIGHT), TILE_SIZE),
-            tile_map_0: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT), (TILE_DATA_WIDTH, TILE_DATA_HEIGHT)),
-            tile_map_1: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT), (TILE_DATA_WIDTH, TILE_DATA_HEIGHT)),
+            tile_map_0: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
+            tile_map_1: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
+            object_mem: ObjectMem::new(device),
 
             lcd_control: LCDControl::default(),
             lcd_status: LCDStatus::new(),
@@ -153,6 +156,11 @@ impl VideoMem {
 
 // Renderer access functions.
 impl VideoMem {
+    // Check if display is enabled.
+    pub fn display_enabled(&self) -> bool {
+        self.lcd_control.contains(LCDControl::ENABLE)
+    }
+
     // Get background vertices.
     pub fn get_background(&mut self) -> VertexBuffer {
         if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
@@ -174,7 +182,16 @@ impl VideoMem {
             None
         }
     }
+
     // Get sprites
+    pub fn get_sprites(&mut self) -> Option<VertexBuffer> {
+        if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
+            let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
+            Some(self.object_mem.get_vertex_buffer(large_sprites))
+        } else {
+            None
+        }
+    }
 
     // Get tile atlas
     pub fn get_tile_atlas(&mut self, queue: Arc<Queue>) -> (TileImage, TileFuture) {
@@ -186,22 +203,36 @@ impl VideoMem {
         self.bg_palette.get_buffer()
     }
 
+    // Get palettes for sprites
+    pub fn get_obj_0_palette_buffer(&mut self) -> PaletteBuffer {
+        self.obj_0_palette.get_obj_buffer()
+    }
+
+    pub fn get_obj_1_palette_buffer(&mut self) -> PaletteBuffer {
+        self.obj_1_palette.get_obj_buffer()
+    }
+
     // Get push constants
     pub fn get_bg_scroll(&self) -> [f32; 2] {
-        //[self.scroll_x as f32 * -OFFSET_FRAC_X, self.scroll_y as f32 * -OFFSET_FRAC_Y]
-        [0.0, 0.0] // no scroll
+        [self.scroll_x as f32 * -OFFSET_FRAC_X, self.scroll_y as f32 * -OFFSET_FRAC_Y]
+        //[0.0, 0.0] // no scroll
     }
 
     pub fn get_window_position(&self) -> [f32; 2] {
         [(self.window_x as f32 - 7.0) * OFFSET_FRAC_X, self.window_y as f32 * OFFSET_FRAC_Y]
     }
 
-    pub fn get_tile_data_offset(&self) -> i32 {
+    pub fn get_tile_data_offset(&self) -> u32 {
         if self.lcd_control.contains(LCDControl::TILE_DATA_SELECT) {
             0
         } else {
             256
         }
+    }
+
+    // Get the size of a single tile in the atlas.
+    pub fn get_tile_size(&self) -> [f32; 2] {
+        [1.0 / TILE_DATA_WIDTH as f32, 1.0 / TILE_DATA_HEIGHT as f32]
     }
 }
 
@@ -234,7 +265,7 @@ impl MemDevice for VideoMem {
                 let x = base % 0x20;
                 let y = base / 0x20;
 
-                self.tile_map_0.get_tile_texture(x, y) as u8
+                self.tile_map_0.get_tile_texture(x, y)
             },
             // Background Map B
             0x9C00...0x9FFF => {
@@ -242,12 +273,10 @@ impl MemDevice for VideoMem {
                 let x = base % 0x20;
                 let y = base / 0x20;
 
-                self.tile_map_1.get_tile_texture(x, y) as u8
+                self.tile_map_1.get_tile_texture(x, y)
             },
             // Sprite data
-            0xFE00...0xFE9F => {
-                0
-            },
+            0xFE00...0xFE9F => self.object_mem.read(loc - 0xFE00),
             // Registers
             0xFF40 => self.lcd_control.bits(),
             0xFF41 => self.lcd_status.read(),
@@ -312,7 +341,7 @@ impl MemDevice for VideoMem {
                 let x = base % 0x20;
                 let y = base / 0x20;
 
-                self.tile_map_0.set_tile_texture(x, y, val as i32);
+                self.tile_map_0.set_tile_texture(x, y, val);
             },
             // Background Map B
             0x9C00...0x9FFF => {
@@ -320,12 +349,10 @@ impl MemDevice for VideoMem {
                 let x = base % 0x20;
                 let y = base / 0x20;
 
-                self.tile_map_1.set_tile_texture(x, y, val as i32);
+                self.tile_map_1.set_tile_texture(x, y, val);
             },
             // Sprite data
-            0xFE00...0xFE9F => {
-
-            },
+            0xFE00...0xFE9F => self.object_mem.write(loc - 0xFE00, val),
             0xFF40 => self.lcd_control = LCDControl::from_bits_truncate(val),
             0xFF41 => self.lcd_status.write(val),
             0xFF42 => self.scroll_y = val,
