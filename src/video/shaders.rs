@@ -25,6 +25,7 @@ layout(push_constant) uniform PushConstants {
 } push_constants;
 
 layout(location = 0) out vec2 texCoordOut;
+layout(location = 1) out uint paletteNumOut;
 
 vec2 calc_tex_coords(uint tex_num, uint tex_offset, uint corner) {
     tex_num += tex_offset;
@@ -48,6 +49,8 @@ void main() {
 
     gl_Position = vec4(position + push_constants.vertex_offset, 0.0, 1.0);
     texCoordOut = calc_tex_coords(tex_num, push_constants.tex_offset, corner);
+
+    paletteNumOut = (data & 0xC00) >> 10;
 }
 "#
     }
@@ -60,17 +63,18 @@ pub mod fs {
 #version 450
 
 layout(location = 0) in vec2 texCoord;
+layout(location = 1) in flat uint paletteNum;
 
 layout(set = 0, binding = 0) uniform usampler2D atlas;
 layout(set = 1, binding = 0) uniform Palette {
-    mat4 colours;
+    mat4 colours[3];
 } PaletteTable;
 
 layout(location = 0) out vec4 outColor;
 
 void main() {
     uint texel = texture(atlas, texCoord).x;
-    outColor = PaletteTable.colours[texel];
+    outColor = PaletteTable.colours[paletteNum][texel];
 }
 "#
     }

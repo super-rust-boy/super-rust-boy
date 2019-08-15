@@ -21,6 +21,9 @@ use std::sync::Arc;
 const SPRITE_WIDTH: f32 = (8.0 / 160.0) * 2.0;
 const SPRITE_HEIGHT: f32 = (8.0 / 144.0) * 2.0;
 
+const OBJ_PALETTE_0: u32 = 1 << 10;
+const OBJ_PALETTE_1: u32 = 2 << 10;
+
 bitflags! {
     #[derive(Default)]
     struct SpriteFlags: u8 {
@@ -66,25 +69,27 @@ impl Sprite {
         let bl = bottom_left as u32;
         let tr = top_right as u32;
         let br = bottom_right as u32;
+        let tile_num = self.tile_num as u32;
+        let palette_num = if self.flags.contains(SpriteFlags::PALETTE) {OBJ_PALETTE_1} else {OBJ_PALETTE_0};
 
         let mut vertices = Vec::with_capacity(if large {12} else {6});
-        vertices.push(Vertex{ position: [lo_x, lo_y], data: self.tile_num as u32 | tl });
-        vertices.push(Vertex{ position: [lo_x, hi_y], data: self.tile_num as u32 | bl });
-        vertices.push(Vertex{ position: [hi_x, lo_y], data: self.tile_num as u32 | tr });
-        vertices.push(Vertex{ position: [lo_x, hi_y], data: self.tile_num as u32 | bl });
-        vertices.push(Vertex{ position: [hi_x, lo_y], data: self.tile_num as u32 | tr });
-        vertices.push(Vertex{ position: [hi_x, hi_y], data: self.tile_num as u32 | br });
+        vertices.push(Vertex{ position: [lo_x, lo_y], data: palette_num | tile_num | tl });
+        vertices.push(Vertex{ position: [lo_x, hi_y], data: palette_num | tile_num | bl });
+        vertices.push(Vertex{ position: [hi_x, lo_y], data: palette_num | tile_num | tr });
+        vertices.push(Vertex{ position: [lo_x, hi_y], data: palette_num | tile_num | bl });
+        vertices.push(Vertex{ position: [hi_x, lo_y], data: palette_num | tile_num | tr });
+        vertices.push(Vertex{ position: [hi_x, hi_y], data: palette_num | tile_num | br });
 
         if large {
             let lo_y = hi_y;
             let hi_y = hi_y + SPRITE_HEIGHT;
             let tile_num = self.tile_num as u32 + 1;
-            vertices.push(Vertex{ position: [lo_x, lo_y], data: tile_num | tl });
-            vertices.push(Vertex{ position: [lo_x, hi_y], data: tile_num | bl });
-            vertices.push(Vertex{ position: [hi_x, lo_y], data: tile_num | tr });
-            vertices.push(Vertex{ position: [lo_x, hi_y], data: tile_num | bl });
-            vertices.push(Vertex{ position: [hi_x, lo_y], data: tile_num | tr });
-            vertices.push(Vertex{ position: [hi_x, hi_y], data: tile_num | br });
+            vertices.push(Vertex{ position: [lo_x, lo_y], data: palette_num | tile_num | tl });
+            vertices.push(Vertex{ position: [lo_x, hi_y], data: palette_num | tile_num | bl });
+            vertices.push(Vertex{ position: [hi_x, lo_y], data: palette_num | tile_num | tr });
+            vertices.push(Vertex{ position: [lo_x, hi_y], data: palette_num | tile_num | bl });
+            vertices.push(Vertex{ position: [hi_x, lo_y], data: palette_num | tile_num | tr });
+            vertices.push(Vertex{ position: [hi_x, hi_y], data: palette_num | tile_num | br });
         }
 
         vertices

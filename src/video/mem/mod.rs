@@ -109,9 +109,7 @@ pub struct VideoMem {
     lcdc_y: u8,
     ly_compare: u8,
 
-    bg_palette: Palette,
-    obj_0_palette: Palette,
-    obj_1_palette: Palette,
+    palettes: PaletteMem,
 
     window_y: u8,
     window_x: u8
@@ -132,9 +130,7 @@ impl VideoMem {
             lcdc_y: 0,
             ly_compare: 0,
 
-            bg_palette: Palette::new_monochrome(device),
-            obj_0_palette: Palette::new_monochrome(device),
-            obj_1_palette: Palette::new_monochrome(device),
+            palettes: PaletteMem::new(device),
 
             window_y: 0,
             window_x: 0
@@ -198,18 +194,9 @@ impl VideoMem {
         self.tile_mem.make_image(queue)
     }
 
-    // Get palette for bg and window
+    // Get palettes
     pub fn get_palette_buffer(&mut self) -> PaletteBuffer {
-        self.bg_palette.get_buffer()
-    }
-
-    // Get palettes for sprites
-    pub fn get_obj_0_palette_buffer(&mut self) -> PaletteBuffer {
-        self.obj_0_palette.get_obj_buffer()
-    }
-
-    pub fn get_obj_1_palette_buffer(&mut self) -> PaletteBuffer {
-        self.obj_1_palette.get_obj_buffer()
+        self.palettes.get_buffer()
     }
 
     // Get push constants
@@ -284,9 +271,9 @@ impl MemDevice for VideoMem {
             0xFF43 => self.scroll_x,
             0xFF44 => self.lcdc_y,
             0xFF45 => self.ly_compare,
-            0xFF47 => self.bg_palette.read(),
-            0xFF48 => self.obj_0_palette.read(),
-            0xFF49 => self.obj_1_palette.read(),
+            0xFF47 => self.palettes.read(0),
+            0xFF48 => self.palettes.read(1),
+            0xFF49 => self.palettes.read(2),
             0xFF4A => self.window_y,
             0xFF4B => self.window_x,
             _ => 0
@@ -359,9 +346,9 @@ impl MemDevice for VideoMem {
             0xFF43 => self.scroll_x = val,
             0xFF44 => self.lcdc_y = 0,
             0xFF45 => self.ly_compare = val,
-            0xFF47 => self.bg_palette.write(val),
-            0xFF48 => self.obj_0_palette.write(val),
-            0xFF49 => self.obj_1_palette.write(val),
+            0xFF47 => self.palettes.write(0, val),
+            0xFF48 => self.palettes.write(1, val),
+            0xFF49 => self.palettes.write(2, val),
             0xFF4A => self.window_y = val,
             0xFF4B => self.window_x = val,
             _ => {}

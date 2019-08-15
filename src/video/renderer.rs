@@ -309,11 +309,6 @@ impl Renderer {
                 ).unwrap();
             }
 
-            // Make descriptor set for obj palette.
-            let sprite_set1 = Arc::new(self.set_pools[1].next()
-                .add_buffer(video_mem.get_obj_0_palette_buffer().clone()).unwrap()
-                .build().unwrap());
-
             // Add sprites.
             if let Some(sprite_vertices) = video_mem.get_sprites() {
                 let sprite_push_constants = PushConstants {
@@ -326,7 +321,7 @@ impl Renderer {
                     self.pipeline.clone(),
                     &self.dynamic_state,
                     sprite_vertices.clone(),
-                    (set0.clone(), sprite_set1.clone()),
+                    (set0.clone(), set1.clone()),
                     sprite_push_constants
                 ).unwrap();
             }
