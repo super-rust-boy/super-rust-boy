@@ -96,6 +96,7 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
         let freq_n = (((regs.freq_hi_reg & 0x7) as usize) << 8) | (regs.freq_lo_reg as usize);
         let frequency = FREQ_MAX / (FREQ_MOD - freq_n);
 
+        self.phase = 0;
         self.phase_len = self.sample_rate / frequency;
         self.duty_len = match regs.duty_length_reg & 0xC0 {
             DUTY_12_5   => self.phase_len / 8,
