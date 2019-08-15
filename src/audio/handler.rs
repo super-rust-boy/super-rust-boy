@@ -11,6 +11,22 @@ use super::noise::{NoiseRegs, NoiseGen};
 
 use cpal;
 
+use bitflags::bitflags;
+
+bitflags! {
+    #[derive(Default)]
+    struct ChannelEnables: u8 {
+        const LEFT_1    = 0b10000000;
+        const LEFT_2    = 0b01000000;
+        const LEFT_3    = 0b00100000;
+        const LEFT_4    = 0b00010000;
+        const RIGHT_1   = 0b00001000;
+        const RIGHT_2   = 0b00000100;
+        const RIGHT_3   = 0b00000010;
+        const RIGHT_4   = 0b00000001;
+    }
+}
+
 const DIV_4_BIT: f32 = 1.0/15.0;//1.0 / 7.5;
 // Convert 4-bit sample to float
 macro_rules! sample {
@@ -112,23 +128,11 @@ struct AudioHandler {
     wave:       WaveGen,
     noise:      NoiseGen,
 
-    // Control reg buffers
-    /*channel_control: Some<u8>,
-    output_select:   Some<u8>,
-    on_off:          Some<u8>,*/
-
     // Control values
     sound_on:   bool,
     left_vol:   f32,
     right_vol:  f32,
-    left_1:     bool,
-    left_2:     bool,
-    left_3:     bool,
-    left_4:     bool,
-    right_1:    bool,
-    right_2:    bool,
-    right_3:    bool,
-    right_4:    bool,
+    channel_enables: ChannelEnables,
 
     // Raw channel buffers
     buffers:    AudioBuffers,
@@ -152,14 +156,7 @@ impl AudioHandler {
             sound_on:   false,
             left_vol:   0.0,
             right_vol:  0.0,
-            left_1:     false,
-            left_2:     false,
-            left_3:     false,
-            left_4:     false,
-            right_1:    false,
-            right_2:    false,
-            right_3:    false,
-            right_4:    false,
+            channel_enables: ChannelEnables::default(),
 
             buffers:    AudioBuffers::new(sample_rate / 60),
         }
@@ -209,15 +206,15 @@ impl AudioHandler {
     #[inline]
     fn mix_output(&mut self, vals: (u8, u8, u8, u8)) -> (f32, f32) {
         if self.sound_on {
-            let left_1 = if self.left_1 {sample!(vals.0)} else {0.0};
-            let left_2 = if self.left_2 {sample!(vals.1)} else {0.0};
-            let left_3 = if self.left_3 {sample!(vals.2)} else {0.0};
-            let left_4 = if self.left_4 {sample!(vals.3)} else {0.0};
+            let left_1 = if self.channel_enables.contains(ChannelEnables::LEFT_1) {sample!(vals.0)} else {0.0};
+            let left_2 = if self.channel_enables.contains(ChannelEnables::LEFT_2) {sample!(vals.1)} else {0.0};
+            let left_3 = if self.channel_enables.contains(ChannelEnables::LEFT_3) {sample!(vals.2)} else {0.0};
+            let left_4 = if self.channel_enables.contains(ChannelEnables::LEFT_4) {sample!(vals.3)} else {0.0};
 
-            let right_1 = if self.right_1 {sample!(vals.0)} else {0.0};
-            let right_2 = if self.right_2 {sample!(vals.1)} else {0.0};
-            let right_3 = if self.right_3 {sample!(vals.2)} else {0.0};
-            let right_4 = if self.right_4 {sample!(vals.3)} else {0.0};
+            let right_1 = if self.channel_enables.contains(ChannelEnables::RIGHT_1) {sample!(vals.0)} else {0.0};
+            let right_2 = if self.channel_enables.contains(ChannelEnables::RIGHT_2) {sample!(vals.1)} else {0.0};
+            let right_3 = if self.channel_enables.contains(ChannelEnables::RIGHT_3) {sample!(vals.2)} else {0.0};
+            let right_4 = if self.channel_enables.contains(ChannelEnables::RIGHT_4) {sample!(vals.3)} else {0.0};
 
             ((left_1 + left_2 + left_3 + left_4) * self.left_vol,
              (right_1 + right_2 + right_3 + right_4) * self.right_vol)
@@ -227,10 +224,6 @@ impl AudioHandler {
     }
 
     fn set_controls(&mut self, channel_control: u8, output_select: u8, on_off: u8) {
-        /*self.channel_control = channel_control;
-        self.output_select = output_select;
-        self.on_off = on_off;*/
-
         self.sound_on = (on_off & 0x80) != 0;
 
         self.left_vol = if (channel_control & 0x80) != 0 {
@@ -245,14 +238,7 @@ impl AudioHandler {
             (channel_control & 0x7) as f32 / 7.0
         };
 
-        self.left_4  = (output_select & 0x80) != 0;
-        self.left_3  = (output_select & 0x40) != 0;
-        self.left_2  = (output_select & 0x20) != 0;
-        self.left_1  = (output_select & 0x10) != 0;
-        self.right_4 = (output_select & 0x08) != 0;
-        self.right_3 = (output_select & 0x04) != 0;
-        self.right_2 = (output_select & 0x02) != 0;
-        self.right_1 = (output_select & 0x01) != 0;
+        self.channel_enables = ChannelEnables::from_bits_truncate(output_select);
     }
 }
 

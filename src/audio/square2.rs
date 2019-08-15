@@ -155,6 +155,7 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
                     },
                     AmpDirection::None => {},
                 }
+                self.amp_counter = 0;
             }
         }
     }
