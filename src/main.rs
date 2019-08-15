@@ -17,13 +17,18 @@ fn main() {
         None => panic!("Usage: cargo run [cart name]"),
     };
 
+    let save_file = match std::env::args().nth(2) {
+        Some(c) => c,
+        None => "save_file.sv".to_string(),
+    };
+
     println!("Super Rust Boy: {}", cart);
 
     let (send, recv) = channel();
 
     let vd = video::VideoDevice::new();
     let ad = audio::AudioDevice::new(send);
-    let mem = mem::MemBus::new(cart.as_str(), vd, ad);
+    let mem = mem::MemBus::new(cart.as_str(), save_file.as_str(), vd, ad);
 
     let mut state = cpu::CPU::new(mem);
 

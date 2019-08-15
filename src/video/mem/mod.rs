@@ -217,7 +217,6 @@ impl VideoMem {
     // Get push constants
     pub fn get_bg_scroll(&self) -> [f32; 2] {
         [self.scroll_x as f32 * -OFFSET_FRAC_X, self.scroll_y as f32 * -OFFSET_FRAC_Y]
-        //[0.0, 0.0] // no scroll
     }
 
     pub fn get_window_position(&self) -> [f32; 2] {

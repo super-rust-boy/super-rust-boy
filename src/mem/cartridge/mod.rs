@@ -1,16 +1,22 @@
-//
+// Cartridge module.
 
+mod ram;
 mod mb1;
 mod mb3;
 
+use ram::*;
 use mb1::MB1;
 use mb3::MB3;
 
-use std::io::BufReader;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::fs::File;
+use std::{
+    io::{
+        BufReader,
+        Read,
+        Seek,
+        SeekFrom
+    },
+    fs::File
+};
 
 use super::MemDevice;
 
@@ -34,13 +40,105 @@ enum Swap {
 pub struct Cartridge {
     rom_bank_0: [u8; 0x4000],
     rom_bank_n: [u8; 0x4000],
-    ram:        Vec<u8>,
+    ram:        Box<RAM>,
 
     rom_file:   BufReader<File>,
     mem_bank:   MBC,
-    ram_enable: bool,
-    ram_offset: usize,
-    battery:    bool,
+    ram_enable: bool
+}
+
+impl Cartridge {
+    pub fn new(rom_file_name: &str, save_file_name: &str) -> Result<Cartridge, String> {
+        let f = File::open(rom_file_name).map_err(|e| e.to_string())?;
+
+        let mut reader = BufReader::new(f);
+        let mut buf = [0_u8; 0x4000];
+        reader.read(&mut buf).map_err(|e| e.to_string())?;
+
+        let (bank_type, battery) = match buf[0x147] {
+            0x1 | 0x2           => (MBC::_1(MB1::new()), false),
+            0x3                 => (MBC::_1(MB1::new()), true),
+            0x5                 => (MBC::_2, false),
+            0x6                 => (MBC::_2, true),
+            0xF | 0x10 | 0x13   => (MBC::_3(MB3::new()), true),
+            0x11 | 0x12         => (MBC::_3(MB3::new()), false),
+            0x19 | 0x1A | 0x1C | 0x1D => (MBC::_5(0), false),
+            0x1B | 0x1E         => (MBC::_5(0), true),
+            _                   => (MBC::_0, false)
+        };
+
+        let ram_size = match (&bank_type, buf[0x149]) {
+            (MBC::_2,_)     => 0x200,
+            (MBC::_3(_),_)  => 0x10000,
+            (_,0x1)         => 0x800,
+            (_,0x2)         => 0x2000,
+            (_,0x3)         => 0x8000,
+            (_,0x4)         => 0x20000,
+            (_,0x5)         => 0x10000,
+            _               => 0,
+        };
+
+        /*let ram = if battery {
+            Box::new(BatteryRAM::new(ram_size, save_file_name)?) as Box<RAM>
+        } else {
+            Box::new(BankedRAM::new(ram_size)) as Box<RAM>
+        };*/
+        let ram = Box::new(BankedRAM::new(ram_size));
+
+        let mut ret = Cartridge {
+            rom_bank_0: buf,
+            rom_bank_n: [0; 0x4000],
+            ram:        ram,
+            rom_file:   reader,
+            mem_bank:   bank_type,
+            ram_enable: false
+        };
+
+        ret.swap_rom_bank(1);
+
+        Ok(ret)
+    }
+
+    fn swap_rom_bank(&mut self, bank: u16) {
+        let pos = (bank as u64) * 0x4000;
+
+        self.rom_file.seek(SeekFrom::Start(pos))
+            .expect("Couldn't swap in bank");
+
+        self.rom_file.read(&mut self.rom_bank_n)
+            .expect("Couldn't swap in bank");
+    }
+
+    #[inline]
+    fn swap_ram_bank(&mut self, bank: u8) {
+        self.ram.set_offset((bank as usize) * 0x2000);
+    }
+
+    #[inline]
+    fn read_ram(&self, loc: u16) -> u8 {
+        if self.ram_enable {
+            match self.mem_bank {
+                MBC::_3(ref mb) => if mb.ram_select {self.ram.read(loc)}
+                                   else {mb.get_rtc_reg()},
+                _ => self.ram.read(loc),
+            }
+        }
+        else {
+            0
+        }
+    }
+
+    #[inline]
+    fn write_ram(&mut self, loc: u16, val: u8) {
+        if self.ram_enable {
+            match self.mem_bank {
+                MBC::_2             => self.ram.write(loc, val & 0xF),
+                MBC::_3(ref mut mb) => if mb.ram_select {self.ram.write(loc, val)}
+                                       else {mb.set_rtc_reg(val)},
+                _ => self.ram.write(loc, val),
+            }
+        }
+    }
 }
 
 impl MemDevice for Cartridge {
@@ -118,96 +216,6 @@ impl MemDevice for Cartridge {
                 Swap::ROM(rom) => self.swap_rom_bank(rom),
                 Swap::RAM(ram) => self.swap_ram_bank(ram),
                 Swap::None => {},
-            }
-        }
-    }
-}
-
-impl Cartridge {
-    pub fn new(rom_file: &str) -> Result<Cartridge, String> {
-        let f = File::open(rom_file).map_err(|e| e.to_string())?;
-
-        let mut reader = BufReader::new(f);
-        let mut buf = [0_u8; 0x4000];
-        //try!(reader.read_exact(&mut buf).map_err(|e| e.to_string()));
-        reader.read(&mut buf).map_err(|e| e.to_string())?;
-
-        let bank_type = match buf[0x147] {
-            0x1...0x3   => MBC::_1(MB1::new()),
-            0x5...0x6   => MBC::_2,
-            0xF...0x13  => MBC::_3(MB3::new()),
-            0x19...0x1E => MBC::_5(0),
-            _           => MBC::_0,
-        };
-
-        let ram_size = match (&bank_type, buf[0x149]) {
-            (MBC::_2,_)     => 0x200,
-            (MBC::_3(_),_)  => 0x10000,
-            (_,0x1)         => 0x800,
-            (_,0x2)         => 0x2000,
-            (_,0x3)         => 0x8000,
-            (_,0x4)         => 0x20000,
-            (_,0x5)         => 0x10000,
-            _               => 0,
-        };
-
-        let mut ret = Cartridge {
-            rom_bank_0: buf,
-            rom_bank_n: [0; 0x4000],
-            ram:        vec!(0; ram_size),
-            rom_file:   reader,
-            mem_bank:   bank_type,
-            ram_enable: false,
-            ram_offset: 0,
-            battery:    false,
-        };
-
-        ret.swap_rom_bank(1);
-
-        Ok(ret)
-    }
-
-    pub fn swap_rom_bank(&mut self, bank: u16)/* -> Result<(), String>*/ {
-        //println!("Swapping in bank: {}", bank);
-        let pos = (bank as u64) * 0x4000;
-        match self.rom_file.seek(SeekFrom::Start(pos)) {
-            Ok(_) => {},
-            Err(s) => panic!("Couldn't swap in bank: {}", s),
-        }
-        //try!(self.rom_file.read_exact(&mut self.rom_bank_n).map_err(|e| e.to_string()));
-        match self.rom_file.read(&mut self.rom_bank_n) {
-            Ok(_) => {},
-            Err(s) => panic!("Couldn't swap in bank: {}", s),
-        }
-    }
-
-    #[inline]
-    pub fn swap_ram_bank(&mut self, bank: u8) {
-        self.ram_offset = (bank as usize) * 0x2000;
-    }
-
-    #[inline]
-    pub fn read_ram(&self, loc: u16) -> u8 {
-        if self.ram_enable {
-            match self.mem_bank {
-                MBC::_3(ref mb) => if mb.ram_select {self.ram[self.ram_offset + (loc as usize)]}
-                                   else {mb.get_rtc_reg()},
-                _ => self.ram[self.ram_offset + (loc as usize)],
-            }
-        }
-        else {
-            0
-        }
-    }
-
-    #[inline]
-    pub fn write_ram(&mut self, loc: u16, val: u8) {
-        if self.ram_enable {
-            match self.mem_bank {
-                MBC::_2             => self.ram[self.ram_offset + (loc as usize)] = val & 0xF,
-                MBC::_3(ref mut mb) => if mb.ram_select {self.ram[self.ram_offset + (loc as usize)] = val}
-                                       else {mb.set_rtc_reg(val)},
-                _ => self.ram[self.ram_offset + (loc as usize)] = val,
             }
         }
     }

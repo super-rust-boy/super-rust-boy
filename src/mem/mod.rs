@@ -29,7 +29,6 @@ pub trait MemDevice {
 pub struct MemBus {
     cart:               Cartridge,
 
-    ram_bank:           WriteableMem,
     ram:                WriteableMem,
     high_ram:           WriteableMem,
 
@@ -44,15 +43,14 @@ pub struct MemBus {
 }
 
 impl MemBus {
-    pub fn new(rom_file: &str, video_device: VideoDevice, audio_device: AudioDevice) -> MemBus {
-        let rom = match Cartridge::new(rom_file) {
+    pub fn new(rom_file: &str, save_file: &str, video_device: VideoDevice, audio_device: AudioDevice) -> MemBus {
+        let rom = match Cartridge::new(rom_file, save_file) {
             Ok(r) => r,
             Err(s) => panic!("Could not construct ROM: {}", s),
         };
 
         MemBus {
             cart:               rom,
-            ram_bank:           WriteableMem::new(0x2000),
             ram:                WriteableMem::new(0x2000),
             high_ram:           WriteableMem::new(0x7F),
             interrupt_flag:     InterruptFlags::default(),
@@ -149,13 +147,13 @@ impl MemDevice for MemBus {
     }
 }
 
-struct WriteableMem {
+pub struct WriteableMem {
     mem: Vec<u8>,
 }
 
 impl WriteableMem {
-    fn new(size: usize) -> WriteableMem {
-        WriteableMem {mem: vec![0;size]}
+    pub fn new(size: usize) -> WriteableMem {
+        WriteableMem {mem: vec![0; size]}
     }
 }
 

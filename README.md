@@ -7,11 +7,10 @@ The emulator can be built in debug mode by enabling the `debug` feature at compi
 
 ## TODO:
 * General cleanup
+* Fix save files
 
 ### TODO video:
-* Sprites
-* Tests
-* Wraparound
+* Minor issue of sprites appearing above window.
 
 ### TODO audio:
 * Test wave/noise generators
