@@ -56,7 +56,8 @@ struct PushConstants {
     pub vertex_offset: [f32; 2],
     pub tex_size: [f32; 2],
     pub tex_offset: u32,
-    pub palette_offset: u32
+    pub palette_offset: u32,
+    pub wraparound: u32
 }
 
 vulkano::impl_vertex!(Vertex, position, data);
@@ -286,7 +287,8 @@ impl Renderer {
                 vertex_offset: [0.0, 0.0],
                 tex_size: video_mem.get_tile_size(),
                 tex_offset: 0,
-                palette_offset: 0
+                palette_offset: 0,
+                wraparound: 0
             };
 
             // Add sprites below background.
@@ -305,7 +307,8 @@ impl Renderer {
                 vertex_offset: video_mem.get_bg_scroll(),
                 tex_size: video_mem.get_tile_size(),
                 tex_offset: video_mem.get_tile_data_offset(),
-                palette_offset: 0
+                palette_offset: 0,
+                wraparound: 1
             };
 
             // Add the background.
@@ -323,7 +326,8 @@ impl Renderer {
                     vertex_offset: video_mem.get_window_position(),
                     tex_size: video_mem.get_tile_size(),
                     tex_offset: video_mem.get_tile_data_offset(),
-                    palette_offset: 1
+                    palette_offset: 1,
+                    wraparound: 0
                 };
 
                 command_buffer_builder = command_buffer_builder.draw(
