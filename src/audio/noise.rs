@@ -113,7 +113,7 @@ impl AudioChannelGen<NoiseRegs> for NoiseGen {
         let r = (regs.poly_counter_reg & 0x7) as usize;
         let divisor = DIVISOR[r] << s;
 
-        self.freq_step = self.sample_rate / (FREQ_CONST / divisor); // number of samples between counter switches
+        self.freq_step = self.sample_rate.checked_div(FREQ_CONST / divisor).unwrap_or(1); // number of samples between counter switches
         self.freq_counter = 0;
         self.counter_width = (regs.poly_counter_reg & 8) == 8;
 

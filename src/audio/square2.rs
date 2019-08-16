@@ -134,7 +134,7 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
             } else {
                 *i = 0
             }
-            self.phase = (self.phase + 1) % self.phase_len;
+            self.phase = (self.phase + 1).checked_rem(self.phase_len).unwrap_or(0);
 
             match self.length {
                 Some(n) if n > 0 => self.length = Some(n - 1),

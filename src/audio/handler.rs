@@ -27,12 +27,12 @@ bitflags! {
     }
 }
 
-const DIV_4_BIT: f32 = 1.0/15.0;//1.0 / 7.5;
+const DIV_4_BIT: f32 = 1.0 / 8.0;
 // Convert 4-bit sample to float
 macro_rules! sample {
     ( $x:expr ) => {
         {
-            ((($x as f32) * DIV_4_BIT)/* - 1.0*/)
+            ((($x as f32) * DIV_4_BIT) - 1.0)
         }
     };
 }
@@ -206,15 +206,20 @@ impl AudioHandler {
     #[inline]
     fn mix_output(&mut self, vals: (u8, u8, u8, u8)) -> (f32, f32) {
         if self.sound_on {
-            let left_1 = if self.channel_enables.contains(ChannelEnables::LEFT_1) {sample!(vals.0)} else {0.0};
-            let left_2 = if self.channel_enables.contains(ChannelEnables::LEFT_2) {sample!(vals.1)} else {0.0};
-            let left_3 = if self.channel_enables.contains(ChannelEnables::LEFT_3) {sample!(vals.2)} else {0.0};
-            let left_4 = if self.channel_enables.contains(ChannelEnables::LEFT_4) {sample!(vals.3)} else {0.0};
+            let samp_0 = sample!(vals.0);
+            let samp_1 = sample!(vals.1);
+            let samp_2 = sample!(vals.2);
+            let samp_3 = sample!(vals.3);
 
-            let right_1 = if self.channel_enables.contains(ChannelEnables::RIGHT_1) {sample!(vals.0)} else {0.0};
-            let right_2 = if self.channel_enables.contains(ChannelEnables::RIGHT_2) {sample!(vals.1)} else {0.0};
-            let right_3 = if self.channel_enables.contains(ChannelEnables::RIGHT_3) {sample!(vals.2)} else {0.0};
-            let right_4 = if self.channel_enables.contains(ChannelEnables::RIGHT_4) {sample!(vals.3)} else {0.0};
+            let left_1 = if self.channel_enables.contains(ChannelEnables::LEFT_1) {samp_0} else {0.0};
+            let left_2 = if self.channel_enables.contains(ChannelEnables::LEFT_2) {samp_1} else {0.0};
+            let left_3 = if self.channel_enables.contains(ChannelEnables::LEFT_3) {samp_2} else {0.0};
+            let left_4 = if self.channel_enables.contains(ChannelEnables::LEFT_4) {samp_3} else {0.0};
+
+            let right_1 = if self.channel_enables.contains(ChannelEnables::RIGHT_1) {samp_0} else {0.0};
+            let right_2 = if self.channel_enables.contains(ChannelEnables::RIGHT_2) {samp_1} else {0.0};
+            let right_3 = if self.channel_enables.contains(ChannelEnables::RIGHT_3) {samp_2} else {0.0};
+            let right_4 = if self.channel_enables.contains(ChannelEnables::RIGHT_4) {samp_3} else {0.0};
 
             ((left_1 + left_2 + left_3 + left_4) * self.left_vol,
              (right_1 + right_2 + right_3 + right_4) * self.right_vol)
