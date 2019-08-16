@@ -117,7 +117,6 @@ impl Square1Gen {
     }
 
     fn calc_freq(&mut self) {
-        self.phase = 0;
         self.phase_len = self.sample_rate / self.frequency;
         self.duty_len = match self.duty_reg_amt {
             DUTY_12_5   => self.phase_len / 8,
@@ -147,6 +146,7 @@ impl AudioChannelGen<Square1Regs> for Square1Gen {
         self.freq_shift_amt = (regs.sweep_reg & 0x7) as usize;
 
         self.duty_reg_amt = regs.duty_length_reg & 0xC0;
+        self.phase = 0;
         self.calc_freq();
 
         self.length = if (regs.freq_hi_reg & 0x40) != 0 {

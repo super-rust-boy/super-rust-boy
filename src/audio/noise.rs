@@ -94,7 +94,7 @@ impl NoiseGen {
             freq_counter:   0,
             freq_step:      0,
 
-            rand_counter:   0xAAAA,
+            rand_counter:   0xFFFF,
             counter_width:  false,   // true = 7 bits
 
             length:         None,

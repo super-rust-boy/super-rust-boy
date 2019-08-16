@@ -32,7 +32,7 @@ const DIV_4_BIT: f32 = 1.0/15.0;//1.0 / 7.5;
 macro_rules! sample {
     ( $x:expr ) => {
         {
-            ((($x as f32) * DIV_4_BIT)/* - 1.0*/) * 0.25
+            ((($x as f32) * DIV_4_BIT)/* - 1.0*/)
         }
     };
 }
@@ -229,13 +229,13 @@ impl AudioHandler {
         self.left_vol = if (channel_control & 0x80) != 0 {
             0.0
         } else {
-            ((channel_control & 0x70) >> 4) as f32 / 7.0
+            ((channel_control & 0x70) >> 4) as f32 / 28.0
         };
 
         self.right_vol = if (channel_control & 0x8) != 0 {
             0.0
         } else {
-            (channel_control & 0x7) as f32 / 7.0
+            (channel_control & 0x7) as f32 / 28.0
         };
 
         self.channel_enables = ChannelEnables::from_bits_truncate(output_select);

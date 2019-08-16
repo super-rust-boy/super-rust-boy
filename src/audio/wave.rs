@@ -1,5 +1,7 @@
 use super::{AudioChannelRegs, AudioChannelGen};
-use super::common::*;
+use super::common::FREQ_MOD;
+
+const FREQ_MAX: usize = 65_536;
 
 #[derive(Clone)]
 pub struct WaveRegs {
@@ -80,20 +82,67 @@ impl AudioChannelRegs for WaveRegs {
 }
 
 pub struct WaveGen {
-    sample_rate: usize
+    sample_rate:    usize,
+
+    phase:          usize,
+    phase_len:      usize,
+
+    index:          usize,
+    samples:        [u8; 32],
+
+    length:         Option<usize>,
+
+    enable:         bool,
+    output_shift:   u8,
 }
 
 impl WaveGen {
     pub fn new(sample_rate: usize) -> Self {
         WaveGen {
             sample_rate:    sample_rate,
+
+            phase:          0,
+            phase_len:      1,
+
+            index:          0,
+            samples:        [0; 32],
+
+            length:         None,
+
+            enable:         false,
+            output_shift:   0,
         }
     }
 }
 
 impl AudioChannelGen<WaveRegs> for WaveGen {
     fn init_signal(&mut self, regs: &WaveRegs) {
+        self.enable = (regs.on_off_reg & 0x80) != 0;
 
+        let freq_n = (((regs.freq_hi_reg & 0x7) as usize) << 8) | (regs.freq_lo_reg as usize);
+        let frequency = FREQ_MAX / (FREQ_MOD - freq_n);
+        self.phase = 0;
+        self.phase_len = self.sample_rate / frequency;
+
+        self.length = if (regs.freq_hi_reg & 0x40) != 0 {
+            Some((self.sample_rate * (256 - regs.length_reg as usize)) / 256) // TODO: more precise?
+        } else {
+            None
+        };
+
+        self.output_shift = match (regs.output_lev_reg & 0x60) >> 5 {
+            1 => 0,
+            2 => 1,
+            3 => 2,
+            _ => 4
+        };
+
+        self.index = 0;
+        for (i, s) in regs.samples.iter().enumerate() {
+            let internal_idx = i * 2;
+            self.samples[internal_idx] = (s >> 4) & 0xF_u8;
+            self.samples[internal_idx + 1] = s & 0xF;
+        }
     }
 
     fn generate_signal(&mut self, buffer: &mut [u8], start: f32, end: f32) {
@@ -101,22 +150,23 @@ impl AudioChannelGen<WaveRegs> for WaveGen {
         let skip = (buffer.len() as f32 * start) as usize;
 
         for i in buffer.iter_mut().take(take).skip(skip) {
-            /*if self.phase > self.duty_len {
-                *i = 0;
+            // Sample
+            if (self.length.unwrap_or(1) > 0) && self.enable {
+                *i = self.samples[self.index] >> self.output_shift;
             } else {
-                *i = self.amplitude;
+                *i = 0;
             }
-            self.phase = (self.phase + 1) % self.phase_len;
 
-            self.amp_counter += 1;
-            if self.amp_counter >= self.amp_sweep_step {
-                self.amplitude = match self.amp_sweep_dir {
-                    AmpDirection::Increase => ((self.amplitude as u16) + 1) as u8,
-                    AmpDirection::Decrease => ((self.amplitude as i16) - 1) as u8,
-                    AmpDirection::None => self.amplitude,
-                };
-            }*/
-            *i = 0;
+            self.phase += 1;
+            if self.phase >= self.phase_len {
+                self.index = (self.index + 1) % 32;
+                self.phase = 0;
+            }
+
+            match self.length {
+                Some(n) if n > 0 => self.length = Some(n - 1),
+                _ => {},
+            }
         }
     }
 }
