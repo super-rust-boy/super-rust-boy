@@ -354,7 +354,7 @@ impl CPU {
             0xE5 => self.push(Reg::HL),
             0xE6 => {let imm = self.fetch(); self.and(imm)},
             0xE7 => self.call(Cond::AL, 0x20),
-            0xE8 => {let imm = self.fetch(); self.sp = self.add_sp(imm)},
+            0xE8 => {let imm = self.fetch(); self.sp = self.add_sp(imm); self.cycle_count += 4},
             0xE9 => {let loc = self.get_16(Reg::HL); self.jp(Cond::AL, loc)}, // jpHL
             0xEA => {let loc = self.fetch_16();
                      let op = self.a;
@@ -519,12 +519,17 @@ impl CPU {
 
     // increments sp - TODO: maybe improve this fn
     fn add_sp(&mut self, imm: u8) -> u16 {
-        self.cycle_count += 8;
+        self.cycle_count += 4;
         let offset = imm as i8;
         let result = (self.sp as i32) + (offset as i32);
         self.flags = CPUFlags::default();
-        self.flags.set(CPUFlags::HC, ((self.sp as i32 & 0xFFF) + offset as i32) > 0xFFF);
-        self.flags.set(CPUFlags::CARRY, result > 0xFFFF);
+        if offset >= 0 {
+            self.flags.set(CPUFlags::HC, (self.sp & 0xF) + ((offset as u16) & 0xF) > 0xF);
+            self.flags.set(CPUFlags::CARRY, (self.sp & 0xFF) + offset as u16 > 0xFF);
+        } else {
+            self.flags.set(CPUFlags::HC, (self.sp as i32) & 0xF >= result & 0xF);
+            self.flags.set(CPUFlags::CARRY, (self.sp as i32) & 0xFF >= result & 0xFF);
+        }
         result as u16
     }
 
@@ -574,11 +579,11 @@ impl CPU {
     }
 
     fn sub(&mut self, carry: bool, op: u8) {
-        let c = if self.flags.contains(CPUFlags::CARRY) && carry {1} else {0};
-        let result = (self.a as i16) - (op as i16) - c;
+        let c = if self.flags.contains(CPUFlags::CARRY) && carry {1_u8} else {0_u8};
+        let result = (self.a as i16) - (op as i16) - (c as i16);
         self.flags = CPUFlags::NEG;
         self.flags.set(CPUFlags::ZERO, (result as u8) == 0);
-        self.flags.set(CPUFlags::HC, (self.a & 0xF) < ((result as u8) & 0xF));
+        self.flags.set(CPUFlags::HC, (self.a & 0xF) < (((result as u8) & 0xF) + c));
         self.flags.set(CPUFlags::CARRY, result < 0);
         self.a = result as u8;
     }
