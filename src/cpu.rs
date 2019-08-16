@@ -145,15 +145,14 @@ impl CPU {
             return true;
         }
 
-        self.mem.update_timers(self.cycle_count);
-
         // Keep cycling
         if !self.cont {
             self.cycle_count += 4;
-            return true;
+        } else {
+            self.exec_instruction();
         }
 
-        self.exec_instruction();
+        self.mem.update_timers(self.cycle_count);
 
         return true;
     }

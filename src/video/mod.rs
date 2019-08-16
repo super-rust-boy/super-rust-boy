@@ -6,11 +6,11 @@ mod shaders;
 // Video mode constants
 mod constants {
     // Mode cycle counts
-    pub const H_CYCLES: u32     = 456;
-    pub const MODE_1: u32       = 154 * H_CYCLES;
-    pub const MODE_2: u32       = 80;
-    pub const MODE_3: u32       = MODE_2 + 172;
-    pub const FRAME_CYCLE: u32  = 144 * H_CYCLES;
+    pub const H_CYCLES: u32     = 456;              // Cycles per Line
+    pub const MODE_1: u32       = 154 * H_CYCLES;   // Mode 1: V-Blank
+    pub const MODE_2: u32       = 80;               // Mode 2: Reading OAM
+    pub const MODE_3: u32       = MODE_2 + 172;     // Mode 3: Reading OAM & VRAM
+    pub const FRAME_CYCLE: u32  = 144 * H_CYCLES;   // Time spent cycling through modes 2,3 and 0 before V-Blank
 }
 
 // Modes
@@ -18,7 +18,7 @@ mod constants {
 pub enum Mode {
     _0 = 0, // H-blank
     _1 = 1, // V-blank
-    _2 = 2, // Reading
+    _2 = 2, // Reading OAM
     _3 = 3  // Drawing
 }
 
@@ -128,21 +128,20 @@ impl VideoDevice {
     pub fn video_mode(&mut self, cycle_count: &mut u32) -> (bool, InterruptFlags) {
         use self::constants::*;
 
+        // First, calculate how many cycles into the horizontal line we are.
         let frame_cycle = *cycle_count % H_CYCLES;
+
         let int = match self.mem.lcd_status.read_mode() {
-            Mode::_2 => if frame_cycle >= MODE_2 {
-                self.update_mode(Mode::_3)
-            } else { InterruptFlags::default() },
-            Mode::_3 => if frame_cycle >= MODE_3 {
-                self.update_mode(Mode::_0)
-            } else { InterruptFlags::default() },
-            Mode::_0 => if *cycle_count >= FRAME_CYCLE {
+            Mode::_2 if frame_cycle >= MODE_2 => self.update_mode(Mode::_3),
+            Mode::_3 if frame_cycle >= MODE_3 => self.update_mode(Mode::_0),
+            Mode::_0 if *cycle_count >= FRAME_CYCLE => {
                 self.mem.inc_lcdc_y();
                 self.update_mode(Mode::_1) | InterruptFlags::V_BLANK
-            } else if frame_cycle < MODE_3 {
+            },
+            Mode::_0 if frame_cycle < MODE_3 => {
                 self.mem.inc_lcdc_y();
                 self.update_mode(Mode::_2)
-            } else { InterruptFlags::default() },
+            },
             Mode::_1 => if *cycle_count >= MODE_1 {
                 self.mem.set_lcdc_y(0);
                 *cycle_count -= MODE_1;
@@ -152,6 +151,7 @@ impl VideoDevice {
                 self.mem.set_lcdc_y(new_ly);
                 InterruptFlags::default()
             },
+            _ => InterruptFlags::default(),
         };
 
         (if int.contains(InterruptFlags::V_BLANK) {

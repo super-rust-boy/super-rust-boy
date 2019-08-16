@@ -292,12 +292,10 @@ impl MemDevice for VideoMem {
             0xFF4B => self.window_x,
             _ => 0
         };
-        //println!("Reading {:X} from {:X}", val, loc);
         val
     }
 
     fn write(&mut self, loc: u16, val: u8) {
-        //println!("Writing {:X} to {:X}", val, loc);
         match loc {
             // Raw tile data
             0x8000...0x97FF => {

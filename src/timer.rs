@@ -31,6 +31,7 @@ impl Timer {
 
     pub fn read(&self, loc: u16) -> u8 {
         match loc {
+            0xFF03 => (self.divider & 0xFF) as u8,
             0xFF04 => (self.divider >> 8) as u8,
             0xFF05 => self.timer_counter,
             0xFF06 => self.timer_modulo,
@@ -44,6 +45,7 @@ impl Timer {
 
     pub fn write(&mut self, loc: u16, val: u8) {
         match loc {
+            0xFF03 => self.divider = 0,
             0xFF04 => self.divider = 0,
             0xFF05 => self.timer_counter = val,
             0xFF06 => self.timer_modulo = val,
@@ -55,9 +57,10 @@ impl Timer {
         }
     }
 
+    // Call this every cycle. Returns true if an interrupt is triggered.
     pub fn update_timers(&mut self, cycles: u32) -> bool {
         let diff = if cycles < self.prev_cycles {
-            (MAX_CYCLES - self.prev_cycles) + cycles
+            (MAX_CYCLES + cycles) - self.prev_cycles
         } else {
             cycles - self.prev_cycles
         };

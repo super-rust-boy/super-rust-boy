@@ -45,7 +45,7 @@ fn main() {
 
             state.frame_update();   // Draw video and read inputs
 
-            while frame.to(PreciseTime::now()) < Duration::microseconds(16750) {};  // Wait until next frame.
+            while frame.to(PreciseTime::now()) < Duration::microseconds(16666) {};  // Wait until next frame.
         }
     }
 }
