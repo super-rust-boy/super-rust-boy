@@ -23,6 +23,8 @@ use audio::{
 };
 use mem::MemBus;
 
+const FRAME_TIME: i64 = 16_666;
+
 fn main() {
     let cart = match env::args().nth(1) {
         Some(c) => c,
@@ -57,7 +59,7 @@ fn main() {
 
             state.frame_update();   // Draw video and read inputs
 
-            while frame.to(PreciseTime::now()) < Duration::microseconds(16666) {};  // Wait until next frame.
+            while frame.to(PreciseTime::now()) < Duration::microseconds(FRAME_TIME) {};  // Wait until next frame.
         }
     }
 }

@@ -3,3 +3,4 @@ target
 test/
 /.DS_Store
 *.txt
+*.sav

@@ -69,7 +69,6 @@ impl Cartridge {
 
         let ram_size = match (&bank_type, buf[0x149]) {
             (MBC::_2,_)     => 0x200,
-            (MBC::_3(_),_)  => 0x10000,
             (_,0x1)         => 0x800,
             (_,0x2)         => 0x2000,
             (_,0x3)         => 0x8000,
@@ -78,12 +77,11 @@ impl Cartridge {
             _               => 0,
         };
 
-        /*let ram = if battery {
+        let ram = if battery {
             Box::new(BatteryRAM::new(ram_size, save_file_name)?) as Box<RAM>
         } else {
             Box::new(BankedRAM::new(ram_size)) as Box<RAM>
-        };*/
-        let ram = Box::new(BankedRAM::new(ram_size));
+        };
 
         let mut ret = Cartridge {
             rom_bank_0: buf,
@@ -97,6 +95,10 @@ impl Cartridge {
         ret.swap_rom_bank(1);
 
         Ok(ret)
+    }
+
+    pub fn flush_ram(&mut self) {
+        self.ram.flush();
     }
 
     fn swap_rom_bank(&mut self, bank: u16) {

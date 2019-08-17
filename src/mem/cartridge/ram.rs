@@ -5,9 +5,7 @@ use std::{
         BufReader,
         BufWriter,
         Read,
-        Write,
-        Seek,
-        SeekFrom
+        Write
     },
     fs::{
         File,
@@ -19,13 +17,15 @@ use crate::mem::MemDevice;
 
 pub trait RAM: MemDevice {
     fn set_offset(&mut self, offset: usize);
+    fn flush(&mut self) {}
 }
 
 // Battery backed RAM
 pub struct BatteryRAM {
-    save_file:  BufWriter<File>,
+    save_file:  String,
     offset:     usize,
-    ram:        Vec<u8>
+    ram:        Vec<u8>,
+    dirty:      bool,
 }
 
 impl BatteryRAM {
@@ -33,7 +33,6 @@ impl BatteryRAM {
         let mut ram = vec![0; ram_size];
 
         if let Ok(file) = File::open(save_file_name) {
-            //file.set_len(ram_size as u64).map_err(|e| e.to_string())?;
             let mut save_reader = BufReader::new(file);
             save_reader.read(&mut ram).map_err(|e| e.to_string())?;
         } else {
@@ -41,15 +40,11 @@ impl BatteryRAM {
             file.set_len(ram_size as u64).map_err(|e| e.to_string())?;
         }
 
-        let save_f = OpenOptions::new()
-            .write(true)
-            .open(save_file_name)
-            .map_err(|e| e.to_string())?;
-
         Ok(BatteryRAM {
-            save_file: BufWriter::new(save_f),
-            offset: 0,
-            ram: ram
+            save_file:  save_file_name.to_string(),
+            offset:     0,
+            ram:        ram,
+            dirty:      false
         })
     }
 }
@@ -64,17 +59,26 @@ impl MemDevice for BatteryRAM {
 
         self.ram[pos] = val;
 
-        self.save_file.seek(SeekFrom::Start(pos as u64))
-            .expect("Couldn't write to ram (seek)");
-
-        self.save_file.write(&[val])
-            .expect("Couldn't write to ram (write)");
+        self.dirty = true;
     }
 }
 
 impl RAM for BatteryRAM {
     fn set_offset(&mut self, offset: usize) {
         self.offset = offset;
+    }
+
+    fn flush(&mut self) {
+        if self.dirty {
+            let save_f = OpenOptions::new()
+                .write(true)
+                .open(self.save_file.as_str())
+                .expect("Couldn't open file");
+
+            let mut bufwriter = BufWriter::new(save_f);
+
+            bufwriter.write_all(&self.ram).expect("Couldn't write to file");
+        }
     }
 }
 

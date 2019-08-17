@@ -72,8 +72,14 @@ impl MemBus {
         self.interrupt_flag.remove(flag);
     }
 
+    // Read inputs and update registers.
     pub fn read_inputs(&mut self) {
         self.video_device.read_inputs();
+    }
+
+    // Flush the battery-backed RAM to disk.
+    pub fn flush_cart(&mut self) {
+        self.cart.flush_ram();
     }
 
     fn dma(&mut self, val: u8) {

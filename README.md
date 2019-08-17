@@ -12,6 +12,7 @@ The emulator can be built in debug mode by enabling the `debug` feature at compi
 ### TODO video:
 * Better error checking.
 * Minor issue of sprites appearing above window.
+* Separate video thread to enable "turbo" mode.
 
 ### TODO audio:
 * Figure out square 1 bugs (not playing until noise is generated)

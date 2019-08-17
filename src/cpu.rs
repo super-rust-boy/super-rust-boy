@@ -419,6 +419,7 @@ impl CPU {
     pub fn frame_update(&mut self) {
         self.mem.render_frame();
         self.mem.read_inputs();
+        self.mem.flush_cart();
     }
 }
 
