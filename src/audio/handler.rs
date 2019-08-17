@@ -16,14 +16,14 @@ use bitflags::bitflags;
 bitflags! {
     #[derive(Default)]
     struct ChannelEnables: u8 {
-        const LEFT_1    = 0b10000000;
-        const LEFT_2    = 0b01000000;
-        const LEFT_3    = 0b00100000;
-        const LEFT_4    = 0b00010000;
-        const RIGHT_1   = 0b00001000;
-        const RIGHT_2   = 0b00000100;
-        const RIGHT_3   = 0b00000010;
-        const RIGHT_4   = 0b00000001;
+        const LEFT_4    = 0b10000000;
+        const LEFT_3    = 0b01000000;
+        const LEFT_2    = 0b00100000;
+        const LEFT_1    = 0b00010000;
+        const RIGHT_4   = 0b00001000;
+        const RIGHT_3   = 0b00000100;
+        const RIGHT_2   = 0b00000010;
+        const RIGHT_1   = 0b00000001;
     }
 }
 

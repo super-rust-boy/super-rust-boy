@@ -639,7 +639,6 @@ impl CPU {
 
     // TODO: improve this
     /*fn daa(&mut self) {
-        //println!("DAA in: {:02X}", self.a);
         let lo_nib = (self.a & 0xF) as u16;
         let hi_nib = (self.a & 0xF0) as u16;
         let lo_inc = match (lo_nib, self.flags.contains(CPUFlags::NEG), self.flags.contains(CPUFlags::HC)) {
@@ -665,7 +664,6 @@ impl CPU {
         self.flags.remove(CPUFlags::HC);
         self.flags.set(CPUFlags::CARRY, result > 0x99);
         self.a = (result & 0xFF) as u8;
-        //println!("DAA out: {:02X}", self.a);
     }*/
 
     fn daa(&mut self) {

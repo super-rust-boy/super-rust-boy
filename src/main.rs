@@ -33,7 +33,7 @@ fn main() {
 
     let save_file = match env::args().nth(2) {
         Some(c) => c,
-        None => "save_file.sv".to_string(),
+        None => make_save_name(&cart),
     };
 
     println!("Super Rust Boy: {}", cart);
@@ -42,7 +42,7 @@ fn main() {
 
     let vd = VideoDevice::new();
     let ad = AudioDevice::new(send);
-    let mem = MemBus::new(cart.as_str(), save_file.as_str(), vd, ad);
+    let mem = MemBus::new(&cart, &save_file, vd, ad);
 
     let mut state = CPU::new(mem);
 
@@ -61,5 +61,12 @@ fn main() {
 
             while frame.to(PreciseTime::now()) < Duration::microseconds(FRAME_TIME) {};  // Wait until next frame.
         }
+    }
+}
+
+fn make_save_name(cart_name: &str) -> String {
+    match cart_name.find(".") {
+        Some(pos) => cart_name[0..pos].to_string() + ".sav",
+        None      => cart_name.to_string() + ".sav"
     }
 }
