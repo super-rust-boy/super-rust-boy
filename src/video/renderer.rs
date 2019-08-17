@@ -120,7 +120,11 @@ impl Renderer {
         let queue = queues.next().unwrap();
 
         // Make a surface.
-        let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
+        let surface = WindowBuilder::new()
+            .with_dimensions((320, 288).into())
+            .with_title("Super Rust Boy")
+            .build_vk_surface(&events_loop, instance.clone())
+            .expect("Couldn't create surface");
 
         // Make the sampler for the texture.
         let sampler = Sampler::new(
