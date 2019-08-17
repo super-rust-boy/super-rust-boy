@@ -1,17 +1,8 @@
 // CPU Module
 use bitflags::bitflags;
 
-use crate::mem::{MemBus, MemDevice, InterruptFlags};
-
-// Interrupt constants
-mod int {
-    // Interrupt vector locations
-    pub const V_BLANK_VECT: u16  = 0x0040;
-    pub const LCD_STAT_VECT: u16 = 0x0048;
-    pub const TIMER_VECT: u16    = 0x0050;
-    pub const SERIAL_VECT: u16   = 0x0058;
-    pub const JOYPAD_VECT: u16   = 0x0060;
-}
+use crate::mem::{MemBus, MemDevice};
+use crate::interrupt::*;
 
 bitflags! {
     #[derive(Default)]
@@ -168,23 +159,23 @@ impl CPU {
 
             if interrupts.contains(InterruptFlags::V_BLANK) {
                 self.mem.clear_interrupt_flag(InterruptFlags::V_BLANK);
-                self.call(Cond::AL, int::V_BLANK_VECT);
+                self.call(Cond::AL, vector::V_BLANK);
 
             } else if interrupts.contains(InterruptFlags::LCD_STAT) {
                 self.mem.clear_interrupt_flag(InterruptFlags::LCD_STAT);
-                self.call(Cond::AL, int::LCD_STAT_VECT);
+                self.call(Cond::AL, vector::LCD_STAT);
 
             } else if interrupts.contains(InterruptFlags::TIMER) {
                 self.mem.clear_interrupt_flag(InterruptFlags::TIMER);
-                self.call(Cond::AL, int::TIMER_VECT);
+                self.call(Cond::AL, vector::TIMER);
 
             } else if interrupts.contains(InterruptFlags::SERIAL) {
                 self.mem.clear_interrupt_flag(InterruptFlags::SERIAL);
-                self.call(Cond::AL, int::SERIAL_VECT);
+                self.call(Cond::AL, vector::SERIAL);
 
             } else if interrupts.contains(InterruptFlags::JOYPAD) {
                 self.mem.clear_interrupt_flag(InterruptFlags::JOYPAD);
-                self.call(Cond::AL, int::JOYPAD_VECT);
+                self.call(Cond::AL, vector::JOYPAD);
             }
 
             return true;

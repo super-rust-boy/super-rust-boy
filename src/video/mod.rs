@@ -42,7 +42,8 @@ use winit::{
     VirtualKeyCode
 };
 
-use crate::mem::{InterruptFlags, MemDevice};
+use crate::interrupt::InterruptFlags;
+use crate::mem::MemDevice;
 
 use self::joypad::{Joypad, Buttons, Directions};
 use self::mem::VideoMem;

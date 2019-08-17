@@ -6,8 +6,8 @@ pub const DUTY_25: u8   = 0b01 << 6;
 pub const DUTY_50: u8   = 0b10 << 6;
 pub const DUTY_75: u8   = 0b11 << 6;
 
-// Amplitude sweep direction/setting.
-pub enum AmpDirection {
+// Amplitude/frequency sweep direction/setting.
+pub enum Direction {
     Increase,
     Decrease,
     None,

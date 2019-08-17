@@ -69,7 +69,7 @@ pub struct Square2Gen {
     amplitude:      i8,
     amp_sweep_step: usize,
     amp_counter:    usize,
-    amp_sweep_dir:  AmpDirection,
+    amp_sweep_dir:  Direction,
 }
 
 impl Square2Gen {
@@ -86,7 +86,7 @@ impl Square2Gen {
             amplitude:      0,
             amp_sweep_step: 0,
             amp_counter:    0,
-            amp_sweep_dir:  AmpDirection::None,
+            amp_sweep_dir:  Direction::None,
         }
     }
 }
@@ -116,11 +116,11 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
         self.amp_sweep_step = (self.sample_rate * (regs.vol_envelope_reg & 0x7) as usize) / 64;
         self.amp_counter = 0;
         self.amp_sweep_dir = if self.amp_sweep_step == 0 {
-            AmpDirection::None
+            Direction::None
         } else if (regs.vol_envelope_reg & 0x8) != 0 {
-            AmpDirection::Increase
+            Direction::Increase
         } else {
-            AmpDirection::Decrease
+            Direction::Decrease
         };
     }
 
@@ -146,17 +146,17 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
             self.amp_counter += 1;
             if self.amp_counter >= self.amp_sweep_step {
                 match self.amp_sweep_dir {
-                    AmpDirection::Increase => {
+                    Direction::Increase => {
                         if self.amplitude < 15 {
                             self.amplitude += 1;
                         }
                     },
-                    AmpDirection::Decrease => {
+                    Direction::Decrease => {
                         if self.amplitude > 0 {
                             self.amplitude -= 1;
                         }
                     },
-                    AmpDirection::None => {},
+                    Direction::None => {},
                 }
                 self.amp_counter = 0;
             }

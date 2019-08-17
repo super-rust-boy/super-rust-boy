@@ -4,20 +4,32 @@ mod mem;
 mod video;
 mod timer;
 mod audio;
+mod interrupt;
 
 #[cfg(feature = "debug")]
 mod debug;
 
 use time::{Duration, PreciseTime};
-use std::sync::mpsc::channel;
+use std::{
+    env,
+    sync::mpsc::channel
+};
+
+use cpu::CPU;
+use video::VideoDevice;
+use audio::{
+    AudioDevice,
+    start_audio_handler_thread
+};
+use mem::MemBus;
 
 fn main() {
-    let cart = match std::env::args().nth(1) {
+    let cart = match env::args().nth(1) {
         Some(c) => c,
         None => panic!("Usage: cargo run [cart name]"),
     };
 
-    let save_file = match std::env::args().nth(2) {
+    let save_file = match env::args().nth(2) {
         Some(c) => c,
         None => "save_file.sv".to_string(),
     };
@@ -26,13 +38,13 @@ fn main() {
 
     let (send, recv) = channel();
 
-    let vd = video::VideoDevice::new();
-    let ad = audio::AudioDevice::new(send);
-    let mem = mem::MemBus::new(cart.as_str(), save_file.as_str(), vd, ad);
+    let vd = VideoDevice::new();
+    let ad = AudioDevice::new(send);
+    let mem = MemBus::new(cart.as_str(), save_file.as_str(), vd, ad);
 
-    let mut state = cpu::CPU::new(mem);
+    let mut state = CPU::new(mem);
 
-    audio::start_audio_handler_thread(recv);
+    start_audio_handler_thread(recv);
     
     if cfg!(feature = "debug") {
         #[cfg(feature = "debug")]

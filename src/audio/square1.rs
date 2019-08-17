@@ -74,7 +74,7 @@ pub struct Square1Gen {
 
     freq_sweep_step:    usize,
     freq_counter:       usize,
-    freq_sweep_dir:     AmpDirection,
+    freq_sweep_dir:     Direction,
     freq_shift_amt:     usize,
 
     phase:              usize,
@@ -87,7 +87,7 @@ pub struct Square1Gen {
     amplitude:          i8,
     amp_sweep_step:     usize,
     amp_counter:        usize,
-    amp_sweep_dir:      AmpDirection,
+    amp_sweep_dir:      Direction,
 }
 
 impl Square1Gen {
@@ -99,7 +99,7 @@ impl Square1Gen {
 
             freq_sweep_step:    0,
             freq_counter:       0,
-            freq_sweep_dir:     AmpDirection::None,
+            freq_sweep_dir:     Direction::None,
             freq_shift_amt:     0,
 
             phase:              0,
@@ -112,12 +112,15 @@ impl Square1Gen {
             amplitude:          0,
             amp_sweep_step:     0,
             amp_counter:        0,
-            amp_sweep_dir:      AmpDirection::None,
+            amp_sweep_dir:      Direction::None,
         }
     }
 
     fn calc_freq(&mut self) {
-        self.phase_len = self.sample_rate.checked_div(self.frequency).unwrap_or(usize::max_value());
+        self.phase_len = self.sample_rate.checked_div(self.frequency).unwrap_or_else(|| {
+            self.length = Some(0);
+            usize::max_value()
+        });
         self.duty_len = match self.duty_reg_amt {
             DUTY_12_5   => self.phase_len / 8,
             DUTY_25     => self.phase_len / 4,
@@ -137,11 +140,11 @@ impl AudioChannelGen<Square1Regs> for Square1Gen {
         self.freq_sweep_step = (self.sample_rate * sweep_time) / 128;
         self.freq_counter = 0;
         self.freq_sweep_dir = if self.freq_sweep_step == 0 {
-            AmpDirection::None
+            Direction::None
         } else if (regs.vol_envelope_reg & 0x8) != 0 {
-            AmpDirection::Decrease
+            Direction::Decrease
         } else {
-            AmpDirection::Increase
+            Direction::Increase
         };
         self.freq_shift_amt = (regs.sweep_reg & 0x7) as usize;
 
@@ -159,11 +162,11 @@ impl AudioChannelGen<Square1Regs> for Square1Gen {
         self.amp_sweep_step = (self.sample_rate * (regs.vol_envelope_reg & 0x7) as usize) / 64; // TODO: more precise?
         self.amp_counter = 0;
         self.amp_sweep_dir = if self.amp_sweep_step == 0 {
-            AmpDirection::None
+            Direction::None
         } else if (regs.vol_envelope_reg & 0x8) != 0 {
-            AmpDirection::Increase
+            Direction::Increase
         } else {
-            AmpDirection::Decrease
+            Direction::Decrease
         };
     }
 
@@ -187,15 +190,15 @@ impl AudioChannelGen<Square1Regs> for Square1Gen {
             if self.freq_counter >= self.freq_sweep_step {
                 let freq_modifier = self.frequency >> self.freq_shift_amt;
                 match self.freq_sweep_dir {
-                    AmpDirection::Increase => {
+                    Direction::Increase => {
                         self.frequency += freq_modifier;
                         self.calc_freq();
                     },
-                    AmpDirection::Decrease => {
+                    Direction::Decrease => {
                         self.frequency -= freq_modifier;
                         self.calc_freq();
                     },
-                    AmpDirection::None => {},
+                    Direction::None => {},
                 }
                 self.freq_counter = 0;
             }
@@ -209,17 +212,17 @@ impl AudioChannelGen<Square1Regs> for Square1Gen {
             self.amp_counter += 1;
             if self.amp_counter >= self.amp_sweep_step {
                 match self.amp_sweep_dir {
-                    AmpDirection::Increase => {
+                    Direction::Increase => {
                         if self.amplitude < 15 {
                             self.amplitude += 1;
                         }
                     },
-                    AmpDirection::Decrease => {
+                    Direction::Decrease => {
                         if self.amplitude > 0 {
                             self.amplitude -= 1;
                         }
                     },
-                    AmpDirection::None => {},
+                    Direction::None => {},
                 }
                 self.amp_counter = 0;
             }

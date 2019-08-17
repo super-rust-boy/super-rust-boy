@@ -208,8 +208,6 @@ impl Renderer {
             FixedSizeDescriptorSetsPool::new(pipeline.clone(), 1)
         ];
 
-        //Box::new(now(device.clone()).join(palette_future)) as Box<GpuFuture>;
-
         Renderer {
             device: device.clone(),
             queue: queue,
