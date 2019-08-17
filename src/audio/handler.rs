@@ -27,12 +27,12 @@ bitflags! {
     }
 }
 
-const DIV_4_BIT: f32 = 1.0 / 8.0;
+const DIV_4_BIT: f32 = 1.0 / 16.0;
 // Convert 4-bit sample to float
 macro_rules! sample {
     ( $x:expr ) => {
         {
-            ((($x as f32) * DIV_4_BIT) - 1.0)
+            (($x as f32) * DIV_4_BIT)
         }
     };
 }
@@ -204,7 +204,7 @@ impl AudioHandler {
     }
 
     #[inline]
-    fn mix_output(&mut self, vals: (u8, u8, u8, u8)) -> (f32, f32) {
+    fn mix_output(&mut self, vals: (i8, i8, i8, i8)) -> (f32, f32) {
         if self.sound_on {
             let samp_0 = sample!(vals.0);
             let samp_1 = sample!(vals.1);
@@ -233,14 +233,14 @@ impl AudioHandler {
 
         self.left_vol = if (channel_control & 0x80) != 0 {
             0.0
-        } else {
-            ((channel_control & 0x70) >> 4) as f32 / 28.0
+        } else {    // Divide by max value * num of channels
+            (((channel_control & 0x70) >> 4) as f32 + 1.0) / 32.0
         };
 
         self.right_vol = if (channel_control & 0x8) != 0 {
             0.0
         } else {
-            (channel_control & 0x7) as f32 / 28.0
+            ((channel_control & 0x7) as f32 + 1.0) / 32.0
         };
 
         self.channel_enables = ChannelEnables::from_bits_truncate(output_select);
@@ -248,7 +248,7 @@ impl AudioHandler {
 }
 
 #[inline]
-fn process_command_buffer<G, R>(gen: &mut G, data: &mut VecDeque<(R, f32)>, buffer: &mut [u8])
+fn process_command_buffer<G, R>(gen: &mut G, data: &mut VecDeque<(R, f32)>, buffer: &mut [i8])
     where R: AudioChannelRegs, G: AudioChannelGen<R>
 {
     // First note:
@@ -268,10 +268,10 @@ fn process_command_buffer<G, R>(gen: &mut G, data: &mut VecDeque<(R, f32)>, buff
 }
 
 struct AudioBuffers {
-    square1:    Vec<u8>,
-    square2:    Vec<u8>,
-    wave:       Vec<u8>,
-    noise:      Vec<u8>,
+    square1:    Vec<i8>,
+    square2:    Vec<i8>,
+    wave:       Vec<i8>,
+    noise:      Vec<i8>,
 
     size:       usize,
     i:          usize,
@@ -290,7 +290,7 @@ impl AudioBuffers {
         }
     }
 
-    fn get_next(&mut self) -> Option<(u8, u8, u8, u8)> {
+    fn get_next(&mut self) -> Option<(i8, i8, i8, i8)> {
         if self.i >= self.size {
             self.i = 0;
             None

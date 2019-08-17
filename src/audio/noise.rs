@@ -80,7 +80,7 @@ pub struct NoiseGen {
 
     length:         Option<usize>,
 
-    amplitude:      u8,
+    amplitude:      i8,
     amp_sweep_step: usize,
     amp_counter:    usize,
     amp_sweep_dir:  AmpDirection,
@@ -123,7 +123,7 @@ impl AudioChannelGen<NoiseRegs> for NoiseGen {
             None
         };
 
-        self.amplitude = (regs.vol_envelope_reg & 0xF0) >> 4;
+        self.amplitude = ((regs.vol_envelope_reg & 0xF0) >> 4) as i8;
         self.amp_sweep_step = (self.sample_rate * (regs.vol_envelope_reg & 0x7) as usize) / 64; // TODO: more precise?
         self.amp_counter = 0;
         self.amp_sweep_dir = if self.amp_sweep_step == 0 {
@@ -135,16 +135,18 @@ impl AudioChannelGen<NoiseRegs> for NoiseGen {
         };
     }
 
-    fn generate_signal(&mut self, buffer: &mut [u8], start: f32, end: f32) {
+    fn generate_signal(&mut self, buffer: &mut [i8], start: f32, end: f32) {
         let take = (buffer.len() as f32 * end) as usize;
         let skip = (buffer.len() as f32 * start) as usize;
 
         for i in buffer.iter_mut().take(take).skip(skip) {
-            if (self.length.unwrap_or(1) > 0) && (self.rand_counter & 1 == 1) {
-                *i = self.amplitude;
+            *i = if (self.length.unwrap_or(1) > 0) && (self.rand_counter & 1 == 1) {
+                self.amplitude  // HI
+            } else if self.length == Some(0) {
+                0               // OFF
             } else {
-                *i = 0;
-            }
+                -self.amplitude // LO
+            };
             
             self.freq_counter += 1;
             if self.freq_counter >= self.freq_step {

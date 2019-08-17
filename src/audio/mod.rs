@@ -227,5 +227,5 @@ trait AudioChannelRegs {
 trait AudioChannelGen<T: AudioChannelRegs> {
     fn init_signal(&mut self, regs: &T);
 
-    fn generate_signal(&mut self, buffer: &mut [u8], start: f32, end: f32);
+    fn generate_signal(&mut self, buffer: &mut [i8], start: f32, end: f32);
 }
