@@ -21,13 +21,26 @@ struct Palette {
 }
 
 impl Palette {
-    pub fn new_monochrome() -> Self {
+    pub fn new_monochrome_bw() -> Self {
         Palette {
             colours: Matrix4::from_cols(
                 Vector4::new(1.0, 1.0, 1.0, 1.0),
-                Vector4::new(0.6, 0.6, 0.6, 1.0),
-                Vector4::new(0.3, 0.3, 0.3, 1.0),
+                Vector4::new(0.65, 0.65, 0.65, 1.0),
+                Vector4::new(0.33, 0.33, 0.33, 1.0),
                 Vector4::new(0.0, 0.0, 0.0, 1.0)
+            ),
+            raw: 0
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn new_monochrome_green() -> Self {
+        Palette {
+            colours: Matrix4::from_cols(
+                Vector4::new(0.647, 0.765, 0.086, 1.0),
+                Vector4::new(0.596, 0.702, 0.165, 1.0),
+                Vector4::new(0.184, 0.388, 0.145, 1.0),
+                Vector4::new(0.055, 0.208, 0.059, 1.0)
             ),
             raw: 0
         }
@@ -78,9 +91,9 @@ impl PaletteMem {
     pub fn new(device: &Arc<Device>) -> Self {
         PaletteMem {
             palettes: vec![
-                Palette::new_monochrome(),
-                Palette::new_monochrome(),
-                Palette::new_monochrome()
+                Palette::new_monochrome_bw(),
+                Palette::new_monochrome_bw(),
+                Palette::new_monochrome_bw()
             ],
             buffer_pool: CpuBufferPool::uniform_buffer(device.clone()),
             current_buffer: None
