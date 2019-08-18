@@ -79,8 +79,8 @@ impl VideoDevice {
         self.renderer.render(&mut self.mem);
     }
 
-    // Read inputs and store
-    pub fn read_inputs(&mut self) {
+    // Read inputs and store, return true if joypad interrupt is triggered.
+    pub fn read_inputs(&mut self) -> bool {
         let joypad = &mut self.joypad;
         let renderer = &mut self.renderer;
 
@@ -102,14 +102,14 @@ impl VideoDevice {
                             ElementState::Released => false,
                         };
                         match k.virtual_keycode {
-                            Some(VirtualKeyCode::X)         => joypad.buttons.set(Buttons::A, pressed),
-                            Some(VirtualKeyCode::Z)         => joypad.buttons.set(Buttons::B, pressed),
-                            Some(VirtualKeyCode::Space)     => joypad.buttons.set(Buttons::SELECT, pressed),
-                            Some(VirtualKeyCode::Return)    => joypad.buttons.set(Buttons::START, pressed),
-                            Some(VirtualKeyCode::Up)        => joypad.directions.set(Directions::UP, pressed),
-                            Some(VirtualKeyCode::Down)      => joypad.directions.set(Directions::DOWN, pressed),
-                            Some(VirtualKeyCode::Left)      => joypad.directions.set(Directions::LEFT, pressed),
-                            Some(VirtualKeyCode::Right)     => joypad.directions.set(Directions::RIGHT, pressed),
+                            Some(VirtualKeyCode::X)         => joypad.set_button(Buttons::A, pressed),
+                            Some(VirtualKeyCode::Z)         => joypad.set_button(Buttons::B, pressed),
+                            Some(VirtualKeyCode::Space)     => joypad.set_button(Buttons::SELECT, pressed),
+                            Some(VirtualKeyCode::Return)    => joypad.set_button(Buttons::START, pressed),
+                            Some(VirtualKeyCode::Up)        => joypad.set_direction(Directions::UP, pressed),
+                            Some(VirtualKeyCode::Down)      => joypad.set_direction(Directions::DOWN, pressed),
+                            Some(VirtualKeyCode::Left)      => joypad.set_direction(Directions::LEFT, pressed),
+                            Some(VirtualKeyCode::Right)     => joypad.set_direction(Directions::RIGHT, pressed),
                             _ => {},
                         }
                     },
@@ -121,6 +121,8 @@ impl VideoDevice {
                 _ => {},
             }
         });
+
+        joypad.check_interrupt()
     }
 
     // Set the current video mode based on the cycle count.

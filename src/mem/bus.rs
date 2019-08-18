@@ -74,7 +74,9 @@ impl MemBus {
 
     // Read inputs and update registers.
     pub fn read_inputs(&mut self) {
-        self.video_device.read_inputs();
+        if self.video_device.read_inputs() {
+            self.interrupt_flag.insert(InterruptFlags::JOYPAD);
+        }
     }
 
     // Flush the battery-backed RAM to disk.

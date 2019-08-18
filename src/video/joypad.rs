@@ -30,10 +30,11 @@ const SELECT_DIRECTION: u8  = 1 << 4;
 const SELECT_BUTTONS: u8    = 1 << 5;
 
 pub struct Joypad {
-    pub buttons:    Buttons,
-    pub directions: Directions,
+    buttons:    Buttons,
+    directions: Directions,
 
-    selector:       Select
+    selector:   Select,
+    change:     bool
 }
 
 impl Joypad {
@@ -42,14 +43,15 @@ impl Joypad {
             buttons:    Buttons::default(),
             directions: Directions::default(),
 
-            selector:   Select::None
+            selector:   Select::None,
+            change:     false
         }
     }
 
     pub fn read(&self) -> u8 {
         match self.selector {
-            Select::Direction => !self.directions.bits(),
-            Select::Button => !self.buttons.bits(),
+            Select::Direction => (!self.directions.bits() & 0xF),
+            Select::Button => (!self.buttons.bits() & 0xF),
             Select::None => 0
         }
     }
@@ -62,5 +64,21 @@ impl Joypad {
         } else {
             Select::None
         };
+    }
+
+    pub fn set_direction(&mut self, direction: Directions, val: bool) {
+        self.directions.set(direction, val);
+        self.change = self.change || val;
+    }
+
+    pub fn set_button(&mut self, button: Buttons, val: bool) {
+        self.buttons.set(button, val);
+        self.change = self.change || val;
+    }
+
+    pub fn check_interrupt(&mut self) -> bool {
+        let trigger_interrupt = self.change;
+        self.change = false;
+        trigger_interrupt
     }
 }

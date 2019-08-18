@@ -3,11 +3,9 @@
 Game Boy emulator written in Rust.
 
 ### Debug Mode
-The emulator can be built in debug mode by enabling the `debug` feature at compile time: `cargo run --features "debug" -- [cart_name]`
+The emulator can be built in debug mode by enabling the `debug` feature at compile time: `cargo build --features "debug"`
 
-## TODO:
-* Fix save files.
-* Re-ordering of modules.
+Run with `-g` for classic green palette. `-m` to mute. `-s "SAVE_FILE_NAME"` to specify a save file. By default a save file will be created (if needed) with the name of the cart in the same directory, with `.sav` extension.
 
 ### TODO video:
 * Better error checking.
@@ -15,13 +13,12 @@ The emulator can be built in debug mode by enabling the `debug` feature at compi
 * Separate video thread to enable "turbo" mode.
 
 ### TODO audio:
-* Figure out square 1 bugs (not playing until noise is generated)
-* Square 2 bugs (some short sounds not playing)
+* Square / Noise wave high freq. higher precision.
 
-### TODO later:
+### TODO other:
 * Use rotate instructions in CPU
 * Add ability to use preset ROM (internally - for testing)
-* MB5-7 bank swapping systems
-* Add cache to bank swapper
+* MBC 5-7 bank swapping systems
+* Add cache to bank swapper and save RAM
 * Save states
-* Video commands for mid-frame updates
+* Video commands for mid-frame updates (scroll X)
