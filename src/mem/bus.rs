@@ -48,9 +48,14 @@ impl MemBus {
         self.video_device.render_frame();
     }
 
-    pub fn update_timers(&mut self, clock_count: u32) {
+    // Send new audio update.
+    pub fn update_audio(&mut self, clock_count: u32) {
         self.audio_device.send_update(clock_count);
-        if self.timer.update_timers(clock_count) {
+    }
+
+    // Increment timer.
+    pub fn update_timer(&mut self) {
+        if self.timer.update() {
             self.interrupt_flag.insert(InterruptFlags::TIMER);
         }
     }

@@ -23,6 +23,7 @@ use audio::{
 use mem::MemBus;
 
 const FRAME_TIME: i64 = 16_666;
+//const FRAME_TIME: i64 = 16_743; // 59.73 fps
 
 fn main() {
     let app = clap_app!(rustboy =>

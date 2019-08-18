@@ -13,13 +13,14 @@ use wave::WaveRegs;
 use noise::NoiseRegs;
 
 use crate::mem::MemDevice;
-use crate::timer;
 
 use std::sync::mpsc::Sender;
 
 pub use self::handler::start_audio_handler_thread;
 
-const MAX_CYCLES_FLOAT: f32 = timer::MAX_CYCLES as f32;
+const MAX_CYCLES: u32 = 154 * 456;
+const V_BLANK_TIME: u32 = 10 * 456;
+const MAX_CYCLES_FLOAT: f32 = MAX_CYCLES as f32;
 
 // The structure that exists in memory. Sends data to the audio thread.
 pub struct AudioDevice {
@@ -63,7 +64,7 @@ impl AudioDevice {
         // If trigger bit was just written, send timed update
         if self.update {
             // Moment of V-blank needs to be 0.0
-            let offset_cycle = (cycle_count + timer::V_BLANK_TIME) % timer::MAX_CYCLES;
+            let offset_cycle = (cycle_count + V_BLANK_TIME) % MAX_CYCLES;
             let time_in_frame = (offset_cycle as f32) / MAX_CYCLES_FLOAT;
 
             if self.nr1.triggered() {

@@ -77,7 +77,7 @@ enum Reg {
     HL,
 }
 
-// Additional commands
+// Additional commands for HL.
 enum With {
     Inc,
     Dec,
@@ -133,19 +133,27 @@ impl CPU {
         }
 
         if self.handle_interrupts() {
+            self.mem.update_audio(self.cycle_count);
             return true;
         }
 
         // Keep cycling
         if !self.cont {
-            self.cycle_count += 4;
+            self.clock_inc();
         } else {
             self.exec_instruction();
         }
 
-        self.mem.update_timers(self.cycle_count);
+        self.mem.update_audio(self.cycle_count);
 
         return true;
+    }
+
+    // Increment cycle count and update timer.
+    #[inline]
+    fn clock_inc(&mut self) {
+        self.cycle_count += 4;
+        self.mem.update_timer();
     }
 
     // Check for interrupts and handle if any are enabled.
@@ -153,7 +161,8 @@ impl CPU {
         let interrupts = self.mem.get_interrupts();
 
         if self.ime && !interrupts.is_empty() {
-            self.cycle_count += 8;
+            self.clock_inc();
+            self.clock_inc();
             self.ime = false;
             self.cont = true;
 
@@ -225,7 +234,7 @@ impl CPU {
             0x0E => self.c = self.fetch(),
             0x0F => self.rrca(),
 
-            0x10 => {},//self.int_stat = IntType::Stop,
+            0x10 => {self.fetch(); self.cont = false},
             0x11 => {let imm = self.fetch_16(); self.set_16(Reg::DE,imm)},
             0x12 => {let loc = self.get_16(Reg::DE); let op = self.a;
                      self.write_mem(loc,op)},
@@ -344,8 +353,8 @@ impl CPU {
             0xE5 => self.push(Reg::HL),
             0xE6 => {let imm = self.fetch(); self.and(imm)},
             0xE7 => self.call(Cond::AL, 0x20),
-            0xE8 => {let imm = self.fetch(); self.sp = self.add_sp(imm); self.cycle_count += 4},
-            0xE9 => {let loc = self.get_16(Reg::HL); self.jp(Cond::AL, loc)}, // jpHL
+            0xE8 => {let imm = self.fetch(); self.sp = self.add_sp(imm); self.clock_inc()},
+            0xE9 => {self.pc = self.get_16(Reg::HL)},
             0xEA => {let loc = self.fetch_16();
                      let op = self.a;
                      self.write_mem(loc, op)},
@@ -362,7 +371,7 @@ impl CPU {
             0xF6 => {let imm = self.fetch(); self.or(imm)},
             0xF7 => self.call(Cond::AL, 0x30),
             0xF8 => {let imm = self.fetch(); let val = self.add_sp(imm); self.set_16(Reg::HL, val)},
-            0xF9 => self.sp = self.get_16(Reg::HL),
+            0xF9 => {self.sp = self.get_16(Reg::HL); self.clock_inc()},
             0xFA => {let loc = self.fetch_16();
                      self.a = self.read_mem(loc)},
             0xFB => self.ei(),
@@ -463,30 +472,28 @@ impl CPU {
     // Memory access
     #[inline]
     fn read_mem(&mut self, loc: u16) -> u8 {
-        self.cycle_count += 4;
+        self.clock_inc();
         self.mem.read(loc)
     }
 
     #[inline]
     fn write_mem(&mut self, loc: u16, val: u8) {
-        self.cycle_count += 4;
+        self.clock_inc();
         self.mem.write(loc, val);
     }
 
     // read mem pointed to by pc (and inc pc)
     fn fetch(&mut self) -> u8 {
-        self.cycle_count += 4;
-        let result = self.mem.read(self.pc);
+        let result = self.read_mem(self.pc);
         self.pc = ((self.pc as u32) + 1) as u16;
 
         result
     }
 
     fn fetch_16(&mut self) -> u16 {
-        self.cycle_count += 8;
-        let lo_byte = self.mem.read(self.pc) as u16;
+        let lo_byte = self.read_mem(self.pc) as u16;
         self.pc = ((self.pc as u32) + 1) as u16;
-        let hi_byte = (self.mem.read(self.pc) as u16) << 8;
+        let hi_byte = (self.read_mem(self.pc) as u16) << 8;
         self.pc = ((self.pc as u32) + 1) as u16;
 
         lo_byte | hi_byte
@@ -494,23 +501,21 @@ impl CPU {
 
     // read and write to/from mem pointed to by hl
     fn read_hl(&mut self, with: With) -> u8 {
-        self.cycle_count += 4;
         let hl = self.get_16(Reg::HL);
-        let res = self.mem.read(hl);
+        let res = self.read_mem(hl);
         with.resolve(hl, self);
         res
     }
 
     fn write_hl(&mut self, val: u8, with: With) {
-        self.cycle_count += 4;
         let hl = self.get_16(Reg::HL);
-        self.mem.write(hl, val);
+        self.write_mem(hl, val);
         with.resolve(hl, self);
     }
 
     // increments sp - TODO: maybe improve this fn
     fn add_sp(&mut self, imm: u8) -> u16 {
-        self.cycle_count += 4;
+        self.clock_inc();
         let offset = imm as i8;
         let result = (self.sp as i32) + (offset as i32);
         self.flags = CPUFlags::default();
@@ -528,19 +533,20 @@ impl CPU {
     fn write_sp(&mut self, imm: u16) {
         let lo_byte = self.sp as u8;
         let hi_byte = (self.sp >> 8) as u8;
-        self.write_mem(imm, lo_byte);
-        self.write_mem(imm + 1, hi_byte);
+        self.mem.write(imm, lo_byte);
+        self.mem.write(imm + 1, hi_byte);
+        self.clock_inc();
     }
 
     #[inline]
     fn stack_push(&mut self, val: u8) {
         self.sp = ((self.sp as i32) - 1) as u16;
-        self.mem.write(self.sp, val);
+        self.write_mem(self.sp, val);
     }
 
     #[inline]
     fn stack_pop(&mut self) -> u8 {
-        let ret = self.mem.read(self.sp);
+        let ret = self.read_mem(self.sp);
         self.sp = ((self.sp as u32) + 1) as u16;
         ret
     }
@@ -560,7 +566,7 @@ impl CPU {
     }
 
     fn add_16(&mut self, op: u16) {
-        self.cycle_count += 4;
+        self.clock_inc();
         let hl = self.get_16(Reg::HL);
         let result = (hl as u32) + (op as u32);
         self.flags.remove(CPUFlags::NEG);
@@ -626,13 +632,13 @@ impl CPU {
     }
 
     fn inc_16(&mut self, op: u16) -> u16 {
-        self.cycle_count += 4;
+        self.clock_inc();
         let result = (op as u32) + 1;
         result as u16
     }
 
     fn dec_16(&mut self, op: u16) -> u16 {
-        self.cycle_count += 4;
+        self.clock_inc();
         let result = (op as i32) - 1;
         result as u16
     }
@@ -699,7 +705,6 @@ impl CPU {
 
     // Stack
     fn pop(&mut self, which: Reg) {
-        self.cycle_count += 8;
         let lo_byte = self.stack_pop();
         let hi_byte = self.stack_pop();
         match which {
@@ -711,7 +716,7 @@ impl CPU {
     }
 
     fn push(&mut self, which: Reg) {
-        self.cycle_count += 12;
+        self.clock_inc();
         let (hi_byte, lo_byte) = match which {
             Reg::AF => (self.a, self.get_f()),
             Reg::BC => (self.b, self.c),
@@ -726,7 +731,6 @@ impl CPU {
     // Shift/Rotate
     fn rlca(&mut self) {
         let top_bit = (self.a >> 7) & 1;
-        // TODO: check if z is set false here
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::CARRY, top_bit != 0);
         self.a = (self.a << 1) | top_bit;
@@ -735,7 +739,6 @@ impl CPU {
     fn rla(&mut self) {
         let carry_bit = if self.flags.contains(CPUFlags::CARRY) {1} else {0};
         let top_bit = (self.a >> 7) & 1;
-        // TODO: check if z is set false here
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::CARRY, top_bit != 0);
         self.a = (self.a << 1) | carry_bit;
@@ -743,7 +746,6 @@ impl CPU {
 
     fn rrca(&mut self) {
         let bot_bit = (self.a << 7) & 0x80;
-        // TODO: check if z is set false here
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::CARRY, bot_bit != 0);
         self.a = (self.a >> 1) | bot_bit;
@@ -752,7 +754,6 @@ impl CPU {
     fn rra(&mut self) {
         let carry_bit = if self.flags.contains(CPUFlags::CARRY) {0x80} else {0};
         let bot_bit = (self.a << 7) & 0x80;
-        // TODO: check if z is set false here
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::CARRY, bot_bit != 0);
         self.a = (self.a >> 1) | carry_bit;
@@ -872,21 +873,21 @@ impl CPU {
     // Jump
     fn jp(&mut self, cd: Cond, loc: u16) {
         if cd.check(&self) {
-            self.cycle_count += 4;
+            self.clock_inc();
             self.pc = loc
         }
     }
 
     fn jr(&mut self, cd: Cond, loc: i8) {
         if cd.check(&self) {
-            self.cycle_count += 4;
+            self.clock_inc();
             self.pc = ((self.pc as i32) + (loc as i32)) as u16;
         }
     }
 
     fn call(&mut self, cd: Cond, loc: u16) {
         if cd.check(&self) {
-            self.cycle_count += 12;
+            self.clock_inc();
             let hi_byte = (self.pc >> 8) as u8;
             let lo_byte = self.pc as u8;
             self.stack_push(hi_byte);
@@ -896,13 +897,11 @@ impl CPU {
     }
 
     fn ret(&mut self, cd: Cond) {
-        self.cycle_count += 4;
+        self.clock_inc();
 
         if cd.check(&self) {
-            if cd == Cond::AL {
-                self.cycle_count += 8;
-            } else {
-                self.cycle_count += 12;
+            if cd != Cond::AL {
+                self.clock_inc();
             }
             let lo_byte = self.stack_pop() as u16;
             let hi_byte = self.stack_pop() as u16;
@@ -911,7 +910,7 @@ impl CPU {
     }
 
     fn reti(&mut self) {
-        self.cycle_count += 12;
+        self.clock_inc();
 
         self.ime = true;
         let lo_byte = self.stack_pop() as u16;
