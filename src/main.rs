@@ -31,6 +31,7 @@ fn main() {
         (author: "Simon Cooper")
         (about: "Game Boy emulator.")
         (@arg CART: "The location of the game cart to use.")
+        (@arg debug: -d "Enter debug mode.")
         (@arg mute: -m "Mutes the emulator.")
         (@arg green: -g "Uses classic green palette. By default, greyscale palette is used.")
         (@arg save: -s +takes_value "Save file location.")
@@ -62,7 +63,7 @@ fn main() {
         start_audio_handler_thread(recv);
     }
     
-    if cfg!(feature = "debug") {
+    if cmd_args.is_present("debug") {
         #[cfg(feature = "debug")]
         debug::debug_mode(&mut state);
     } else {

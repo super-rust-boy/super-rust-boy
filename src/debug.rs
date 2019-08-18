@@ -114,7 +114,7 @@ fn print(s: &str, cpu: &CPU) {
         "sp" => println!("sp: 0x{:04X}", cpu.get_state().sp),
         "(pc)" => println!("pc mem: 0x{:02X}", cpu.get_mem_at(cpu.get_state().pc)),
         "(sp)" => println!("sp mem: 0x{:02X}", cpu.get_mem_at(cpu.get_state().sp)),
-        "(hl)" => println!("hl mem: 0x{:02X}", cpu.get_mem_at((cpu.get_state().h as u16) << 8) | (cpu.get_state().l as u16))),
+        "(hl)" => println!("hl mem: 0x{:02X}", cpu.get_mem_at(((cpu.get_state().h as u16) << 8) | (cpu.get_state().l as u16))),
         s => {
             // Memory range
             if let Some(x) = s.find('-') {

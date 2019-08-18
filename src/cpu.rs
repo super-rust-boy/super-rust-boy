@@ -156,38 +156,41 @@ impl CPU {
         self.mem.update_timer();
     }
 
-    // Check for interrupts and handle if any are enabled.
+    // Check for interrupts. Return true if they are serviced.
     fn handle_interrupts(&mut self) -> bool {
         let interrupts = self.mem.get_interrupts();
 
-        if self.ime && !interrupts.is_empty() {
-            self.clock_inc();
-            self.clock_inc();
-            self.ime = false;
+        if !interrupts.is_empty() {
             self.cont = true;
 
-            if interrupts.contains(InterruptFlags::V_BLANK) {
-                self.mem.clear_interrupt_flag(InterruptFlags::V_BLANK);
-                self.call(Cond::AL, vector::V_BLANK);
+            if self.ime {
+                self.clock_inc();
+                self.clock_inc();
+                self.ime = false;
 
-            } else if interrupts.contains(InterruptFlags::LCD_STAT) {
-                self.mem.clear_interrupt_flag(InterruptFlags::LCD_STAT);
-                self.call(Cond::AL, vector::LCD_STAT);
+                if interrupts.contains(InterruptFlags::V_BLANK) {
+                    self.mem.clear_interrupt_flag(InterruptFlags::V_BLANK);
+                    self.call(Cond::AL, vector::V_BLANK);
 
-            } else if interrupts.contains(InterruptFlags::TIMER) {
-                self.mem.clear_interrupt_flag(InterruptFlags::TIMER);
-                self.call(Cond::AL, vector::TIMER);
+                } else if interrupts.contains(InterruptFlags::LCD_STAT) {
+                    self.mem.clear_interrupt_flag(InterruptFlags::LCD_STAT);
+                    self.call(Cond::AL, vector::LCD_STAT);
 
-            } else if interrupts.contains(InterruptFlags::SERIAL) {
-                self.mem.clear_interrupt_flag(InterruptFlags::SERIAL);
-                self.call(Cond::AL, vector::SERIAL);
+                } else if interrupts.contains(InterruptFlags::TIMER) {
+                    self.mem.clear_interrupt_flag(InterruptFlags::TIMER);
+                    self.call(Cond::AL, vector::TIMER);
 
-            } else if interrupts.contains(InterruptFlags::JOYPAD) {
-                self.mem.clear_interrupt_flag(InterruptFlags::JOYPAD);
-                self.call(Cond::AL, vector::JOYPAD);
+                } else if interrupts.contains(InterruptFlags::SERIAL) {
+                    self.mem.clear_interrupt_flag(InterruptFlags::SERIAL);
+                    self.call(Cond::AL, vector::SERIAL);
+
+                } else if interrupts.contains(InterruptFlags::JOYPAD) {
+                    self.mem.clear_interrupt_flag(InterruptFlags::JOYPAD);
+                    self.call(Cond::AL, vector::JOYPAD);
+                }
+
+                return true;
             }
-
-            return true;
         }
 
         return false;

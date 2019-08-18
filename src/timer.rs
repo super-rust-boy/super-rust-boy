@@ -4,7 +4,9 @@ pub struct Timer {
     timer_modulo:   u8,
 
     timer_enable:   bool,
-    clock_select:   u8
+    clock_select:   u8,
+
+    trigger:        bool,
 }
 
 impl Timer {
@@ -15,7 +17,9 @@ impl Timer {
             timer_modulo:   0,
 
             timer_enable:   false,
-            clock_select:   0
+            clock_select:   0,
+
+            trigger:        false,
         }
     }
 
@@ -47,8 +51,10 @@ impl Timer {
         }
     }
 
-    // Call this every cycle. Returns true if an interrupt is triggered.
+    // Call this every cycle. Returns true if an interrupt is triggered (after 1 cycle delay).
     pub fn update(&mut self) -> bool {
+        let trigger = self.trigger;
+
         self.divider = (self.divider as u32 + 4) as u16;
 
         if self.timer_enable {
@@ -62,12 +68,16 @@ impl Timer {
             if inc {
                 self.timer_counter = (self.timer_counter as u16 + 1) as u8;
                 if self.timer_counter == 0 {
-                    self.timer_counter = self.timer_modulo;
-                    return true;
+                    self.trigger = true;
                 }
             }
         }
 
-        return false;
+        if trigger {
+            self.timer_counter = self.timer_modulo;
+            self.trigger = false;
+        }
+
+        return trigger;
     }
 }
