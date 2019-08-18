@@ -533,9 +533,8 @@ impl CPU {
     fn write_sp(&mut self, imm: u16) {
         let lo_byte = self.sp as u8;
         let hi_byte = (self.sp >> 8) as u8;
-        self.mem.write(imm, lo_byte);
-        self.mem.write(imm + 1, hi_byte);
-        self.clock_inc();
+        self.write_mem(imm, lo_byte);
+        self.write_mem(imm + 1, hi_byte);
     }
 
     #[inline]
