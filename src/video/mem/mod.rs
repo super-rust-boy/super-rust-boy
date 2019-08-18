@@ -108,11 +108,14 @@ pub struct VideoMem {
     palettes: PaletteMem,
 
     window_y: u8,
-    window_x: u8
+    window_x: u8,
+
+    // Misc
+    clear_colour: [f32; 4]
 }
 
 impl VideoMem {
-    pub fn new(device: &Arc<Device>) -> Self {
+    pub fn new(device: &Arc<Device>, greyscale: bool) -> Self {
         VideoMem {
             tile_mem: TileAtlas::new((TILE_DATA_WIDTH, TILE_DATA_HEIGHT), TILE_SIZE),
             tile_map_0: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
@@ -126,10 +129,12 @@ impl VideoMem {
             lcdc_y: 0,
             ly_compare: 0,
 
-            palettes: PaletteMem::new(device),
+            palettes: if greyscale {PaletteMem::new_bw(device)} else {PaletteMem::new_green(device)},
 
             window_y: 0,
-            window_x: 0
+            window_x: 0,
+
+            clear_colour: if greyscale {[1.0, 1.0, 1.0, 1.0]} else {[0.647, 0.765, 0.086, 1.0]}
         }
     }
     
@@ -158,22 +163,26 @@ impl VideoMem {
         if self.display_enabled() {
             self.palettes.get_colour_0()
         } else {
-            [1.0, 1.0, 1.0, 1.0]
+            self.clear_colour
         }
     }
 
     // Get background vertices.
-    pub fn get_background(&mut self) -> VertexBuffer {
-        if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
-            self.tile_map_0.get_vertex_buffer()
+    pub fn get_background(&mut self) -> Option<VertexBuffer> {
+        if self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY) {
+            Some(if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
+                self.tile_map_0.get_vertex_buffer()
+            } else {
+                self.tile_map_1.get_vertex_buffer()
+            })
         } else {
-            self.tile_map_1.get_vertex_buffer()
+            None
         }
     }
 
     // Get window
     pub fn get_window(&mut self) -> Option<VertexBuffer> {
-        if self.lcd_control.contains(LCDControl::WINDOW_DISPLAY_ENABLE) {
+        if self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY | LCDControl::WINDOW_DISPLAY_ENABLE) {
             Some(if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
                 self.tile_map_0.get_vertex_buffer()
             } else {

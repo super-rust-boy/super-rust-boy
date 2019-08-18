@@ -88,12 +88,24 @@ pub struct PaletteMem {
 }
 
 impl PaletteMem {
-    pub fn new(device: &Arc<Device>) -> Self {
+    pub fn new_bw(device: &Arc<Device>) -> Self {
         PaletteMem {
             palettes: vec![
                 Palette::new_monochrome_bw(),
                 Palette::new_monochrome_bw(),
                 Palette::new_monochrome_bw()
+            ],
+            buffer_pool: CpuBufferPool::uniform_buffer(device.clone()),
+            current_buffer: None
+        }
+    }
+
+    pub fn new_green(device: &Arc<Device>) -> Self {
+        PaletteMem {
+            palettes: vec![
+                Palette::new_monochrome_green(),
+                Palette::new_monochrome_green(),
+                Palette::new_monochrome_green()
             ],
             buffer_pool: CpuBufferPool::uniform_buffer(device.clone()),
             current_buffer: None

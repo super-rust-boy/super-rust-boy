@@ -10,10 +10,9 @@ mod interrupt;
 mod debug;
 
 use time::{Duration, PreciseTime};
-use std::{
-    env,
-    sync::mpsc::channel
-};
+use clap::{clap_app, crate_version};
+
+use std::sync::mpsc::channel;
 
 use cpu::CPU;
 use video::VideoDevice;
@@ -26,27 +25,41 @@ use mem::MemBus;
 const FRAME_TIME: i64 = 16_666;
 
 fn main() {
-    let cart = match env::args().nth(1) {
-        Some(c) => c,
-        None => panic!("Usage: cargo run [cart name]"),
+    let app = clap_app!(rustboy =>
+        (version: crate_version!())
+        (author: "Simon Cooper")
+        (about: "Game Boy emulator.")
+        (@arg CART: "The location of the game cart to use.")
+        (@arg mute: -m "Mutes the emulator.")
+        (@arg green: -g "Uses classic green palette. By default, greyscale palette is used.")
+        (@arg save: -s +takes_value "Save file location.")
+    );
+
+    let cmd_args = app.get_matches();
+
+    let cart = match cmd_args.value_of("CART") {
+        Some(c) => c.to_string(),
+        None => panic!("Usage: rustboy [cart name]. Run with --help for more options."),
     };
 
-    let save_file = match env::args().nth(2) {
-        Some(c) => c,
+    let save_file = match cmd_args.value_of("save") {
+        Some(c) => c.to_string(),
         None => make_save_name(&cart),
     };
 
-    println!("Super Rust Boy: {}", cart);
+    let greyscale = !cmd_args.is_present("green");
 
     let (send, recv) = channel();
 
-    let vd = VideoDevice::new();
+    let vd = VideoDevice::new(greyscale);
     let ad = AudioDevice::new(send);
     let mem = MemBus::new(&cart, &save_file, vd, ad);
 
     let mut state = CPU::new(mem);
 
-    start_audio_handler_thread(recv);
+    if !cmd_args.is_present("mute") {
+        start_audio_handler_thread(recv);
+    }
     
     if cfg!(feature = "debug") {
         #[cfg(feature = "debug")]

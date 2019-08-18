@@ -58,23 +58,22 @@ pub struct VideoDevice {
     events_loop:        EventsLoop
 }
 
-impl MemDevice for VideoDevice {
-    fn read(&self, loc: u16) -> u8 {
-        match loc {
-            0xFF00 =>   self.joypad.read(),
-            _ =>        self.mem.read(loc)
-        }
-    }
-
-    fn write(&mut self, loc: u16, val: u8) {
-        match loc {
-            0xFF00 =>   self.joypad.write(val),
-            _ =>        self.mem.write(loc, val)
-        }
-    }
-}
-
 impl VideoDevice {
+    pub fn new(greyscale: bool) -> Self {
+        let events_loop = EventsLoop::new();
+        let renderer = Renderer::new(&events_loop);
+        let mem = VideoMem::new(&renderer.get_device(), greyscale);
+
+        VideoDevice {
+            mem:            mem,
+            // joypad inputs
+            joypad:         Joypad::new(),
+
+            renderer:       renderer,
+            events_loop:    events_loop
+        }
+    }
+
     // Drawing for a single frame
     pub fn render_frame(&mut self) {
         self.renderer.render(&mut self.mem);
@@ -195,21 +194,18 @@ impl VideoDevice {
     }
 }
 
-// Control functions
-impl VideoDevice {
-    pub fn new() -> Self {
-        let events_loop = EventsLoop::new();
-        let renderer = Renderer::new(&events_loop);
-        let mem = VideoMem::new(&renderer.get_device());
-
-        VideoDevice {
-            mem:            mem,
-            // joypad inputs
-            joypad:         Joypad::new(),
-
-            renderer:       renderer,
-            events_loop:    events_loop
+impl MemDevice for VideoDevice {
+    fn read(&self, loc: u16) -> u8 {
+        match loc {
+            0xFF00 =>   self.joypad.read(),
+            _ =>        self.mem.read(loc)
         }
     }
 
+    fn write(&mut self, loc: u16, val: u8) {
+        match loc {
+            0xFF00 =>   self.joypad.write(val),
+            _ =>        self.mem.write(loc, val)
+        }
+    }
 }
