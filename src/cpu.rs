@@ -642,37 +642,8 @@ impl CPU {
         result as u16
     }
 
-    // TODO: improve this
-    /*fn daa(&mut self) {
-        let lo_nib = (self.a & 0xF) as u16;
-        let hi_nib = (self.a & 0xF0) as u16;
-        let lo_inc = match (lo_nib, self.flags.contains(CPUFlags::NEG), self.flags.contains(CPUFlags::HC)) {
-            // TODO: improve matches
-            (10...15,false,false) => 0x06,
-            (0...3,false,true) => 0x06,
-            (6...15,true,true) => 0x0A,
-            _ => 0x00,
-        };
-        let hi_inc = match (hi_nib, self.flags.contains(CPUFlags::CARRY), self.flags.contains(CPUFlags::NEG), self.flags.contains(CPUFlags::HC)) {
-            // TODO: improve matches
-            (10...15,false,false,_) => 0x60,
-            (9...15,false,false,false) if lo_inc==6 => 0x60,
-            (0...2,true,false,false) => 0x60,
-            (0...3,true,false,true) => 0x60,
-            (0...8,false,true,true) => 0xF0,
-            (7...15,true,true,false) => 0xA0,
-            (6...15,true,true,true) => 0x90,
-            _ => 0x00,
-        };
-        let result = (hi_nib | lo_nib) + lo_inc + hi_inc;
-        self.flags.set(CPUFlags::ZERO, (result & 0xFF) == 0);
-        self.flags.remove(CPUFlags::HC);
-        self.flags.set(CPUFlags::CARRY, result > 0x99);
-        self.a = (result & 0xFF) as u8;
-    }*/
-
     fn daa(&mut self) {
-        let mut result = self.a as i16;
+        let mut result = (self.a as u16) as i16;
         if self.flags.contains(CPUFlags::NEG) {
             // If subtract just happened:
             if self.flags.contains(CPUFlags::CARRY) {
@@ -693,8 +664,8 @@ impl CPU {
         }
 
         self.flags.remove(CPUFlags::HC);
-        self.flags.set(CPUFlags::ZERO, result == 0);
         self.a = (result & 0xFF) as u8;
+        self.flags.set(CPUFlags::ZERO, self.a == 0);
     }
 
     fn cpl(&mut self) {
