@@ -70,15 +70,18 @@ impl AudioChannelRegs for Square1Regs {
 pub struct Square1Gen {
     sample_rate:        usize,
 
-    frequency:          usize,
+    frequency:          f32,
 
     freq_sweep_step:    usize,
     freq_counter:       usize,
     freq_sweep_dir:     Direction,
-    freq_shift_amt:     usize,
+    freq_div_amt:       f32,
 
-    phase:              usize,
-    phase_len:          usize,
+    phase_int_count:    usize,
+    phase_frac_count:   f32,
+    phase_int_len:      usize,
+    phase_frac_len:     f32,
+    extra_sample:       bool,
     duty_len:           usize,
     duty_reg_amt:       u8,
 
@@ -95,15 +98,18 @@ impl Square1Gen {
         Square1Gen {
             sample_rate:        sample_rate,
 
-            frequency:          0,
+            frequency:          0.0,
 
             freq_sweep_step:    0,
             freq_counter:       0,
             freq_sweep_dir:     Direction::None,
-            freq_shift_amt:     0,
+            freq_div_amt:       0.0,
 
-            phase:              0,
-            phase_len:          1,
+            phase_int_count:    0,
+            phase_frac_count:   0.0,
+            phase_int_len:      1,
+            phase_frac_len:     0.0,
+            extra_sample:       false,
             duty_len:           0,
             duty_reg_amt:       0,
 
@@ -117,16 +123,24 @@ impl Square1Gen {
     }
 
     fn calc_freq(&mut self) {
-        self.phase_len = self.sample_rate.checked_div(self.frequency).unwrap_or_else(|| {
+        let true_phase = if self.frequency == 0.0 {
             self.length = Some(0);
-            usize::max_value()
-        });
+            std::f32::INFINITY
+        } else {
+            (self.sample_rate as f32) / self.frequency
+        };
+
+        self.phase_int_len = true_phase.trunc() as usize;
+        self.phase_frac_len = true_phase.fract();
+        self.phase_frac_count = 0.0;
+        self.extra_sample = false;
+
         self.duty_len = match self.duty_reg_amt {
-            DUTY_12_5   => self.phase_len / 8,
-            DUTY_25     => self.phase_len / 4,
-            DUTY_50     => self.phase_len / 2,
-            DUTY_75     => (self.phase_len / 4) * 3,
-            _           => self.phase_len / 2,
+            DUTY_12_5   => self.phase_int_len / 8,
+            DUTY_25     => self.phase_int_len / 4,
+            DUTY_50     => self.phase_int_len / 2,
+            DUTY_75     => (self.phase_int_len / 4) * 3,
+            _           => self.phase_int_len / 2,
         };
     }
 }
@@ -134,7 +148,7 @@ impl Square1Gen {
 impl AudioChannelGen<Square1Regs> for Square1Gen {
     fn init_signal(&mut self, regs: &Square1Regs) {
         let freq_n = (((regs.freq_hi_reg & 0x7) as usize) << 8) | (regs.freq_lo_reg as usize);
-        self.frequency = FREQ_MAX / (FREQ_MOD - freq_n);
+        self.frequency = FREQ_MAX / (FREQ_MOD - freq_n) as f32;
 
         let sweep_time = ((regs.sweep_reg & 0x70) >> 4) as usize;
         self.freq_sweep_step = (self.sample_rate * sweep_time) / 128;
@@ -146,10 +160,11 @@ impl AudioChannelGen<Square1Regs> for Square1Gen {
         } else {
             Direction::Increase
         };
-        self.freq_shift_amt = (regs.sweep_reg & 0x7) as usize;
+        let freq_shift_amt = (regs.sweep_reg & 0x7) as i32;
+        self.freq_div_amt = 2.0_f32.powi(freq_shift_amt);
 
         self.duty_reg_amt = regs.duty_length_reg & 0xC0;
-        self.phase = 0;
+        self.phase_int_count = 0;
         self.calc_freq();
 
         self.length = if (regs.freq_hi_reg & 0x40) != 0 {
@@ -176,19 +191,32 @@ impl AudioChannelGen<Square1Regs> for Square1Gen {
 
         for i in buffer.iter_mut().take(take).skip(skip) {
             // Sample
-            *i = if (self.length.unwrap_or(1) > 0) && (self.phase < self.duty_len) {
+            *i = if (self.length.unwrap_or(1) > 0) && (self.phase_int_count < self.duty_len) {
                 self.amplitude  // HI
             } else if self.length == Some(0) {
                 0               // OFF
             } else {
                 -self.amplitude // LO
             };
-            self.phase = (self.phase + 1).checked_rem(self.phase_len).unwrap_or(0);
+            self.phase_int_count = (self.phase_int_count + 1).checked_rem(self.phase_int_len).unwrap_or(0);
+
+            if self.phase_int_count == 0 {
+                if !self.extra_sample {
+                    self.phase_frac_count += self.phase_frac_len;
+                    if self.phase_frac_count >= 1.0 {
+                        self.phase_frac_count -= 1.0;
+                        self.phase_int_count = self.phase_int_len - 1;
+                        self.extra_sample = true;
+                    }
+                } else {
+                    self.extra_sample = false;
+                }
+            }
 
             // Freq sweep
             self.freq_counter += 1;
             if self.freq_counter >= self.freq_sweep_step {
-                let freq_modifier = self.frequency >> self.freq_shift_amt;
+                let freq_modifier = self.frequency / self.freq_div_amt;
                 match self.freq_sweep_dir {
                     Direction::Increase => {
                         self.frequency += freq_modifier;

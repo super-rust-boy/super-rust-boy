@@ -60,9 +60,12 @@ impl AudioChannelRegs for Square2Regs {
 pub struct Square2Gen {
     sample_rate: usize,
 
-    phase:          usize,
-    phase_len:      usize,
-    duty_len:       usize,
+    phase_int_count:    usize,
+    phase_frac_count:   f32,
+    phase_int_len:      usize,
+    phase_frac_len:     f32,
+    extra_sample:       bool,
+    duty_len:           usize,
 
     length:         Option<usize>,
 
@@ -77,9 +80,12 @@ impl Square2Gen {
         Square2Gen {
             sample_rate:    sample_rate,
 
-            phase:          0,
-            phase_len:      1,
-            duty_len:       0,
+            phase_int_count:    0,
+            phase_frac_count:   0.0,
+            phase_int_len:      1,
+            phase_frac_len:     0.0,
+            extra_sample:       false,
+            duty_len:           0,
 
             length:         None,
 
@@ -94,17 +100,21 @@ impl Square2Gen {
 impl AudioChannelGen<Square2Regs> for Square2Gen {
     fn init_signal(&mut self, regs: &Square2Regs) {
         let freq_n = (((regs.freq_hi_reg & 0x7) as usize) << 8) | (regs.freq_lo_reg as usize);
-        let frequency = FREQ_MAX / (FREQ_MOD - freq_n);
+        let frequency = FREQ_MAX / (FREQ_MOD - freq_n) as f32;
 
-        self.phase = 0;
-        self.phase_len = self.sample_rate / frequency;
+        let true_phase = (self.sample_rate as f32) / frequency;
+        self.phase_int_len = true_phase.trunc() as usize;
+        self.phase_frac_len = true_phase.fract();
         self.duty_len = match regs.duty_length_reg & 0xC0 {
-            DUTY_12_5   => self.phase_len / 8,
-            DUTY_25     => self.phase_len / 4,
-            DUTY_50     => self.phase_len / 2,
-            DUTY_75     => (self.phase_len / 4) * 3,
-            _           => self.phase_len / 2,
+            DUTY_12_5   => self.phase_int_len / 8,
+            DUTY_25     => self.phase_int_len / 4,
+            DUTY_50     => self.phase_int_len / 2,
+            DUTY_75     => (self.phase_int_len / 4) * 3,
+            _           => self.phase_int_len / 2,
         };
+        self.phase_int_count = 0;
+        self.phase_frac_count = 0.0;
+        self.extra_sample = false;
 
         self.length = if (regs.freq_hi_reg & 0x40) != 0 {
             Some((self.sample_rate * (64 - (regs.duty_length_reg & 0x3F) as usize)) / 256)
@@ -129,14 +139,27 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
         let skip = (buffer.len() as f32 * start) as usize;
 
         for i in buffer.iter_mut().take(take).skip(skip) {
-            *i = if (self.length.unwrap_or(1) > 0) && (self.phase < self.duty_len) {
+            *i = if (self.length.unwrap_or(1) > 0) && (self.phase_int_count < self.duty_len) {
                 self.amplitude  // HI
             } else if self.length == Some(0) {
                 0               // OFF
             } else {
                 -self.amplitude // LO
             };
-            self.phase = (self.phase + 1).checked_rem(self.phase_len).unwrap_or(0);
+            self.phase_int_count = (self.phase_int_count + 1).checked_rem(self.phase_int_len).unwrap_or(0);
+
+            if self.phase_int_count == 0 {
+                if !self.extra_sample {
+                    self.phase_frac_count += self.phase_frac_len;
+                    if self.phase_frac_count >= 1.0 {
+                        self.phase_frac_count -= 1.0;
+                        self.phase_int_count = self.phase_int_len - 1;
+                        self.extra_sample = true;
+                    }
+                } else {
+                    self.extra_sample = false;
+                }
+            }
 
             match self.length {
                 Some(n) if n > 0 => self.length = Some(n - 1),

@@ -14,5 +14,5 @@ pub enum Direction {
 }
 
 // Frequency constants
-pub const FREQ_MAX: usize = 131_072;
+pub const FREQ_MAX: f32 = 131_072.0;
 pub const FREQ_MOD: usize = 2048;
