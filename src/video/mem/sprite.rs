@@ -57,8 +57,10 @@ impl Sprite {
         // This sprite should be in the batch.
         if lo_priority == self.flags.contains(SpriteFlags::PRIORITY) {
             let lo_x = ((self.x as f32 - 8.0) / 80.0) - 1.0;
-            let lo_y = ((self.y as f32 - 16.0) / 72.0) - 1.0;
             let hi_x = lo_x + SPRITE_WIDTH;
+
+            let base_y = ((self.y as f32 - 16.0) / 72.0) - 1.0;
+            let lo_y = if large && self.flags.contains(SpriteFlags::Y_FLIP) {base_y + SPRITE_HEIGHT} else {base_y};
             let hi_y = lo_y + SPRITE_HEIGHT;
 
             let (top_left, bottom_left, top_right, bottom_right) = match (self.flags.contains(SpriteFlags::X_FLIP), self.flags.contains(SpriteFlags::Y_FLIP)) {
@@ -84,8 +86,8 @@ impl Sprite {
             vertices.push(Vertex{ position: [hi_x, hi_y], data: palette_num | tile_num | br });
 
             if large {
-                let lo_y = hi_y;
-                let hi_y = hi_y + SPRITE_HEIGHT;
+                let lo_y = if large && self.flags.contains(SpriteFlags::Y_FLIP) {base_y} else {hi_y};
+                let hi_y = lo_y + SPRITE_HEIGHT;
                 let tile_num = self.tile_num as u32 + 1;
                 vertices.push(Vertex{ position: [lo_x, lo_y], data: palette_num | tile_num | tl });
                 vertices.push(Vertex{ position: [lo_x, hi_y], data: palette_num | tile_num | bl });
