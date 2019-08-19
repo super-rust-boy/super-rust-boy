@@ -12,41 +12,28 @@ use cgmath::{
 
 use std::sync::Arc;
 
-pub type PaletteBuffer = CpuBufferPoolChunk<Matrix4<f32>, Arc<StdMemoryPool>>;
+use crate::video::{
+    PaletteColours,
+    sgbpalettes::SGBPalette
+};
 
-// A single palette.
-struct Palette {
-    colours: Matrix4<f32>,
+pub type PaletteBuffer = CpuBufferPoolChunk<PaletteColours, Arc<StdMemoryPool>>;
+
+// A palette with hard-coded colours.
+struct StaticPalette {
+    colours: PaletteColours,
     raw: u8
 }
 
-impl Palette {
-    pub fn new_monochrome_bw() -> Self {
-        Palette {
-            colours: Matrix4::from_cols(
-                Vector4::new(1.0, 1.0, 1.0, 1.0),
-                Vector4::new(0.65, 0.65, 0.65, 1.0),
-                Vector4::new(0.33, 0.33, 0.33, 1.0),
-                Vector4::new(0.0, 0.0, 0.0, 1.0)
-            ),
+impl StaticPalette {
+    pub fn new(colours: PaletteColours) -> Self {
+        StaticPalette {
+            colours: colours,
             raw: 0
         }
     }
 
-    #[allow(dead_code)]
-    pub fn new_monochrome_green() -> Self {
-        Palette {
-            colours: Matrix4::from_cols(
-                Vector4::new(0.647, 0.765, 0.086, 1.0),
-                Vector4::new(0.596, 0.702, 0.165, 1.0),
-                Vector4::new(0.184, 0.388, 0.145, 1.0),
-                Vector4::new(0.055, 0.208, 0.059, 1.0)
-            ),
-            raw: 0
-        }
-    }
-
-    pub fn get_palette(&self, transparent: bool) -> Matrix4<f32> {
+    pub fn get_palette(&self, transparent: bool) -> PaletteColours {
         let colour_1 = (self.raw & 0b00001100) >> 2;
         let colour_2 = (self.raw & 0b00110000) >> 4;
         let colour_3 = (self.raw & 0b11000000) >> 6;
@@ -82,30 +69,18 @@ impl Palette {
 
 // A group of palettes
 pub struct PaletteMem {
-    palettes: Vec<Palette>,
-    buffer_pool: CpuBufferPool<Matrix4<f32>>,
+    palettes: Vec<StaticPalette>,
+    buffer_pool: CpuBufferPool<PaletteColours>,
     current_buffer: Option<PaletteBuffer>
 }
 
 impl PaletteMem {
-    pub fn new_bw(device: &Arc<Device>) -> Self {
+    pub fn new_static(device: &Arc<Device>, colours: SGBPalette) -> Self {
         PaletteMem {
             palettes: vec![
-                Palette::new_monochrome_bw(),
-                Palette::new_monochrome_bw(),
-                Palette::new_monochrome_bw()
-            ],
-            buffer_pool: CpuBufferPool::uniform_buffer(device.clone()),
-            current_buffer: None
-        }
-    }
-
-    pub fn new_green(device: &Arc<Device>) -> Self {
-        PaletteMem {
-            palettes: vec![
-                Palette::new_monochrome_green(),
-                Palette::new_monochrome_green(),
-                Palette::new_monochrome_green()
+                StaticPalette::new(colours.bg),
+                StaticPalette::new(colours.obj0),
+                StaticPalette::new(colours.obj1)
             ],
             buffer_pool: CpuBufferPool::uniform_buffer(device.clone()),
             current_buffer: None
@@ -127,9 +102,8 @@ impl PaletteMem {
         }
     }
 
-    pub fn get_colour_0(&self) -> [f32; 4] {
-        let colour = self.palettes[0].get_colour_0();
-        [colour[0], colour[1], colour[2], colour[3]]
+    pub fn get_colour_0(&self) -> Vector4<f32> {
+        self.palettes[0].get_colour_0()
     }
 
     pub fn read(&self, which: usize) -> u8 {

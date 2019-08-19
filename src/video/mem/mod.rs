@@ -8,11 +8,15 @@ use vulkano::device::{
     Queue
 };
 
+use cgmath::Vector4;
+
 use bitflags::bitflags;
 
 use std::sync::Arc;
 
 use crate::mem::MemDevice;
+
+use super::sgbpalettes::SGBPalette;
 
 use tilemem::*;
 use vertexgrid::*;
@@ -111,11 +115,11 @@ pub struct VideoMem {
     window_x: u8,
 
     // Misc
-    clear_colour: [f32; 4]
+    clear_colour: Vector4<f32>
 }
 
 impl VideoMem {
-    pub fn new(device: &Arc<Device>, greyscale: bool) -> Self {
+    pub fn new(device: &Arc<Device>, palette: SGBPalette) -> Self {
         VideoMem {
             tile_mem: TileAtlas::new((TILE_DATA_WIDTH, TILE_DATA_HEIGHT), TILE_SIZE),
             tile_map_0: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
@@ -129,12 +133,12 @@ impl VideoMem {
             lcdc_y: 0,
             ly_compare: 0,
 
-            palettes: if greyscale {PaletteMem::new_bw(device)} else {PaletteMem::new_green(device)},
+            palettes: PaletteMem::new_static(device, palette),
 
             window_y: 0,
             window_x: 0,
 
-            clear_colour: if greyscale {[1.0, 1.0, 1.0, 1.0]} else {[0.647, 0.765, 0.086, 1.0]}
+            clear_colour: palette.get_colour_0()
         }
     }
     
@@ -164,7 +168,7 @@ impl VideoMem {
             self.palettes.get_colour_0()
         } else {
             self.clear_colour
-        }
+        }.into()
     }
 
     // Get background vertices.
@@ -250,7 +254,7 @@ impl MemDevice for VideoMem {
     fn read(&self, loc: u16) -> u8 {
         let val = match loc {
             // Raw tile data
-            0x8000...0x97FF => {
+            0x8000..=0x97FF => {
                 let base = (loc - 0x8000) as usize;
 
                 let mut ret = 0;
@@ -270,7 +274,7 @@ impl MemDevice for VideoMem {
                 ret
             },
             // Background Map A
-            0x9800...0x9BFF => {
+            0x9800..=0x9BFF => {
                 let base = (loc - 0x9800) as usize;
                 let x = base % 0x20;
                 let y = base / 0x20;
@@ -278,7 +282,7 @@ impl MemDevice for VideoMem {
                 self.tile_map_0.get_tile_texture(x, y)
             },
             // Background Map B
-            0x9C00...0x9FFF => {
+            0x9C00..=0x9FFF => {
                 let base = (loc - 0x9C00) as usize;
                 let x = base % 0x20;
                 let y = base / 0x20;
@@ -286,7 +290,7 @@ impl MemDevice for VideoMem {
                 self.tile_map_1.get_tile_texture(x, y)
             },
             // Sprite data
-            0xFE00...0xFE9F => self.object_mem.read(loc - 0xFE00),
+            0xFE00..=0xFE9F => self.object_mem.read(loc - 0xFE00),
             // Registers
             0xFF40 => self.lcd_control.bits(),
             0xFF41 => self.lcd_status.read(),
@@ -307,7 +311,7 @@ impl MemDevice for VideoMem {
     fn write(&mut self, loc: u16, val: u8) {
         match loc {
             // Raw tile data
-            0x8000...0x97FF => {
+            0x8000..=0x97FF => {
                 let base = (loc - 0x8000) as usize;
 
                 if base % 2 == 0 {  // Lower bit
@@ -344,7 +348,7 @@ impl MemDevice for VideoMem {
                 }
             },
             // Background Map A
-            0x9800...0x9BFF => {
+            0x9800..=0x9BFF => {
                 let base = (loc - 0x9800) as usize;
                 let x = base % 0x20;
                 let y = base / 0x20;
@@ -352,7 +356,7 @@ impl MemDevice for VideoMem {
                 self.tile_map_0.set_tile_texture(x, y, val);
             },
             // Background Map B
-            0x9C00...0x9FFF => {
+            0x9C00..=0x9FFF => {
                 let base = (loc - 0x9C00) as usize;
                 let x = base % 0x20;
                 let y = base / 0x20;
@@ -360,7 +364,7 @@ impl MemDevice for VideoMem {
                 self.tile_map_1.set_tile_texture(x, y, val);
             },
             // Sprite data
-            0xFE00...0xFE9F => self.object_mem.write(loc - 0xFE00, val),
+            0xFE00..=0xFE9F => self.object_mem.write(loc - 0xFE00, val),
             0xFF40 => self.lcd_control = LCDControl::from_bits_truncate(val),
             0xFF41 => self.lcd_status.write(val),
             0xFF42 => self.scroll_y = val,

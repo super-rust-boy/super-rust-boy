@@ -2,6 +2,7 @@ mod mem;
 mod joypad;
 mod renderer;
 mod shaders;
+pub mod sgbpalettes;
 
 // Video mode constants
 mod constants {
@@ -12,6 +13,28 @@ mod constants {
     pub const MODE_3: u32       = MODE_2 + 172;     // Mode 3: Reading OAM & VRAM
     pub const FRAME_CYCLE: u32  = 144 * H_CYCLES;   // Time spent cycling through modes 2,3 and 0 before V-Blank
 }
+
+use winit::{
+    EventsLoop,
+    Event,
+    WindowEvent,
+    ElementState,
+    VirtualKeyCode
+};
+
+use cgmath::Matrix4;
+
+use crate::interrupt::InterruptFlags;
+use crate::mem::MemDevice;
+
+use self::joypad::{Joypad, Buttons, Directions};
+use self::mem::VideoMem;
+use self::renderer::Renderer;
+use self::sgbpalettes::SGBPalette;
+
+pub use sgbpalettes::UserPalette;
+
+pub type PaletteColours = Matrix4<f32>;
 
 // Modes
 #[derive(PartialEq, Debug, Clone)]
@@ -33,22 +56,6 @@ impl From<u8> for Mode {
     }
 }
 
-use winit::{
-    EventsLoop,
-    Event,
-    WindowEvent,
-    ElementState,
-    //ControlFlow,
-    VirtualKeyCode
-};
-
-use crate::interrupt::InterruptFlags;
-use crate::mem::MemDevice;
-
-use self::joypad::{Joypad, Buttons, Directions};
-use self::mem::VideoMem;
-use self::renderer::Renderer;
-
 pub struct VideoDevice {
     mem:                VideoMem,
     // joypad inputs
@@ -59,10 +66,10 @@ pub struct VideoDevice {
 }
 
 impl VideoDevice {
-    pub fn new(greyscale: bool) -> Self {
+    pub fn new(palette: SGBPalette) -> Self {
         let events_loop = EventsLoop::new();
         let renderer = Renderer::new(&events_loop);
-        let mem = VideoMem::new(&renderer.get_device(), greyscale);
+        let mem = VideoMem::new(&renderer.get_device(), palette);
 
         VideoDevice {
             mem:            mem,

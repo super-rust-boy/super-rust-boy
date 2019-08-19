@@ -1,6 +1,9 @@
 // The main memory bus that connects to the CPU.
 
-use crate::video::VideoDevice;
+use crate::video::{
+    sgbpalettes::*,
+    VideoDevice
+};
 use crate::audio::AudioDevice;
 use crate::timer::Timer;
 use crate::interrupt::InterruptFlags;
@@ -22,24 +25,37 @@ pub struct MemBus {
     audio_device:       AudioDevice,
 
     timer:              Timer,
+
+    cgb_ram_offset:     u16
 }
 
 impl MemBus {
-    pub fn new(rom_file: &str, save_file: &str, video_device: VideoDevice, audio_device: AudioDevice) -> MemBus {
+    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette, audio_device: AudioDevice) -> MemBus {
         let rom = match Cartridge::new(rom_file, save_file) {
             Ok(r) => r,
             Err(s) => panic!("Could not construct ROM: {}", s),
         };
 
+        let palette = match user_palette {
+            UserPalette::Default => if let Some(cart_hash) = cart_name_hash(&rom) {
+                lookup_sgb_palette(cart_hash.0, cart_hash.1)
+            } else {
+                BW_PALETTE
+            },
+            UserPalette::Greyscale => BW_PALETTE,
+            UserPalette::Classic => CLASSIC_PALETTE
+        };
+
         MemBus {
             cart:               rom,
-            ram:                WriteableMem::new(0x2000),
+            ram:                WriteableMem::new(0x8000),
             high_ram:           WriteableMem::new(0x7F),
             interrupt_flag:     InterruptFlags::default(),
             interrupt_enable:   InterruptFlags::default(),
-            video_device:       video_device,
+            video_device:       VideoDevice::new(palette),
             audio_device:       audio_device,
             timer:              Timer::new(),
+            cgb_ram_offset:     0x1000
         }
     }
 
@@ -88,7 +104,11 @@ impl MemBus {
     pub fn flush_cart(&mut self) {
         self.cart.flush_ram();
     }
+}
 
+// Internal functions
+impl MemBus {
+    // Direct memory access for palettes.
     fn dma(&mut self, val: u8) {
         let hi_byte = (val as u16) << 8;
         for lo_byte in 0_u16..=0x9F_u16 {
@@ -98,23 +118,40 @@ impl MemBus {
             self.video_device.write(dest_addr, byte);
         }
     }
+
+    // Game Boy Color RAM bank.
+    fn set_cgb_ram_bank(&mut self, val: u8) {
+        let bank = (val & 0x7) as u16;
+        self.cgb_ram_offset = if bank == 0 {
+            0x1000
+        } else {
+            bank * 0x1000
+        };
+    }
+
+    fn get_cgb_ram_bank(&self) -> u8 {
+        (self.cgb_ram_offset / 0x1000) as u8
+    }
 }
 
 impl MemDevice for MemBus {
     fn read(&self, loc: u16) -> u8 {
         match loc {
-            0x0000...0x7FFF => self.cart.read(loc),
-            0x8000...0x9FFF => self.video_device.read(loc),
-            0xA000...0xBFFF => self.cart.read(loc),
-            0xC000...0xDFFF => self.ram.read(loc - 0xC000),
-            0xE000...0xFDFF => self.ram.read(loc - 0xE000),
-            0xFE00...0xFE9F => self.video_device.read(loc),
+            0x0000..=0x7FFF => self.cart.read(loc),
+            0x8000..=0x9FFF => self.video_device.read(loc),
+            0xA000..=0xBFFF => self.cart.read(loc),
+            0xC000..=0xCFFF => self.ram.read(loc - 0xC000),
+            0xD000..=0xDFFF => self.ram.read((loc - 0xD000) + self.cgb_ram_offset),
+            0xE000..=0xEFFF => self.ram.read(loc - 0xE000),
+            0xF000..=0xFDFF => self.ram.read((loc - 0xF000) + self.cgb_ram_offset),
+            0xFE00..=0xFE9F => self.video_device.read(loc),
             0xFF00          => self.video_device.read(loc),
-            0xFF03...0xFF07 => self.timer.read(loc),
+            0xFF03..=0xFF07 => self.timer.read(loc),
             0xFF0F          => self.interrupt_flag.bits(),
-            0xFF10...0xFF3F => self.audio_device.read(loc),
-            0xFF40...0xFF4B => self.video_device.read(loc),
-            0xFF80...0xFFFE => self.high_ram.read(loc - 0xFF80),
+            0xFF10..=0xFF3F => self.audio_device.read(loc),
+            0xFF40..=0xFF4B => self.video_device.read(loc),
+            0xFF70          => self.get_cgb_ram_bank(),
+            0xFF80..=0xFFFE => self.high_ram.read(loc - 0xFF80),
             0xFFFF          => self.interrupt_enable.bits(),
             _ => self.ram.read(0),
         }
@@ -122,22 +159,54 @@ impl MemDevice for MemBus {
 
     fn write(&mut self, loc: u16, val: u8) {
         match loc {
-            0x0000...0x7FFF => self.cart.write(loc, val),
-            0x8000...0x9FFF => self.video_device.write(loc, val),
-            0xA000...0xBFFF => self.cart.write(loc, val),
-            0xC000...0xDFFF => self.ram.write(loc - 0xC000, val),
-            0xE000...0xFDFF => self.ram.write(loc - 0xE000, val),
-            0xFE00...0xFE9F => self.video_device.write(loc, val),
+            0x0000..=0x7FFF => self.cart.write(loc, val),
+            0x8000..=0x9FFF => self.video_device.write(loc, val),
+            0xA000..=0xBFFF => self.cart.write(loc, val),
+            0xC000..=0xCFFF => self.ram.write(loc - 0xC000, val),
+            0xD000..=0xDFFF => self.ram.write((loc - 0xD000) + self.cgb_ram_offset, val),
+            0xE000..=0xEFFF => self.ram.write(loc - 0xE000, val),
+            0xF000..=0xFDFF => self.ram.write((loc - 0xF000) + self.cgb_ram_offset, val),
+            0xFE00..=0xFE9F => self.video_device.write(loc, val),
             0xFF00          => self.video_device.write(loc, val),
-            0xFF03...0xFF07 => self.timer.write(loc, val),
+            0xFF03..=0xFF07 => self.timer.write(loc, val),
             0xFF0F          => self.interrupt_flag = InterruptFlags::from_bits_truncate(val),
-            0xFF10...0xFF3F => self.audio_device.write(loc, val),
-            0xFF40...0xFF45 => self.video_device.write(loc, val), 
+            0xFF10..=0xFF3F => self.audio_device.write(loc, val),
+            0xFF40..=0xFF45 => self.video_device.write(loc, val), 
             0xFF46          => self.dma(val),
-            0xFF47...0xFF4B => self.video_device.write(loc, val),
-            0xFF80...0xFFFE => self.high_ram.write(loc - 0xFF80, val),
+            0xFF47..=0xFF4B => self.video_device.write(loc, val),
+            0xFF70          => self.set_cgb_ram_bank(val),
+            0xFF80..=0xFFFE => self.high_ram.write(loc - 0xFF80, val),
             0xFFFF          => self.interrupt_enable = InterruptFlags::from_bits_truncate(val),
             _ => {},
         }
+    }
+}
+
+// Get the cart name hash values for SGB palette lookup
+fn cart_name_hash(cart: &Cartridge) -> Option<(u8, u8)> {
+    let old_code = cart.read(0x014B);
+    let valid = if old_code == 0x33 {
+        let new_code = cart.read(0x0145);
+        (new_code == 0x31) || (new_code == 0x01)
+    } else {
+        old_code == 0x01
+    };
+    // Get hash.
+    if valid {
+        let mut title_loc = 0x0134;
+        let mut hash = 0_u16;
+        loop {
+            let byte = cart.read(title_loc);
+            if byte == 0 {
+                break;
+            } else {
+                hash += byte as u16;
+                title_loc += 1;
+            }
+        }
+        let char_4 = cart.read(0x0137);
+        Some((hash as u8, char_4))
+    } else {
+        None
     }
 }

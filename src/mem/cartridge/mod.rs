@@ -40,7 +40,7 @@ enum Swap {
 pub struct Cartridge {
     rom_bank_0: [u8; 0x4000],
     rom_bank_n: [u8; 0x4000],
-    ram:        Box<RAM>,
+    ram:        Box<dyn RAM>,
 
     rom_file:   BufReader<File>,
     mem_bank:   MBC,
@@ -78,9 +78,9 @@ impl Cartridge {
         };
 
         let ram = if battery {
-            Box::new(BatteryRAM::new(ram_size, save_file_name)?) as Box<RAM>
+            Box::new(BatteryRAM::new(ram_size, save_file_name)?) as Box<dyn RAM>
         } else {
-            Box::new(BankedRAM::new(ram_size)) as Box<RAM>
+            Box::new(BankedRAM::new(ram_size)) as Box<dyn RAM>
         };
 
         let mut ret = Cartridge {
@@ -146,8 +146,8 @@ impl Cartridge {
 impl MemDevice for Cartridge {
     fn read(&self, loc: u16) -> u8 {
         match loc {
-            0x0...0x3FFF    => self.rom_bank_0[loc as usize],
-            0x4000...0x7FFF => self.rom_bank_n[(loc - 0x4000) as usize],
+            0x0..=0x3FFF    => self.rom_bank_0[loc as usize],
+            0x4000..=0x7FFF => self.rom_bank_n[(loc - 0x4000) as usize],
             _ => self.read_ram(loc - 0xA000),
         }
     }
@@ -161,9 +161,9 @@ impl MemDevice for Cartridge {
                     let old_rom_bank = mb.get_rom_bank();
                     let old_ram_bank = mb.get_ram_bank();
                     match loc {
-                        0x0000...0x1FFF => self.ram_enable = (val & 0xA) == 0xA,
-                        0x2000...0x3FFF => mb.set_lower(val),
-                        0x4000...0x5FFF => mb.set_upper(val),
+                        0x0000..=0x1FFF => self.ram_enable = (val & 0xA) == 0xA,
+                        0x2000..=0x3FFF => mb.set_lower(val),
+                        0x4000..=0x5FFF => mb.set_upper(val),
                         _ => mb.mem_type_select(val),
                     }
 
@@ -183,8 +183,8 @@ impl MemDevice for Cartridge {
                     }
                 },
                 MBC::_2 => match loc {
-                    0x0000...0x1FFF => {self.ram_enable = (loc & 0x100) == 0; Swap::None},
-                    0x2000...0x3FFF => if (loc & 0x100) != 0 {
+                    0x0000..=0x1FFF => {self.ram_enable = (loc & 0x100) == 0; Swap::None},
+                    0x2000..=0x3FFF => if (loc & 0x100) != 0 {
                         Swap::ROM((val & 0xF) as u16)
                     } else {
                         Swap::None
@@ -192,19 +192,19 @@ impl MemDevice for Cartridge {
                     _ => Swap::None,
                 },
                 MBC::_3(ref mut mb) => match (loc, val) {
-                    (0x0000...0x1FFF, _)            => {self.ram_enable = (val & 0xF) == 0xA; Swap::None},
-                    (0x2000...0x3FFF, 0)            => Swap::ROM(1),
-                    (0x2000...0x3FFF, _)            => Swap::ROM(val as u16),
-                    (0x4000...0x5FFF, 0...7)        => Swap::RAM(val),
-                    (0x4000...0x5FFF, 8...0xC)      => {mb.select_rtc(val); Swap::None},
-                    (0x6000...0x7FFF, 1)            => {mb.latch_clock(); Swap::None},
+                    (0x0000..=0x1FFF, _)            => {self.ram_enable = (val & 0xF) == 0xA; Swap::None},
+                    (0x2000..=0x3FFF, 0)            => Swap::ROM(1),
+                    (0x2000..=0x3FFF, _)            => Swap::ROM(val as u16),
+                    (0x4000..=0x5FFF, 0..=7)        => Swap::RAM(val),
+                    (0x4000..=0x5FFF, 8..=0xC)      => {mb.select_rtc(val); Swap::None},
+                    (0x6000..=0x7FFF, 1)            => {mb.latch_clock(); Swap::None},
                     _ => Swap::None,
                 },
                 MBC::_5(ref mut rom) => match (loc, val) {
-                    (0x0000...0x1FFF, _)    => {self.ram_enable = (val & 0xF) == 0xA; Swap::None},
-                    (0x2000...0x2FFF, _)    => {*rom &= 0xFF00; *rom |= val as u16; Swap::ROM(*rom)},
-                    (0x3000...0x3FFF, _)    => {*rom &= 0xFF; *rom |= 0x100; Swap::ROM(*rom)},
-                    (0x4000...0x5FFF, _)    => Swap::RAM(val),
+                    (0x0000..=0x1FFF, _)    => {self.ram_enable = (val & 0xF) == 0xA; Swap::None},
+                    (0x2000..=0x2FFF, _)    => {*rom &= 0xFF00; *rom |= val as u16; Swap::ROM(*rom)},
+                    (0x3000..=0x3FFF, _)    => {*rom &= 0xFF; *rom |= 0x100; Swap::ROM(*rom)},
+                    (0x4000..=0x5FFF, _)    => Swap::RAM(val),
                     _ => Swap::None,
                 },
                 _ => Swap::None,

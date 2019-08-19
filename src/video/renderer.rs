@@ -64,8 +64,8 @@ vulkano::impl_vertex!(Vertex, position, data);
 
 type RenderPipeline = GraphicsPipeline<
     SingleBufferDefinition<Vertex>,
-    Box<PipelineLayoutAbstract + Send + Sync>,
-    Arc<RenderPassAbstract + Send + Sync>
+    Box<dyn PipelineLayoutAbstract + Send + Sync>,
+    Arc<dyn RenderPassAbstract + Send + Sync>
 >;
 
 pub struct Renderer {
@@ -73,16 +73,16 @@ pub struct Renderer {
     device: Arc<Device>,
     queue: Arc<Queue>,
     pipeline: Arc<RenderPipeline>,
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
     surface: Arc<Surface<Window>>,
     // Uniforms
     sampler: Arc<Sampler>,
     set_pools: Vec<FixedSizeDescriptorSetsPool<Arc<RenderPipeline>>>,
     // Vulkan data
     swapchain: Arc<Swapchain<Window>>,
-    framebuffers: Vec<Arc<FramebufferAbstract + Send + Sync>>,
+    framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
     dynamic_state: DynamicState,
-    previous_frame_future: Box<GpuFuture>
+    previous_frame_future: Box<dyn GpuFuture>
     // Custom data
 }
 
@@ -176,14 +176,14 @@ impl Renderer {
                 color: [color],
                 depth_stencil: {}
             }
-        ).unwrap()) as Arc<RenderPassAbstract + Send + Sync>;
+        ).unwrap()) as Arc<dyn RenderPassAbstract + Send + Sync>;
 
         let framebuffers = images.iter().map(|image| {
             Arc::new(
                 Framebuffer::start(render_pass.clone())
                     .add(image.clone()).unwrap()
                     .build().unwrap()
-            ) as Arc<FramebufferAbstract + Send + Sync>
+            ) as Arc<dyn FramebufferAbstract + Send + Sync>
         }).collect::<Vec<_>>();
 
         // Assemble
@@ -221,7 +221,7 @@ impl Renderer {
             swapchain: swapchain,
             framebuffers: framebuffers,
             dynamic_state: dynamic_state,
-            previous_frame_future: Box::new(now(device.clone())) as Box<GpuFuture>
+            previous_frame_future: Box::new(now(device.clone())) as Box<dyn GpuFuture>
         }
     }
 
@@ -251,7 +251,7 @@ impl Renderer {
                 Framebuffer::start(self.render_pass.clone())
                     .add(image.clone()).unwrap()
                     .build().unwrap()
-            ) as Arc<FramebufferAbstract + Send + Sync>
+            ) as Arc<dyn FramebufferAbstract + Send + Sync>
         }).collect::<Vec<_>>();
 
         self.swapchain = new_swapchain;
@@ -379,7 +379,7 @@ impl Renderer {
         let command_buffer = command_buffer_builder.end_render_pass().unwrap().build().unwrap();
 
         // Wait until previous frame is done.
-        let mut now_future = Box::new(now(self.device.clone())) as Box<GpuFuture>;
+        let mut now_future = Box::new(now(self.device.clone())) as Box<dyn GpuFuture>;
         std::mem::swap(&mut self.previous_frame_future, &mut now_future);
 
         // Wait until previous frame is done,

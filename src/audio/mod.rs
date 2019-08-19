@@ -126,7 +126,7 @@ impl MemDevice for AudioDevice {
             0xFF25  => self.output_select,
             0xFF26  => self.on_off,
 
-            0xFF30...0xFF3F => self.nr3.read_wave(loc - 0xFF30),
+            0xFF30..=0xFF3F => self.nr3.read_wave(loc - 0xFF30),
 
             _   => 0,
         }
@@ -182,7 +182,7 @@ impl MemDevice for AudioDevice {
                 self.control_update = true;
             },
 
-            0xFF30...0xFF3F => self.nr3.write_wave(loc - 0xFF30, val),
+            0xFF30..=0xFF3F => self.nr3.write_wave(loc - 0xFF30, val),
 
             _   => {},
         }

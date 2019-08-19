@@ -107,7 +107,7 @@ impl CPU {
     // Initialise CPU
     pub fn new(mem: MemBus) -> Self {
         CPU {
-            a:      0x01,
+            a:      0x01,   // 0x11 for CGB
             b:      0x00,
             c:      0x13,
             d:      0x00,
@@ -289,31 +289,31 @@ impl CPU {
             0x3E => self.a = self.fetch(),
             0x3F => self.ccf(),
 
-            0x40...0x47 => self.b = op8(self),
-            0x48...0x4F => self.c = op8(self),
+            0x40..=0x47 => self.b = op8(self),
+            0x48..=0x4F => self.c = op8(self),
 
-            0x50...0x57 => self.d = op8(self),
-            0x58...0x5F => self.e = op8(self),
+            0x50..=0x57 => self.d = op8(self),
+            0x58..=0x5F => self.e = op8(self),
 
-            0x60...0x67 => self.h = op8(self),
-            0x68...0x6F => self.l = op8(self),
+            0x60..=0x67 => self.h = op8(self),
+            0x68..=0x6F => self.l = op8(self),
 
-            0x70...0x75 => {let op = op8(self); self.write_hl(op, With::None)},
+            0x70..=0x75 => {let op = op8(self); self.write_hl(op, With::None)},
             0x76 => self.cont = false,
             0x77 => {let op = op8(self); self.write_hl(op, With::None)},
-            0x78...0x7F => self.a = op8(self),
+            0x78..=0x7F => self.a = op8(self),
 
-            0x80...0x87 => {let op = op8(self); self.add(false, op)},
-            0x88...0x8F => {let op = op8(self); self.add(true, op)},
+            0x80..=0x87 => {let op = op8(self); self.add(false, op)},
+            0x88..=0x8F => {let op = op8(self); self.add(true, op)},
 
-            0x90...0x97 => {let op = op8(self); self.sub(false, op)},
-            0x98...0x9F => {let op = op8(self); self.sub(true, op)},
+            0x90..=0x97 => {let op = op8(self); self.sub(false, op)},
+            0x98..=0x9F => {let op = op8(self); self.sub(true, op)},
 
-            0xA0...0xA7 => {let op = op8(self); self.and(op)},
-            0xA8...0xAF => {let op = op8(self); self.xor(op)},
+            0xA0..=0xA7 => {let op = op8(self); self.and(op)},
+            0xA8..=0xAF => {let op = op8(self); self.xor(op)},
 
-            0xB0...0xB7 => {let op = op8(self); self.or(op)},
-            0xB8...0xBF => {let op = op8(self); self.cp(op)},
+            0xB0..=0xB7 => {let op = op8(self); self.or(op)},
+            0xB8..=0xBF => {let op = op8(self); self.cp(op)},
 
             0xC0 => self.ret(Cond::NZ),
             0xC1 => self.pop(Reg::BC),
@@ -408,9 +408,9 @@ impl CPU {
             0x06 => self.swap(op),
             0x07 => self.srl(op),
 
-            x @ 0x08...0x0F => self.bit(x % 8, op),
+            x @ 0x08..=0x0F => self.bit(x % 8, op),
 
-            x @ 0x10...0x17 => self.res(x % 8, op),
+            x @ 0x10..=0x17 => self.res(x % 8, op),
 
             x => self.set(x % 8, op),
         };
