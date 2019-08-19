@@ -66,7 +66,7 @@ pub const CLASSIC_PALETTE: SGBPalette = SGBPalette {
 
 // CGB/SGB palette lookup table.
 pub fn lookup_sgb_palette(hash_in: u8, char_4_in: u8) -> SGBPalette {
-    for (hash, char_4, palette) in SGB_PALETTES {
+    for (hash, char_4, palette) in SGB_PALETTE_TABLE {
         if (*hash == hash_in) && ((*char_4 == 0) || (*char_4 == char_4_in)) {
             return *palette;
         }
@@ -75,26 +75,117 @@ pub fn lookup_sgb_palette(hash_in: u8, char_4_in: u8) -> SGBPalette {
     BW_PALETTE
 }
 
-const SGB_PALETTES: &[(u8, u8, SGBPalette)] = &[
-    (0x46, 0x52, SGBPalette {
-            bg: Matrix4::from_cols(
-                make_colour!(0xFF, 0xFF, 0xFF),
-                make_colour!(0x63, 0xA5, 0xFF),
-                make_colour!(0x00, 0x00, 0xFF),
-                make_colour!(0x00, 0x00, 0x00)
-            ),
-            obj0: Matrix4::from_cols(
-                make_colour!(0xFF, 0xFF, 0x00),
-                make_colour!(0xFF, 0x00, 0x00),
-                make_colour!(0x63, 0x00, 0x00),
-                make_colour!(0x00, 0x00, 0x00)
-            ),
-            obj1: Matrix4::from_cols(
-                make_colour!(0xFF, 0xFF, 0xFF),
-                make_colour!(0x7B, 0xFF, 0x31),
-                make_colour!(0x00, 0x84, 0x00),
-                make_colour!(0x00, 0x00, 0x00)
-            )
-        }
-    )
+const SGB_PALETTE_TABLE: &[(u8, u8, SGBPalette)] = &[
+    (0x15, 0x00, PKMN_YELLOW),
+    (0x46, 0x52, METROID_2),
+    (0x61, 0x45, PKMN_BLUE),
+    (0x14, 0x00, PKMN_RED),
+    (0x70, 0x00, ZELDA),        // Link's Awakening
+    (0xDB, 0x00, PKMN_YELLOW),  // Tetris
 ];
+
+// Game-specific palettes.
+const PKMN_YELLOW: SGBPalette = SGBPalette {
+    bg: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0xFF, 0xFF, 0x00),
+        make_colour!(0xFF, 0x00, 0x00),
+        make_colour!(0x00, 0x00, 0x00)
+    ),
+    obj0: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0xFF, 0xFF, 0x00),
+        make_colour!(0xFF, 0x00, 0x00),
+        make_colour!(0x00, 0x00, 0x00)
+    ),
+    obj1: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0xFF, 0xFF, 0x00),
+        make_colour!(0xFF, 0x00, 0x00),
+        make_colour!(0x00, 0x00, 0x00)
+    )
+};
+
+const PKMN_BLUE: SGBPalette = SGBPalette {
+    bg: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0x63, 0xA5, 0xFF),
+        make_colour!(0x00, 0x00, 0xFF),
+        make_colour!(0x00, 0x00, 0x00)
+    ),
+    obj0: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0xFF, 0x84, 0x84),
+        make_colour!(0x94, 0x3A, 0x3A),
+        make_colour!(0x00, 0x00, 0x00)
+    ),
+    obj1: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0x63, 0xA5, 0xFF),
+        make_colour!(0x00, 0x00, 0xFF),
+        make_colour!(0x00, 0x00, 0x00)
+    )
+};
+
+const PKMN_RED: SGBPalette = SGBPalette {
+    bg: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0xFF, 0x84, 0x84),
+        make_colour!(0x94, 0x3A, 0x3A),
+        make_colour!(0x00, 0x00, 0x00)
+    ),
+    obj0: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0x7B, 0xFF, 0x31),
+        make_colour!(0x00, 0x84, 0x00),
+        make_colour!(0x00, 0x00, 0x00)
+    ),
+    obj1: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0xFF, 0x84, 0x84),
+        make_colour!(0x94, 0x3A, 0x3A),
+        make_colour!(0x00, 0x00, 0x00)
+    )
+};
+
+const METROID_2: SGBPalette = SGBPalette {
+    bg: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0x63, 0xA5, 0xFF),
+        make_colour!(0x00, 0x00, 0xFF),
+        make_colour!(0x00, 0x00, 0x00)
+    ),
+    obj0: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0x00),
+        make_colour!(0xFF, 0x00, 0x00),
+        make_colour!(0x63, 0x00, 0x00),
+        make_colour!(0x00, 0x00, 0x00)
+    ),
+    obj1: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0x7B, 0xFF, 0x31),
+        make_colour!(0x00, 0x84, 0x00),
+        make_colour!(0x00, 0x00, 0x00)
+    )
+};
+
+const ZELDA: SGBPalette = SGBPalette {
+    bg: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0xFF, 0x84, 0x84),
+        make_colour!(0x94, 0x3A, 0x3A),
+        make_colour!(0x00, 0x00, 0x00)
+    ),
+    obj0: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0x00, 0xFF, 0x00),
+        make_colour!(0x31, 0x84, 0x00),
+        make_colour!(0x00, 0x4A, 0x00)
+    ),
+    obj1: Matrix4::from_cols(
+        make_colour!(0xFF, 0xFF, 0xFF),
+        make_colour!(0x63, 0xA5, 0xFF),
+        make_colour!(0x00, 0x00, 0xFF),
+        make_colour!(0x00, 0x00, 0x00)
+    )
+};
