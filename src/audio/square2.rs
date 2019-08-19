@@ -153,7 +153,7 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
                     self.phase_frac_count += self.phase_frac_len;
                     if self.phase_frac_count >= 1.0 {
                         self.phase_frac_count -= 1.0;
-                        self.phase_int_count = self.phase_int_len - 1;
+                        self.phase_int_count = self.phase_int_len.checked_sub(1).unwrap_or(0);
                         self.extra_sample = true;
                     }
                 } else {
