@@ -283,6 +283,9 @@ impl Renderer {
             self.draw_gb(video_mem, command_buffer_builder, image)
         };
 
+        // DEBUG
+        //command_buffer_builder = self.draw_debug(video_mem, command_buffer_builder, image);
+
         // Finish command buffer.
         let command_buffer = command_buffer_builder.end_render_pass().unwrap().build().unwrap();
 
@@ -607,4 +610,65 @@ impl Renderer {
 
         command_buffer
     }
+
+    /*fn draw_debug(
+        &mut self,
+        video_mem: &mut super::mem::VideoMem,
+        mut command_buffer: AutoCommandBufferBuilder,
+        image: Arc<ImmutableImage<R8Uint>>
+    ) -> AutoCommandBufferBuilder {
+        // Make descriptor set to bind texture atlas.
+        let set0 = Arc::new(self.set_pools[0].next()
+            .add_sampled_image(image, self.sampler.clone()).unwrap()
+            .build().unwrap());
+
+        // Make descriptor set for palette.
+        let set1 = Arc::new(self.set_pools[1].next()
+            .add_buffer(video_mem.get_palette_buffer().clone()).unwrap()
+            .build().unwrap());
+
+        let mut v = Vec::new();
+        let tl = super::mem::vertex::Corner::TopLeft as u32;
+        let bl = super::mem::vertex::Corner::BottomLeft as u32;
+        let tr = super::mem::vertex::Corner::TopRight as u32;
+        let br = super::mem::vertex::Corner::BottomRight as u32;
+        let tile_size = 1.0 / 8.0;
+
+        for y in 0..16 {
+            for x in 0..16 {
+                let tex_num = (y * 16) + x;
+                v.push(Vertex {position: [x as f32 / 8.0 - 1.0, y as f32 / 8.0 - 1.0], data: tex_num | tl});
+                v.push(Vertex {position: [x as f32 / 8.0 - 1.0, y as f32 / 8.0 - 1.0 + tile_size], data: tex_num | bl});
+                v.push(Vertex {position: [x as f32 / 8.0 - 1.0 + tile_size, y as f32 / 8.0 - 1.0], data: tex_num | tr});
+                v.push(Vertex {position: [x as f32 / 8.0 - 1.0, y as f32 / 8.0 - 1.0 + tile_size], data: tex_num | bl});
+                v.push(Vertex {position: [x as f32 / 8.0 - 1.0 + tile_size, y as f32 / 8.0 - 1.0], data: tex_num | tr});
+                v.push(Vertex {position: [x as f32 / 8.0 - 1.0 + tile_size, y as f32 / 8.0 - 1.0 + tile_size], data: tex_num | br});
+            }
+        }
+
+        let vertices = vulkano::buffer::CpuAccessibleBuffer::from_iter(
+            self.device.clone(),
+            vulkano::buffer::BufferUsage::all(),
+            v.iter().cloned()
+        ).unwrap();
+
+        let push_constants = PushConstants {
+            vertex_offset: [0.0, 0.0],
+            tex_size: video_mem.get_tile_size(),
+            atlas_size: video_mem.get_atlas_size(),
+            tex_offset: 0,  // 256
+            palette_offset: 0,
+            wraparound: 0
+        };
+
+        command_buffer = command_buffer.draw(
+            self.pipeline.clone(),
+            &self.dynamic_state,
+            vertices,
+            (set0.clone(), set1.clone()),
+            push_constants
+        ).unwrap();
+
+        command_buffer
+    }*/
 }

@@ -185,7 +185,7 @@ impl VideoDevice {
         if !stat_flags.is_empty() {
             // LY Coincidence interrupt
             if stat_flags.contains(LCDStatusFlags::COINCEDENCE_INT) {
-                if stat_flags.contains(LCDStatusFlags::COINCEDENCE_FLAG) == self.mem.compare_ly_equal() {
+                if self.mem.compare_ly_equal() {
                     return InterruptFlags::LCD_STAT;
                 }
             } else if stat_flags.contains(LCDStatusFlags::OAM_INT) {

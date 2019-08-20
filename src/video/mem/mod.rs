@@ -1,5 +1,5 @@
 mod patternmem;
-mod vertex;
+pub mod vertex;
 mod palette;
 
 use vulkano::device::{
@@ -162,10 +162,12 @@ impl VideoMem {
     
     pub fn inc_lcdc_y(&mut self) {
         self.lcdc_y += 1;
+        self.lcd_status.flags.set(LCDStatusFlags::COINCEDENCE_FLAG, self.lcdc_y == self.ly_compare);
     }
 
     pub fn set_lcdc_y(&mut self, val: u8) {
         self.lcdc_y = val;
+        self.lcd_status.flags.set(LCDStatusFlags::COINCEDENCE_FLAG, self.lcdc_y == self.ly_compare);
     }
 
     pub fn compare_ly_equal(&self) -> bool {
@@ -310,7 +312,7 @@ impl VideoMem {
 
 impl MemDevice for VideoMem {
     fn read(&self, loc: u16) -> u8 {
-        let val = match loc {
+        match loc {
             // Raw tile data
             0x8000..=0x97FF => {
                 let base = (loc - 0x8000) as usize + (self.vram_bank as usize * 0x1800);
@@ -376,8 +378,7 @@ impl MemDevice for VideoMem {
             0xFF6A => self.colour_palettes.read_obj_index(),
             0xFF6B => self.colour_palettes.read_obj(),
             _ => 0
-        };
-        val
+        }
     }
 
     fn write(&mut self, loc: u16, val: u8) {
@@ -449,7 +450,7 @@ impl MemDevice for VideoMem {
             0xFF41 => self.lcd_status.write(val),
             0xFF42 => self.scroll_y = val,
             0xFF43 => self.scroll_x = val,
-            0xFF44 => self.lcdc_y = 0,
+            0xFF44 => self.set_lcdc_y(0),
             0xFF45 => self.ly_compare = val,
             0xFF47 => self.palettes.write(0, val),
             0xFF48 => self.palettes.write(1, val),

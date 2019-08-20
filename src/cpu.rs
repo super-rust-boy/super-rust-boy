@@ -46,7 +46,8 @@ pub struct CPU {
 
     // Internals
     cycle_count: u32,
-    step_cycles: u32
+    step_cycles: u32,
+    double_speed_latch: bool
 }
 
 
@@ -125,7 +126,8 @@ impl CPU {
             pc:     0x100,
             mem:    mem,
             cycle_count: 0,
-            step_cycles: GB_STEP
+            step_cycles: GB_STEP,
+            double_speed_latch: false
         }
     }
 
@@ -242,7 +244,7 @@ impl CPU {
             0x0E => self.c = self.fetch(),
             0x0F => self.rrca(),
 
-            0x10 => {self.fetch(); self.cont = false},
+            0x10 => self.stop(),
             0x11 => {let imm = self.fetch_16(); self.set_16(Reg::DE,imm)},
             0x12 => {let loc = self.get_16(Reg::DE); let op = self.a;
                      self.write_mem(loc,op)},
@@ -492,15 +494,19 @@ impl CPU {
     fn write_mem(&mut self, loc: u16, val: u8) {
         self.clock_inc();
         if (loc == 0xFF4D) && ((val & 1) == 1) {
-            self.switch_speed();
+            self.double_speed_latch = true;
         } else {
             self.mem.write(loc, val);
         }
     }
 
-    // CGB double speed
-    fn switch_speed(&mut self) {
-        self.step_cycles = if self.step_cycles == GB_STEP {CGB_STEP} else {GB_STEP};
+    fn stop(&mut self) {
+        if self.double_speed_latch {
+            self.step_cycles = if self.step_cycles == GB_STEP {CGB_STEP} else {GB_STEP};
+            self.double_speed_latch = false;
+        } else {
+            self.cont = false;
+        }
     }
 
     // read mem pointed to by pc (and inc pc)

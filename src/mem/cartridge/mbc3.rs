@@ -1,6 +1,6 @@
 use time::PreciseTime;
 
-pub struct MB3 {
+pub struct MBC3 {
     pub ram_select: bool,
     reg_select:     u8,
 
@@ -14,9 +14,9 @@ pub struct MB3 {
     time:           PreciseTime,
 }
 
-impl MB3 {
-    pub fn new() -> MB3 {
-        MB3 {
+impl MBC3 {
+    pub fn new() -> Self {
+        MBC3 {
             ram_select:     true,
             reg_select:     8,
             second_reg:     0,

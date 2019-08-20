@@ -1,14 +1,15 @@
 // Cartridge module.
 
 mod ram;
-mod mb1;
-mod mb3;
+mod mbc1;
+mod mbc3;
 
 use ram::*;
-use mb1::MB1;
-use mb3::MB3;
+use mbc1::MBC1;
+use mbc3::MBC3;
 
 use std::{
+    collections::BTreeMap,
     io::{
         BufReader,
         Read,
@@ -23,9 +24,9 @@ use super::MemDevice;
 // Cartridge Memory Bank type
 enum MBC {
     _0,
-    _1(MB1),
+    _1(MBC1),
     _2,
-    _3(MB3),
+    _3(MBC3),
     _5(u16),
 }
 
@@ -38,13 +39,15 @@ enum Swap {
 }
 
 pub struct Cartridge {
-    rom_bank_0: [u8; 0x4000],
-    rom_bank_n: [u8; 0x4000],
-    ram:        Box<dyn RAM>,
+    rom_bank_0:         [u8; 0x4000],
+    rom_bank_cache:     BTreeMap<usize, Vec<u8>>,
+    rom_bank_offset:    usize,
 
-    rom_file:   BufReader<File>,
-    mem_bank:   MBC,
-    ram_enable: bool
+    ram:                Box<dyn RAM>,
+
+    rom_file:           BufReader<File>,
+    mem_bank:           MBC,
+    ram_enable:         bool
 }
 
 impl Cartridge {
@@ -56,14 +59,14 @@ impl Cartridge {
         reader.read(&mut buf).map_err(|e| e.to_string())?;
 
         let (bank_type, battery) = match buf[0x147] {
-            0x1 | 0x2           => (MBC::_1(MB1::new()), false),
-            0x3                 => (MBC::_1(MB1::new()), true),
+            0x1 | 0x2           => (MBC::_1(MBC1::new()), false),
+            0x3                 => (MBC::_1(MBC1::new()), true),
             0x5                 => (MBC::_2, false),
             0x6                 => (MBC::_2, true),
-            0xF | 0x10 | 0x13   => (MBC::_3(MB3::new()), true),
-            0x11 | 0x12         => (MBC::_3(MB3::new()), false),
-            0x19 | 0x1A | 0x1C | 0x1D => (MBC::_5(0), false),
-            0x1B | 0x1E         => (MBC::_5(0), true),
+            0xF | 0x10 | 0x13   => (MBC::_3(MBC3::new()), true),
+            0x11 | 0x12         => (MBC::_3(MBC3::new()), false),
+            0x19 | 0x1A | 0x1C | 0x1D => (MBC::_5(1), false),
+            0x1B | 0x1E         => (MBC::_5(1), true),
             _                   => (MBC::_0, false)
         };
 
@@ -84,12 +87,13 @@ impl Cartridge {
         };
 
         let mut ret = Cartridge {
-            rom_bank_0: buf,
-            rom_bank_n: [0; 0x4000],
-            ram:        ram,
-            rom_file:   reader,
-            mem_bank:   bank_type,
-            ram_enable: false
+            rom_bank_0:         buf,
+            rom_bank_cache:     BTreeMap::new(),
+            rom_bank_offset:    0,
+            ram:                ram,
+            rom_file:           reader,
+            mem_bank:           bank_type,
+            ram_enable:         false
         };
 
         ret.swap_rom_bank(1);
@@ -100,7 +104,6 @@ impl Cartridge {
     pub fn flush_ram(&mut self) {
         self.ram.flush();
     }
-
 
     // Get the cart name hash values for SGB palette lookup.
     pub fn cart_name_hash(&self) -> Option<(u8, u8)> {
@@ -141,13 +144,19 @@ impl Cartridge {
 // Internal swapping methods.
 impl Cartridge {
     fn swap_rom_bank(&mut self, bank: u16) {
-        let pos = (bank as u64) * 0x4000;
+        self.rom_bank_offset = (bank as usize) * 0x4000;
 
-        self.rom_file.seek(SeekFrom::Start(pos))
-            .expect("Couldn't swap in bank");
+        if self.rom_bank_cache.get(&self.rom_bank_offset).is_none() {
+            let mut rom_bank = vec![0; 0x4000];
 
-        self.rom_file.read_exact(&mut self.rom_bank_n)
-            .expect("Couldn't swap in bank");
+            self.rom_file.seek(SeekFrom::Start(self.rom_bank_offset as u64))
+                .expect("Couldn't swap in bank");
+
+            self.rom_file.read_exact(&mut rom_bank)
+                .expect(&format!("Couldn't swap in bank at pos {}-{}", self.rom_bank_offset, self.rom_bank_offset + 0x3FFF));
+
+            self.rom_bank_cache.insert(self.rom_bank_offset, rom_bank);
+        }
     }
 
     #[inline]
@@ -186,7 +195,7 @@ impl MemDevice for Cartridge {
     fn read(&self, loc: u16) -> u8 {
         match loc {
             0x0..=0x3FFF    => self.rom_bank_0[loc as usize],
-            0x4000..=0x7FFF => self.rom_bank_n[(loc - 0x4000) as usize],
+            0x4000..=0x7FFF => self.rom_bank_cache.get(&self.rom_bank_offset).expect("Bank not loaded!")[(loc - 0x4000) as usize],
             _ => self.read_ram(loc - 0xA000),
         }
     }
@@ -233,8 +242,8 @@ impl MemDevice for Cartridge {
                 MBC::_3(ref mut mb) => match (loc, val) {
                     (0x0000..=0x1FFF, _)            => {self.ram_enable = (val & 0xF) == 0xA; Swap::None},
                     (0x2000..=0x3FFF, 0)            => Swap::ROM(1),
-                    (0x2000..=0x3FFF, _)            => Swap::ROM(val as u16),
-                    (0x4000..=0x5FFF, 0..=7)        => Swap::RAM(val),
+                    (0x2000..=0x3FFF, _)            => Swap::ROM((val & 0x7F) as u16),
+                    (0x4000..=0x5FFF, 0..=7)        => Swap::RAM(val & 0x7),
                     (0x4000..=0x5FFF, 8..=0xC)      => {mb.select_rtc(val); Swap::None},
                     (0x6000..=0x7FFF, 1)            => {mb.latch_clock(); Swap::None},
                     _ => Swap::None,

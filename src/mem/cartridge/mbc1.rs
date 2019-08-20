@@ -3,15 +3,15 @@ enum BankingMode {
     RAM
 }
 
-pub struct MB1 {
+pub struct MBC1 {
     upper_select:   u8,
     lower_select:   u8,
     banking_mode:   BankingMode,
 }
 
-impl MB1 {
-    pub fn new() -> MB1 {
-        MB1 {
+impl MBC1 {
+    pub fn new() -> Self {
+        MBC1 {
             upper_select:   0,
             lower_select:   0,
             banking_mode:   BankingMode::ROM,
