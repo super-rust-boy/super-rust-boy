@@ -61,4 +61,14 @@ impl TileAtlas {
             queue
         ).expect("Couldn't create image.")
     }
+
+    // Get the size of a tile in the atlas.
+    pub fn get_tile_size(&self) -> [f32; 2] {
+        [1.0 / self.atlas_size.0 as f32, 1.0 / self.atlas_size.1 as f32]
+    }
+
+    // Get the size of the atlas (in tiles).
+    pub fn get_atlas_size(&self) -> [f32; 2] {
+        [self.atlas_size.0 as f32, self.atlas_size.1 as f32]
+    }
 }

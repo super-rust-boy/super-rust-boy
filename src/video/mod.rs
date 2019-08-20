@@ -66,10 +66,10 @@ pub struct VideoDevice {
 }
 
 impl VideoDevice {
-    pub fn new(palette: SGBPalette) -> Self {
+    pub fn new(palette: SGBPalette, cgb_mode: bool) -> Self {
         let events_loop = EventsLoop::new();
         let renderer = Renderer::new(&events_loop);
-        let mem = VideoMem::new(&renderer.get_device(), palette);
+        let mem = VideoMem::new(&renderer.get_device(), palette, cgb_mode);
 
         VideoDevice {
             mem:            mem,

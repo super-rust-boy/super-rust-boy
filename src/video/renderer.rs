@@ -55,6 +55,7 @@ pub struct Vertex {
 struct PushConstants {
     pub vertex_offset: [f32; 2],
     pub tex_size: [f32; 2],
+    pub atlas_size: [f32; 2],
     pub tex_offset: u32,
     pub palette_offset: u32,
     pub wraparound: u32
@@ -288,6 +289,7 @@ impl Renderer {
             let sprite_push_constants = PushConstants {
                 vertex_offset: [0.0, 0.0],
                 tex_size: video_mem.get_tile_size(),
+                atlas_size: video_mem.get_atlas_size(),
                 tex_offset: 0,
                 palette_offset: 0,
                 wraparound: 0
@@ -309,6 +311,7 @@ impl Renderer {
                 let background_push_constants = PushConstants {
                     vertex_offset: video_mem.get_bg_scroll(),
                     tex_size: video_mem.get_tile_size(),
+                    atlas_size: video_mem.get_atlas_size(),
                     tex_offset: video_mem.get_tile_data_offset(),
                     palette_offset: 0,
                     wraparound: 1
@@ -328,6 +331,7 @@ impl Renderer {
                     let window_push_constants = PushConstants {
                         vertex_offset: video_mem.get_window_position(),
                         tex_size: video_mem.get_tile_size(),
+                        atlas_size: video_mem.get_atlas_size(),
                         tex_offset: video_mem.get_tile_data_offset(),
                         palette_offset: 1,
                         wraparound: 0

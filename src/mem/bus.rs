@@ -46,13 +46,15 @@ impl MemBus {
             UserPalette::Classic => CLASSIC_PALETTE
         };
 
+        let cgb_mode = false;//user_palette == UserPalette::Default;// && check cart.
+
         MemBus {
             cart:               rom,
             ram:                WriteableMem::new(0x8000),
             high_ram:           WriteableMem::new(0x7F),
             interrupt_flag:     InterruptFlags::default(),
             interrupt_enable:   InterruptFlags::default(),
-            video_device:       VideoDevice::new(palette),
+            video_device:       VideoDevice::new(palette, cgb_mode),
             audio_device:       audio_device,
             timer:              Timer::new(),
             cgb_ram_offset:     0x1000

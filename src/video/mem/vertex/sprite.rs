@@ -1,19 +1,15 @@
 // Dealing with sprites.
-
-use bitflags::bitflags;
-
 use vulkano::{
     buffer::CpuBufferPool,
     device::Device
 };
 
+use bitflags::bitflags;
+
 use crate::mem::MemDevice;
 
-use crate::video::{
-    mem::vertexgrid::{
-        Corner, VertexBuffer
-    },
-    renderer::Vertex
+use super::{
+    Corner, Vertex, VertexBuffer
 };
 
 use std::sync::Arc;

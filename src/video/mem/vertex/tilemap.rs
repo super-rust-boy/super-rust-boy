@@ -1,30 +1,33 @@
-use crate::video::renderer::Vertex;
-
+// Background and Window tile maps.
 use vulkano::{
     buffer::CpuBufferPool,
-    buffer::cpu_pool::CpuBufferPoolChunk,
-    device::Device,
-    memory::pool::StdMemoryPool
+    device::Device
 };
+
+use bitflags::bitflags;
 
 use std::sync::Arc;
 
-// TODO: clean this up
-pub enum Corner {
-    TopLeft     = 0 << 8,
-    BottomLeft  = 1 << 8,
-    TopRight    = 2 << 8,
-    BottomRight = 3 << 8
-}
+use super::{
+    Corner, Vertex, VertexBuffer
+};
 
-pub type VertexBuffer = CpuBufferPoolChunk<Vertex, Arc<StdMemoryPool>>;
+bitflags! {
+    #[derive(Default)]
+    struct Attributes: u8 {
+        //const BG_OAM_PRIORITY    = 0b10000000;
+        const Y_FLIP             = 0b01000000;
+        const X_FLIP             = 0b00100000;
+        //const TILE_VRAM_BANK_NUM = 0b00001000;
+    }
+}
 
 // Struct that contains the vertices to be used for rendering, in addition to the buffer pool and cached buffer chunk for rendering.
 pub struct VertexGrid {
-    vertices: Vec<Vertex>,
-    row_len: usize,
-    buffer_pool: CpuBufferPool<Vertex>,
-    current_buffer: Option<VertexBuffer>
+    vertices:           Vec<Vertex>,
+    row_len:            usize,
+    buffer_pool:        CpuBufferPool<Vertex>,
+    current_buffer:     Option<VertexBuffer>
 }
 
 impl VertexGrid {
@@ -59,10 +62,10 @@ impl VertexGrid {
         }
 
         VertexGrid {
-            vertices: vertices,
-            row_len: grid_size.0,
-            buffer_pool: CpuBufferPool::vertex_buffer(device.clone()),
-            current_buffer: None
+            vertices:           vertices,
+            row_len:            grid_size.0,
+            buffer_pool:        CpuBufferPool::vertex_buffer(device.clone()),
+            current_buffer:     None
         }
     }
 
@@ -84,7 +87,43 @@ impl VertexGrid {
         let y_offset = tile_y * self.row_len * 6;
         let index = y_offset + (tile_x * 6);
 
-        (self.vertices[index].data & 0xFF) as u8
+        self.vertices[index].data as u8
+    }
+
+    // Writing and reading attributes (CGB mode).
+    pub fn set_tile_attribute(&mut self, tile_x: usize, tile_y: usize, attributes: u8) {
+        let y_offset = tile_y * self.row_len * 6;
+        let index = y_offset + (tile_x * 6);
+
+        let flags = Attributes::from_bits_truncate(attributes);
+        let (top_left, bottom_left, top_right, bottom_right) = match (flags.contains(Attributes::X_FLIP), flags.contains(Attributes::Y_FLIP)) {
+            (false, false)  => (Corner::TopLeft, Corner::BottomLeft, Corner::TopRight, Corner::BottomRight),
+            (true, false)   => (Corner::TopRight, Corner::BottomRight, Corner::TopLeft, Corner::BottomLeft),
+            (false, true)   => (Corner::BottomLeft, Corner::TopLeft, Corner::BottomRight, Corner::TopRight),
+            (true, true)    => (Corner::BottomRight, Corner::TopRight, Corner::BottomLeft, Corner::TopLeft)
+        };
+        let tl = top_left as u32;
+        let bl = bottom_left as u32;
+        let tr = top_right as u32;
+        let br = bottom_right as u32;
+        let data = (attributes as u32) << 10;
+        
+        self.vertices[index].data = (self.vertices[index].data & 0x000000FF) | tl | data;
+        self.vertices[index + 1].data = (self.vertices[index].data & 0x000000FF) | bl | data;
+        self.vertices[index + 2].data = (self.vertices[index].data & 0x000000FF) | tr | data;
+        self.vertices[index + 3].data = (self.vertices[index].data & 0x000000FF) | bl | data;
+        self.vertices[index + 4].data = (self.vertices[index].data & 0x000000FF) | tr | data;
+        self.vertices[index + 5].data = (self.vertices[index].data & 0x000000FF) | br | data;
+
+        // Invalidate buffer chunk.
+        self.current_buffer = None;
+    }
+
+    pub fn get_tile_attribute(&self, tile_x: usize, tile_y: usize) -> u8 {
+        let y_offset = tile_y * self.row_len * 6;
+        let index = y_offset + (tile_x * 6);
+
+        (self.vertices[index].data >> 10) as u8
     }
 
     // Makes a new vertex buffer if the data has changed. Else, retrieves the current one.

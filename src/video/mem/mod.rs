@@ -1,7 +1,6 @@
-mod tilemem;
-mod vertexgrid;
+mod patternmem;
+mod vertex;
 mod palette;
-mod sprite;
 
 use vulkano::device::{
     Device,
@@ -18,21 +17,25 @@ use crate::mem::MemDevice;
 
 use super::sgbpalettes::SGBPalette;
 
-use tilemem::*;
-use vertexgrid::*;
+use patternmem::*;
+use vertex::{
+    VertexBuffer,
+    tilemap::VertexGrid,
+    sprite::ObjectMem
+};
 use palette::{
     PaletteBuffer,
     r#static::StaticPaletteMem,
     dynamic::DynamicPaletteMem
 };
-use sprite::ObjectMem;
 
-const TILE_SIZE: usize = 8;         // Width / Height of a tile in pixels.
-const TILE_DATA_WIDTH: usize = 16;  // Width of the tile data in tiles.
-const TILE_DATA_HEIGHT: usize = 24; // Height of the tile data in tiles.
-const MAP_SIZE: usize = 32;         // Width / Height of bg/window tile maps.
-const VIEW_WIDTH: usize = 20;       // Width of visible area.
-const VIEW_HEIGHT: usize = 18;      // Height of visible area.
+const TILE_SIZE: usize = 8;             // Width / Height of a tile in pixels.
+const TILE_DATA_WIDTH: usize = 16;      // Width of the tile data in tiles.
+const TILE_DATA_HEIGHT_GB: usize = 24;  // Height of the tile data in tiles for GB.
+const TILE_DATA_HEIGHT_CGB: usize = 48; // Height of the tile data in tiles for GB Color.
+const MAP_SIZE: usize = 32;             // Width / Height of bg/window tile maps.
+const VIEW_WIDTH: usize = 20;           // Width of visible area.
+const VIEW_HEIGHT: usize = 18;          // Height of visible area.
 
 const OFFSET_FRAC_X: f32 = (MAP_SIZE as f32 / VIEW_WIDTH as f32) / 128.0;   // Mult with an offset to get the amount to offset by
 const OFFSET_FRAC_Y: f32 = (MAP_SIZE as f32 / VIEW_HEIGHT as f32) / 128.0;  // Mult with an offset to get the amount to offset by
@@ -100,49 +103,56 @@ impl LCDStatus {
 // Video memory layer
 pub struct VideoMem {
     // Raw tile mem and tile maps
-    tile_mem: TileAtlas,
+    tile_mem:   TileAtlas,
     tile_map_0: VertexGrid,
     tile_map_1: VertexGrid,
     object_mem: ObjectMem,
 
     // Flags / registers
-    lcd_control: LCDControl,
+    lcd_control:    LCDControl,
     pub lcd_status: LCDStatus,
-    scroll_y: u8,
-    scroll_x: u8,
-    lcdc_y: u8,
-    ly_compare: u8,
+    scroll_y:       u8,
+    scroll_x:       u8,
+    lcdc_y:         u8,
+    ly_compare:     u8,
 
-    window_y: u8,
-    window_x: u8,
+    window_y:       u8,
+    window_x:       u8,
 
-    palettes: StaticPaletteMem,
-    colour_palettes: DynamicPaletteMem,
+    palettes:           StaticPaletteMem,
+
+    // CGB things
+    colour_palettes:    DynamicPaletteMem,
+    vram_bank:          u8,
 
     // Misc
     clear_colour: Vector4<f32>
 }
 
 impl VideoMem {
-    pub fn new(device: &Arc<Device>, palette: SGBPalette) -> Self {
+    pub fn new(device: &Arc<Device>, palette: SGBPalette, cgb_mode: bool) -> Self {
         VideoMem {
-            tile_mem: TileAtlas::new((TILE_DATA_WIDTH, TILE_DATA_HEIGHT), TILE_SIZE),
+            tile_mem:   TileAtlas::new(
+                (TILE_DATA_WIDTH, if cgb_mode {TILE_DATA_HEIGHT_CGB} else {TILE_DATA_HEIGHT_GB}),
+                TILE_SIZE
+            ),
             tile_map_0: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
             tile_map_1: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
             object_mem: ObjectMem::new(device),
 
-            lcd_control: LCDControl::default(),
-            lcd_status: LCDStatus::new(),
-            scroll_y: 0,
-            scroll_x: 0,
-            lcdc_y: 0,
-            ly_compare: 0,
+            lcd_control:    LCDControl::default(),
+            lcd_status:     LCDStatus::new(),
+            scroll_y:       0,
+            scroll_x:       0,
+            lcdc_y:         0,
+            ly_compare:     0,
 
-            window_y: 0,
-            window_x: 0,
+            window_y:       0,
+            window_x:       0,
 
-            palettes: StaticPaletteMem::new(device, palette),
-            colour_palettes: DynamicPaletteMem::new(device),
+            palettes:           StaticPaletteMem::new(device, palette),
+            colour_palettes:    DynamicPaletteMem::new(device),
+            vram_bank:          0,
 
             clear_colour: palette.get_colour_0()
         }
@@ -252,7 +262,12 @@ impl VideoMem {
 
     // Get the size of a single tile in the atlas.
     pub fn get_tile_size(&self) -> [f32; 2] {
-        [1.0 / TILE_DATA_WIDTH as f32, 1.0 / TILE_DATA_HEIGHT as f32]
+        self.tile_mem.get_tile_size()
+    }
+
+    // Get the size of the atlas (in tiles).
+    pub fn get_atlas_size(&self) -> [f32; 2] {
+        self.tile_mem.get_atlas_size()
     }
 }
 
@@ -261,7 +276,7 @@ impl MemDevice for VideoMem {
         let val = match loc {
             // Raw tile data
             0x8000..=0x97FF => {
-                let base = (loc - 0x8000) as usize;
+                let base = (loc - 0x8000) as usize + (self.vram_bank as usize * 0x1800);
 
                 let mut ret = 0;
 
@@ -285,7 +300,11 @@ impl MemDevice for VideoMem {
                 let x = base % 0x20;
                 let y = base / 0x20;
 
-                self.tile_map_0.get_tile_texture(x, y)
+                if self.vram_bank == 0 {
+                    self.tile_map_0.get_tile_texture(x, y)
+                } else {
+                    self.tile_map_0.get_tile_attribute(x, y)
+                }
             },
             // Background Map B
             0x9C00..=0x9FFF => {
@@ -293,7 +312,11 @@ impl MemDevice for VideoMem {
                 let x = base % 0x20;
                 let y = base / 0x20;
 
-                self.tile_map_1.get_tile_texture(x, y)
+                if self.vram_bank == 0 {
+                    self.tile_map_1.get_tile_texture(x, y)
+                } else {
+                    self.tile_map_1.get_tile_attribute(x, y)
+                }
             },
             // Sprite data
             0xFE00..=0xFE9F => self.object_mem.read(loc - 0xFE00),
@@ -309,6 +332,7 @@ impl MemDevice for VideoMem {
             0xFF49 => self.palettes.read(2),
             0xFF4A => self.window_y,
             0xFF4B => self.window_x,
+            0xFF4F => self.vram_bank | 0xFE,
             // Colour palettes
             0xFF68 => self.colour_palettes.read_bg_index(),
             0xFF69 => self.colour_palettes.read_bg(),
@@ -323,7 +347,7 @@ impl MemDevice for VideoMem {
         match loc {
             // Raw tile data
             0x8000..=0x97FF => {
-                let base = (loc - 0x8000) as usize;
+                let base = (loc - 0x8000) as usize + (self.vram_bank as usize * 0x1800);
 
                 if base % 2 == 0 {  // Lower bit
                     // TODO: shift and mask these for a more efficient operation...
@@ -364,7 +388,11 @@ impl MemDevice for VideoMem {
                 let x = base % 0x20;
                 let y = base / 0x20;
 
-                self.tile_map_0.set_tile_texture(x, y, val);
+                if self.vram_bank == 0 {
+                    self.tile_map_0.set_tile_texture(x, y, val);
+                } else {
+                    self.tile_map_0.set_tile_attribute(x, y, val);
+                }
             },
             // Background Map B
             0x9C00..=0x9FFF => {
@@ -372,7 +400,11 @@ impl MemDevice for VideoMem {
                 let x = base % 0x20;
                 let y = base / 0x20;
 
-                self.tile_map_1.set_tile_texture(x, y, val);
+                if self.vram_bank == 0 {
+                    self.tile_map_1.set_tile_texture(x, y, val);
+                } else {
+                    self.tile_map_1.set_tile_attribute(x, y, val);
+                }
             },
             // Sprite data
             0xFE00..=0xFE9F => self.object_mem.write(loc - 0xFE00, val),
@@ -387,6 +419,7 @@ impl MemDevice for VideoMem {
             0xFF49 => self.palettes.write(2, val),
             0xFF4A => self.window_y = val,
             0xFF4B => self.window_x = val,
+            0xFF4F => self.vram_bank = val & 1,
             // Colour palettes
             0xFF68 => self.colour_palettes.write_bg_index(val),
             0xFF69 => self.colour_palettes.write_bg(val),

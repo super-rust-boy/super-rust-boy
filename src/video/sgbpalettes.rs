@@ -15,6 +15,7 @@ use cgmath::{
 use super::PaletteColours;
 
 // Which palette the user specified.
+#[derive(PartialEq)]
 pub enum UserPalette {
     Default,
     Greyscale,
