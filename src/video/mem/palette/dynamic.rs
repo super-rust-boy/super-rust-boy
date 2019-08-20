@@ -150,20 +150,22 @@ impl DynamicPaletteMem {
         }
     }
 
-    /*pub fn get_buffer(&mut self) -> PaletteBuffer {
+    pub fn get_buffer(&mut self) -> PaletteBuffer {
         if let Some(buf) = &self.current_buffer {
             buf.clone()
         } else {
-            let buf = self.buffer_pool.chunk([
-                self.palettes[0].get_palette(true),     // BG
-                self.palettes[0].get_palette(false),    // Window
-                self.palettes[1].get_palette(true),     // Sprite 0
-                self.palettes[2].get_palette(true)      // Sprite 1
-            ].iter().cloned()).unwrap();
+            let buf = self.buffer_pool.chunk(
+                self.bg_palettes.iter()
+                    .map(|p| p.get_palette(false))
+                    .chain(self.obj_palettes.iter().map(|p| p.get_palette(true)))
+                    .collect::<Vec<_>>()
+                    .iter()
+                    .cloned()
+            ).unwrap();
             self.current_buffer = Some(buf.clone());
             buf
         }
-    }*/
+    }
 
     pub fn read_bg_index(&self) -> u8 {
         (self.bg_palette_index as u8) | self.bg_auto_inc.bits()

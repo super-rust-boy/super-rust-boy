@@ -17,8 +17,8 @@ use std::sync::Arc;
 const SPRITE_WIDTH: f32 = (8.0 / 160.0) * 2.0;
 const SPRITE_HEIGHT: f32 = (8.0 / 144.0) * 2.0;
 
-const OBJ_PALETTE_0: u32 = 2 << 10;
-const OBJ_PALETTE_1: u32 = 3 << 10;
+const GB_OBJ_PALETTE_0: u32 = 2 << 10;
+const GB_OBJ_PALETTE_1: u32 = 3 << 10;
 
 bitflags! {
     #[derive(Default)]
@@ -27,6 +27,10 @@ bitflags! {
         const Y_FLIP    = 0b01000000;
         const X_FLIP    = 0b00100000;
         const PALETTE   = 0b00010000;
+        const VRAM_BANK = 0b00001000;
+        const CGB_PAL_2 = 0b00000100;
+        const CGB_PAL_1 = 0b00000100;
+        const CGB_PAL_0 = 0b00000100;
     }
 }
 
@@ -49,7 +53,7 @@ impl Sprite {
     }
 
     // Get vertices for sprite. Needs to know if this is 8x8 or 8x16.
-    pub fn make_vertices(&self, large: bool, lo_priority: bool) -> Vec<Vertex> {
+    pub fn make_vertices(&self, large: bool, lo_priority: bool, cgb_mode: bool) -> Vec<Vertex> {
         // This sprite should be in the batch.
         if lo_priority == self.flags.contains(SpriteFlags::PRIORITY) {
             let lo_x = ((self.x as f32 - 8.0) / 80.0) - 1.0;
@@ -71,7 +75,11 @@ impl Sprite {
             let tr = top_right as u32;
             let br = bottom_right as u32;
             let tile_num = self.tile_num as u32;
-            let palette_num = if self.flags.contains(SpriteFlags::PALETTE) {OBJ_PALETTE_1} else {OBJ_PALETTE_0};
+            let palette_num = if cgb_mode {
+                ((self.flags.bits() & 0xF) as u32) << 10
+            } else {
+                if self.flags.contains(SpriteFlags::PALETTE) {GB_OBJ_PALETTE_1} else {GB_OBJ_PALETTE_0}
+            };
 
             let mut vertices = Vec::with_capacity(if large {12} else {6});
             vertices.push(Vertex{ position: [lo_x, lo_y], data: palette_num | tile_num | tl });
@@ -120,7 +128,7 @@ impl ObjectMem {
     }
 
     // Makes a new vertex buffer if the data has changed. Else, retrieves the current one.
-    pub fn get_lo_vertex_buffer(&mut self, large: bool) -> Option<VertexBuffer> {
+    pub fn get_lo_vertex_buffer(&mut self, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
         if self.large_objects != large {
             self.current_lo_buffer = None;
             self.current_hi_buffer = None;
@@ -131,7 +139,7 @@ impl ObjectMem {
             Some(buf.clone())
         } else {
             let objects = self.objects.iter()
-                .map(|o| o.make_vertices(large, true))
+                .map(|o| o.make_vertices(large, true, cgb_mode))
                 .fold(Vec::new(), |mut v, mut o| {v.append(&mut o); v});
 
             let buf = if objects.is_empty() {
@@ -146,7 +154,7 @@ impl ObjectMem {
     }
 
     // Makes a new vertex buffer if the data has changed. Else, retrieves the current one.
-    pub fn get_hi_vertex_buffer(&mut self, large: bool) -> Option<VertexBuffer> {
+    pub fn get_hi_vertex_buffer(&mut self, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
         if self.large_objects != large {
             self.current_lo_buffer = None;
             self.current_hi_buffer = None;
@@ -157,7 +165,7 @@ impl ObjectMem {
             Some(buf.clone())
         } else {
             let objects = self.objects.iter()
-                .map(|o| o.make_vertices(large, false))
+                .map(|o| o.make_vertices(large, false, cgb_mode))
                 .fold(Vec::new(), |mut v, mut o| {v.append(&mut o); v});
 
             let buf = if objects.is_empty() {

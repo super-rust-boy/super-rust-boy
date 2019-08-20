@@ -32,7 +32,9 @@ use vulkano::{
     descriptor::{
         descriptor_set::FixedSizeDescriptorSetsPool,
         pipeline_layout::PipelineLayoutAbstract
-    }
+    },
+    image::immutable::ImmutableImage,
+    format::R8Uint
 };
 
 use vulkano_win::VkSurfaceBuild;
@@ -258,8 +260,8 @@ impl Renderer {
         self.swapchain = new_swapchain;
     }
 
-    // Render a frame
-    pub fn render(&mut self, video_mem: &mut super::mem::VideoMem) {
+    // Render a frame.
+    pub fn render(&mut self, video_mem: &mut super::mem::VideoMem, cgb_mode: bool) {
         self.previous_frame_future.cleanup_finished();
 
         // Get current framebuffer index from the swapchain.
@@ -274,111 +276,13 @@ impl Renderer {
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap()
             .begin_render_pass(self.framebuffers[image_num].clone(), false, vec![video_mem.get_clear_colour().into()]).unwrap();
 
-        if video_mem.display_enabled() {
-            // Make descriptor set to bind texture atlas.
-            let set0 = Arc::new(self.set_pools[0].next()
-                .add_sampled_image(image.clone(), self.sampler.clone()).unwrap()
-                .build().unwrap());
+        // Render in the specified mode.
+        command_buffer_builder = if cgb_mode {
+            self.draw_gb(video_mem, command_buffer_builder, image)
+        } else {
+            self.draw_cgb(video_mem, command_buffer_builder, image)
+        };
 
-            // Make descriptor set for palette.
-            let set1 = Arc::new(self.set_pools[1].next()
-                .add_buffer(video_mem.get_palette_buffer().clone()).unwrap()
-                .build().unwrap());
-
-            // Make push constants for sprites.
-            let sprite_push_constants = PushConstants {
-                vertex_offset: [0.0, 0.0],
-                tex_size: video_mem.get_tile_size(),
-                atlas_size: video_mem.get_atlas_size(),
-                tex_offset: 0,
-                palette_offset: 0,
-                wraparound: 0
-            };
-
-            if let Some(bg_vertices) = video_mem.get_background() {
-                // Add sprites below background.
-                if let Some(sprite_vertices) = video_mem.get_sprites_lo() {
-                    command_buffer_builder = command_buffer_builder.draw(
-                        self.pipeline.clone(),
-                        &self.dynamic_state,
-                        sprite_vertices.clone(),
-                        (set0.clone(), set1.clone()),
-                        sprite_push_constants.clone()
-                    ).unwrap();
-                }
-
-                // Make push constants for background.
-                let background_push_constants = PushConstants {
-                    vertex_offset: video_mem.get_bg_scroll(),
-                    tex_size: video_mem.get_tile_size(),
-                    atlas_size: video_mem.get_atlas_size(),
-                    tex_offset: video_mem.get_tile_data_offset(),
-                    palette_offset: 0,
-                    wraparound: 1
-                };
-
-                // Add the background.
-                command_buffer_builder = command_buffer_builder.draw(
-                    self.pipeline.clone(),
-                    &self.dynamic_state,
-                    bg_vertices,
-                    (set0.clone(), set1.clone()),
-                    background_push_constants
-                ).unwrap();
-
-                // Add the window if it is enabled.
-                if let Some(window_vertices) = video_mem.get_window() {
-                    let window_push_constants = PushConstants {
-                        vertex_offset: video_mem.get_window_position(),
-                        tex_size: video_mem.get_tile_size(),
-                        atlas_size: video_mem.get_atlas_size(),
-                        tex_offset: video_mem.get_tile_data_offset(),
-                        palette_offset: 1,
-                        wraparound: 0
-                    };
-
-                    command_buffer_builder = command_buffer_builder.draw(
-                        self.pipeline.clone(),
-                        &self.dynamic_state,
-                        window_vertices.clone(),
-                        (set0.clone(), set1.clone()),
-                        window_push_constants
-                    ).unwrap();
-                }
-
-                // Add sprites above background.
-                if let Some(sprite_vertices) = video_mem.get_sprites_hi() {
-                    command_buffer_builder = command_buffer_builder.draw(
-                        self.pipeline.clone(),
-                        &self.dynamic_state,
-                        sprite_vertices.clone(),
-                        (set0.clone(), set1.clone()),
-                        sprite_push_constants
-                    ).unwrap();
-                }
-            } else {
-                // Add just sprites.
-                if let Some(sprite_vertices) = video_mem.get_sprites_lo() {
-                    command_buffer_builder = command_buffer_builder.draw(
-                        self.pipeline.clone(),
-                        &self.dynamic_state,
-                        sprite_vertices.clone(),
-                        (set0.clone(), set1.clone()),
-                        sprite_push_constants.clone()
-                    ).unwrap();
-                }
-                if let Some(sprite_vertices) = video_mem.get_sprites_hi() {
-                    command_buffer_builder = command_buffer_builder.draw(
-                        self.pipeline.clone(),
-                        &self.dynamic_state,
-                        sprite_vertices.clone(),
-                        (set0.clone(), set1.clone()),
-                        sprite_push_constants
-                    ).unwrap();
-                }
-            }
-        }
-        
         // Finish command buffer.
         let command_buffer = command_buffer_builder.end_render_pass().unwrap().build().unwrap();
 
@@ -401,7 +305,240 @@ impl Renderer {
         }
     }
 
+
     pub fn get_device(&self) -> Arc<Device> {
         self.device.clone()
+    }
+}
+
+// Internal render functions.
+impl Renderer {
+    // Render a frame in GB mode.
+    fn draw_gb(
+        &mut self,
+        video_mem: &mut super::mem::VideoMem,
+        mut command_buffer: AutoCommandBufferBuilder,
+        image: Arc<ImmutableImage<R8Uint>>
+    ) -> AutoCommandBufferBuilder {
+
+        if video_mem.display_enabled() {
+            // Make descriptor set to bind texture atlas.
+            let set0 = Arc::new(self.set_pools[0].next()
+                .add_sampled_image(image, self.sampler.clone()).unwrap()
+                .build().unwrap());
+
+            // Make descriptor set for palette.
+            let set1 = Arc::new(self.set_pools[1].next()
+                .add_buffer(video_mem.get_palette_buffer(false).clone()).unwrap()
+                .build().unwrap());
+
+            // Make push constants for sprites.
+            let sprite_push_constants = PushConstants {
+                vertex_offset: [0.0, 0.0],
+                tex_size: video_mem.get_tile_size(),
+                atlas_size: video_mem.get_atlas_size(),
+                tex_offset: 0,
+                palette_offset: 0,
+                wraparound: 0
+            };
+
+            if let Some(bg_vertices) = video_mem.get_background() {
+                // Add sprites below background.
+                if let Some(sprite_vertices) = video_mem.get_sprites_lo(false) {
+                    command_buffer = command_buffer.draw(
+                        self.pipeline.clone(),
+                        &self.dynamic_state,
+                        sprite_vertices.clone(),
+                        (set0.clone(), set1.clone()),
+                        sprite_push_constants.clone()
+                    ).unwrap();
+                }
+
+                // Make push constants for background.
+                let background_push_constants = PushConstants {
+                    vertex_offset: video_mem.get_bg_scroll(),
+                    tex_size: video_mem.get_tile_size(),
+                    atlas_size: video_mem.get_atlas_size(),
+                    tex_offset: video_mem.get_tile_data_offset(),
+                    palette_offset: 0,
+                    wraparound: 1
+                };
+
+                // Add the background.
+                command_buffer = command_buffer.draw(
+                    self.pipeline.clone(),
+                    &self.dynamic_state,
+                    bg_vertices,
+                    (set0.clone(), set1.clone()),
+                    background_push_constants
+                ).unwrap();
+
+                // Add the window if it is enabled.
+                if let Some(window_vertices) = video_mem.get_window() {
+                    let window_push_constants = PushConstants {
+                        vertex_offset: video_mem.get_window_position(),
+                        tex_size: video_mem.get_tile_size(),
+                        atlas_size: video_mem.get_atlas_size(),
+                        tex_offset: video_mem.get_tile_data_offset(),
+                        palette_offset: 1,
+                        wraparound: 0
+                    };
+
+                    command_buffer = command_buffer.draw(
+                        self.pipeline.clone(),
+                        &self.dynamic_state,
+                        window_vertices.clone(),
+                        (set0.clone(), set1.clone()),
+                        window_push_constants
+                    ).unwrap();
+                }
+
+                // Add sprites above background.
+                if let Some(sprite_vertices) = video_mem.get_sprites_hi(false) {
+                    command_buffer = command_buffer.draw(
+                        self.pipeline.clone(),
+                        &self.dynamic_state,
+                        sprite_vertices.clone(),
+                        (set0.clone(), set1.clone()),
+                        sprite_push_constants
+                    ).unwrap();
+                }
+            } else {
+                // Add just sprites.
+                if let Some(sprite_vertices) = video_mem.get_sprites_lo(false) {
+                    command_buffer = command_buffer.draw(
+                        self.pipeline.clone(),
+                        &self.dynamic_state,
+                        sprite_vertices.clone(),
+                        (set0.clone(), set1.clone()),
+                        sprite_push_constants.clone()
+                    ).unwrap();
+                }
+                if let Some(sprite_vertices) = video_mem.get_sprites_hi(false) {
+                    command_buffer = command_buffer.draw(
+                        self.pipeline.clone(),
+                        &self.dynamic_state,
+                        sprite_vertices.clone(),
+                        (set0.clone(), set1.clone()),
+                        sprite_push_constants
+                    ).unwrap();
+                }
+            }
+        }
+        
+        command_buffer
+    }
+
+    // Render a frame in CGB mode.
+    fn draw_cgb(
+        &mut self,
+        video_mem: &mut super::mem::VideoMem,
+        mut command_buffer: AutoCommandBufferBuilder,
+        image: Arc<ImmutableImage<R8Uint>>
+    ) -> AutoCommandBufferBuilder {
+        // Make descriptor set to bind texture atlas.
+        let set0 = Arc::new(self.set_pools[0].next()
+            .add_sampled_image(image, self.sampler.clone()).unwrap()
+            .build().unwrap());
+
+        // Make descriptor set for palette.
+        let set1 = Arc::new(self.set_pools[1].next()
+            .add_buffer(video_mem.get_palette_buffer(true).clone()).unwrap()
+            .build().unwrap());
+
+        // Make push constants for sprites.
+        let sprite_push_constants = PushConstants {
+            vertex_offset: [0.0, 0.0],
+            tex_size: video_mem.get_tile_size(),
+            atlas_size: video_mem.get_atlas_size(),
+            tex_offset: 0,
+            palette_offset: 8,
+            wraparound: 0
+        };
+
+        if let Some(bg_vertices) = video_mem.get_background() {
+            // Add sprites below background.
+            if let Some(sprite_vertices) = video_mem.get_sprites_lo(true) {
+                command_buffer = command_buffer.draw(
+                    self.pipeline.clone(),
+                    &self.dynamic_state,
+                    sprite_vertices.clone(),
+                    (set0.clone(), set1.clone()),
+                    sprite_push_constants.clone()
+                ).unwrap();
+            }
+
+            // Make push constants for background.
+            let background_push_constants = PushConstants {
+                vertex_offset: video_mem.get_bg_scroll(),
+                tex_size: video_mem.get_tile_size(),
+                atlas_size: video_mem.get_atlas_size(),
+                tex_offset: video_mem.get_tile_data_offset(),
+                palette_offset: 0,
+                wraparound: 1
+            };
+
+            // Add the background.
+            command_buffer = command_buffer.draw(
+                self.pipeline.clone(),
+                &self.dynamic_state,
+                bg_vertices,
+                (set0.clone(), set1.clone()),
+                background_push_constants
+            ).unwrap();
+
+            // Add the window if it is enabled.
+            if let Some(window_vertices) = video_mem.get_window() {
+                let window_push_constants = PushConstants {
+                    vertex_offset: video_mem.get_window_position(),
+                    tex_size: video_mem.get_tile_size(),
+                    atlas_size: video_mem.get_atlas_size(),
+                    tex_offset: video_mem.get_tile_data_offset(),
+                    palette_offset: 0,
+                    wraparound: 0
+                };
+
+                command_buffer = command_buffer.draw(
+                    self.pipeline.clone(),
+                    &self.dynamic_state,
+                    window_vertices.clone(),
+                    (set0.clone(), set1.clone()),
+                    window_push_constants
+                ).unwrap();
+            }
+
+            // Add sprites above background.
+            if let Some(sprite_vertices) = video_mem.get_sprites_hi(true) {
+                command_buffer = command_buffer.draw(
+                    self.pipeline.clone(),
+                    &self.dynamic_state,
+                    sprite_vertices.clone(),
+                    (set0.clone(), set1.clone()),
+                    sprite_push_constants
+                ).unwrap();
+            }
+        } else {
+            // Add just sprites.
+            if let Some(sprite_vertices) = video_mem.get_sprites_lo(true) {
+                command_buffer = command_buffer.draw(
+                    self.pipeline.clone(),
+                    &self.dynamic_state,
+                    sprite_vertices.clone(),
+                    (set0.clone(), set1.clone()),
+                    sprite_push_constants.clone()
+                ).unwrap();
+            }
+            if let Some(sprite_vertices) = video_mem.get_sprites_hi(true) {
+                command_buffer = command_buffer.draw(
+                    self.pipeline.clone(),
+                    &self.dynamic_state,
+                    sprite_vertices.clone(),
+                    (set0.clone(), set1.clone()),
+                    sprite_push_constants
+                ).unwrap();
+            }
+        }
+
+        command_buffer
     }
 }

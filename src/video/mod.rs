@@ -62,7 +62,9 @@ pub struct VideoDevice {
     joypad:             Joypad,
 
     renderer:           Renderer,
-    events_loop:        EventsLoop
+    events_loop:        EventsLoop,
+
+    cgb_mode:           bool
 }
 
 impl VideoDevice {
@@ -77,13 +79,15 @@ impl VideoDevice {
             joypad:         Joypad::new(),
 
             renderer:       renderer,
-            events_loop:    events_loop
+            events_loop:    events_loop,
+
+            cgb_mode:       cgb_mode
         }
     }
 
     // Drawing for a single frame
     pub fn render_frame(&mut self) {
-        self.renderer.render(&mut self.mem);
+        self.renderer.render(&mut self.mem, self.cgb_mode);
     }
 
     // Read inputs and store, return true if joypad interrupt is triggered.

@@ -214,20 +214,20 @@ impl VideoMem {
     }
 
     // Get low-priority sprites (below the background).
-    pub fn get_sprites_lo(&mut self) -> Option<VertexBuffer> {
+    pub fn get_sprites_lo(&mut self, cgb_mode: bool) -> Option<VertexBuffer> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            self.object_mem.get_lo_vertex_buffer(large_sprites)
+            self.object_mem.get_lo_vertex_buffer(large_sprites, cgb_mode)
         } else {
             None
         }
     }
 
     // Get high-priority sprites (above the background).
-    pub fn get_sprites_hi(&mut self) -> Option<VertexBuffer> {
+    pub fn get_sprites_hi(&mut self, cgb_mode: bool) -> Option<VertexBuffer> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            self.object_mem.get_hi_vertex_buffer(large_sprites)
+            self.object_mem.get_hi_vertex_buffer(large_sprites, cgb_mode)
         } else {
             None
         }
@@ -239,8 +239,12 @@ impl VideoMem {
     }
 
     // Get palettes
-    pub fn get_palette_buffer(&mut self) -> PaletteBuffer {
-        self.palettes.get_buffer()
+    pub fn get_palette_buffer(&mut self, cgb_mode: bool) -> PaletteBuffer {
+        if cgb_mode {
+            self.colour_palettes.get_buffer()
+        } else {
+            self.palettes.get_buffer()
+        }
     }
 
     // Get push constants
