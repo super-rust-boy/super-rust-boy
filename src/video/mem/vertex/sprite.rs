@@ -29,8 +29,8 @@ bitflags! {
         const PALETTE   = 0b00010000;
         const VRAM_BANK = 0b00001000;
         const CGB_PAL_2 = 0b00000100;
-        const CGB_PAL_1 = 0b00000100;
-        const CGB_PAL_0 = 0b00000100;
+        const CGB_PAL_1 = 0b00000010;
+        const CGB_PAL_0 = 0b00000001;
     }
 }
 

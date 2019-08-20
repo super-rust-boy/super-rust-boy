@@ -278,9 +278,9 @@ impl Renderer {
 
         // Render in the specified mode.
         command_buffer_builder = if cgb_mode {
-            self.draw_gb(video_mem, command_buffer_builder, image)
-        } else {
             self.draw_cgb(video_mem, command_buffer_builder, image)
+        } else {
+            self.draw_gb(video_mem, command_buffer_builder, image)
         };
 
         // Finish command buffer.

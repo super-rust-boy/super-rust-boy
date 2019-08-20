@@ -101,6 +101,45 @@ impl Cartridge {
         self.ram.flush();
     }
 
+
+    // Get the cart name hash values for SGB palette lookup.
+    pub fn cart_name_hash(&self) -> Option<(u8, u8)> {
+        let old_code = self.read(0x014B);
+        let valid = if old_code == 0x33 {
+            let new_code = self.read(0x0145);
+            (new_code == 0x31) || (new_code == 0x01)
+        } else {
+            old_code == 0x01
+        };
+        // Get hash.
+        if valid {
+            let mut title_loc = 0x0134;
+            let mut hash = 0_u16;
+            loop {
+                let byte = self.read(title_loc);
+                if byte == 0 {
+                    break;
+                } else {
+                    hash += byte as u16;
+                    title_loc += 1;
+                }
+            }
+            let char_4 = self.read(0x0137);
+            Some((hash as u8, char_4))
+        } else {
+            None
+        }
+    }
+
+    // Check cart for cgb mode.
+    pub fn cgb_cart(&self) -> bool {
+        let cgb_flag = self.read(0x143);
+        (cgb_flag & 0x80) != 0
+    }
+}
+
+// Internal swapping methods.
+impl Cartridge {
     fn swap_rom_bank(&mut self, bank: u16) {
         let pos = (bank as u64) * 0x4000;
 

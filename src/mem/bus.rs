@@ -37,7 +37,7 @@ impl MemBus {
         };
 
         let palette = match user_palette {
-            UserPalette::Default => if let Some(cart_hash) = cart_name_hash(&rom) {
+            UserPalette::Default => if let Some(cart_hash) = rom.cart_name_hash() {
                 lookup_sgb_palette(cart_hash.0, cart_hash.1)
             } else {
                 BW_PALETTE
@@ -46,7 +46,7 @@ impl MemBus {
             UserPalette::Classic => CLASSIC_PALETTE
         };
 
-        let cgb_mode = false;//user_palette == UserPalette::Default;// && check cart.
+        let cgb_mode = (user_palette == UserPalette::Default) && rom.cgb_cart();
 
         MemBus {
             cart:               rom,
@@ -183,34 +183,5 @@ impl MemDevice for MemBus {
             0xFFFF          => self.interrupt_enable = InterruptFlags::from_bits_truncate(val),
             _ => {},
         }
-    }
-}
-
-// Get the cart name hash values for SGB palette lookup
-fn cart_name_hash(cart: &Cartridge) -> Option<(u8, u8)> {
-    let old_code = cart.read(0x014B);
-    let valid = if old_code == 0x33 {
-        let new_code = cart.read(0x0145);
-        (new_code == 0x31) || (new_code == 0x01)
-    } else {
-        old_code == 0x01
-    };
-    // Get hash.
-    if valid {
-        let mut title_loc = 0x0134;
-        let mut hash = 0_u16;
-        loop {
-            let byte = cart.read(title_loc);
-            if byte == 0 {
-                break;
-            } else {
-                hash += byte as u16;
-                title_loc += 1;
-            }
-        }
-        let char_4 = cart.read(0x0137);
-        Some((hash as u8, char_4))
-    } else {
-        None
     }
 }
