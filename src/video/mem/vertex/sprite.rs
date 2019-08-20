@@ -128,6 +128,7 @@ impl ObjectMem {
     }
 
     // Makes a new vertex buffer if the data has changed. Else, retrieves the current one.
+    // Only retrieves the vertices that appear below the background.
     pub fn get_lo_vertex_buffer(&mut self, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
         if self.large_objects != large {
             self.current_lo_buffer = None;
@@ -154,6 +155,7 @@ impl ObjectMem {
     }
 
     // Makes a new vertex buffer if the data has changed. Else, retrieves the current one.
+    // Only retrieves the vertices that appear above the background.
     pub fn get_hi_vertex_buffer(&mut self, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
         if self.large_objects != large {
             self.current_lo_buffer = None;

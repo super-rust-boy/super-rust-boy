@@ -15,8 +15,8 @@ use std::sync::Arc;
 // 8-9: Corner
 // 10-12: Palette
 // 13: VRAM bank
-// 15-17: Ignore
-// 18: priority
+// 14-16: Ignore
+// 17: priority
 
 pub enum Corner {
     TopLeft     = 0 << 8,

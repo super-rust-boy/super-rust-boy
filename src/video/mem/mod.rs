@@ -122,6 +122,7 @@ pub struct VideoMem {
     palettes:           StaticPaletteMem,
 
     // CGB things
+    cgb_mode:           bool,
     colour_palettes:    DynamicPaletteMem,
     vram_bank:          u8,
 
@@ -151,6 +152,7 @@ impl VideoMem {
             window_x:       0,
 
             palettes:           StaticPaletteMem::new(device, palette),
+            cgb_mode:           cgb_mode,
             colour_palettes:    DynamicPaletteMem::new(device),
             vram_bank:          0,
 
@@ -180,21 +182,39 @@ impl VideoMem {
 
     // Get clear colour.
     pub fn get_clear_colour(&self) -> [f32; 4] {
-        if self.display_enabled() {
+        if self.display_enabled() && !self.cgb_mode {
             self.palettes.get_colour_0()
         } else {
             self.clear_colour
         }.into()
     }
 
+    // For rendering background.
+    pub fn get_background_priority(&self) -> bool {
+        self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY)
+    }
+
     // Get background vertices.
     pub fn get_background(&mut self) -> Option<VertexBuffer> {
-        if self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY) {
-            Some(if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
-                self.tile_map_0.get_vertex_buffer()
+        if self.cgb_mode || self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY) {
+            if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
+                self.tile_map_0.get_lo_vertex_buffer()
             } else {
-                self.tile_map_1.get_vertex_buffer()
-            })
+                self.tile_map_1.get_lo_vertex_buffer()
+            }
+        } else {
+            None
+        }
+    }
+
+    // Get background vertices with priority bit set.
+    pub fn get_background_hi(&mut self) -> Option<VertexBuffer> {
+        if self.cgb_mode {
+            if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
+                self.tile_map_0.get_hi_vertex_buffer()
+            } else {
+                self.tile_map_1.get_hi_vertex_buffer()
+            }
         } else {
             None
         }
@@ -203,31 +223,44 @@ impl VideoMem {
     // Get window
     pub fn get_window(&mut self) -> Option<VertexBuffer> {
         if self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY | LCDControl::WINDOW_DISPLAY_ENABLE) {
-            Some(if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
-                self.tile_map_0.get_vertex_buffer()
+            if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
+                self.tile_map_0.get_lo_vertex_buffer()
             } else {
-                self.tile_map_1.get_vertex_buffer()
-            })
+                self.tile_map_1.get_lo_vertex_buffer()
+            }
+        } else {
+            None
+        }
+    }
+
+    // Get window vertices with priority bit set.
+    pub fn get_window_hi(&mut self) -> Option<VertexBuffer> {
+        if self.cgb_mode {
+            if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
+                self.tile_map_0.get_hi_vertex_buffer()
+            } else {
+                self.tile_map_1.get_hi_vertex_buffer()
+            }
         } else {
             None
         }
     }
 
     // Get low-priority sprites (below the background).
-    pub fn get_sprites_lo(&mut self, cgb_mode: bool) -> Option<VertexBuffer> {
+    pub fn get_sprites_lo(&mut self) -> Option<VertexBuffer> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            self.object_mem.get_lo_vertex_buffer(large_sprites, cgb_mode)
+            self.object_mem.get_lo_vertex_buffer(large_sprites, self.cgb_mode)
         } else {
             None
         }
     }
 
     // Get high-priority sprites (above the background).
-    pub fn get_sprites_hi(&mut self, cgb_mode: bool) -> Option<VertexBuffer> {
+    pub fn get_sprites_hi(&mut self) -> Option<VertexBuffer> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            self.object_mem.get_hi_vertex_buffer(large_sprites, cgb_mode)
+            self.object_mem.get_hi_vertex_buffer(large_sprites, self.cgb_mode)
         } else {
             None
         }
@@ -239,8 +272,8 @@ impl VideoMem {
     }
 
     // Get palettes
-    pub fn get_palette_buffer(&mut self, cgb_mode: bool) -> PaletteBuffer {
-        if cgb_mode {
+    pub fn get_palette_buffer(&mut self) -> PaletteBuffer {
+        if self.cgb_mode {
             self.colour_palettes.get_buffer()
         } else {
             self.palettes.get_buffer()

@@ -50,7 +50,7 @@ impl Colour {
         if low_byte {
             self.r | ((self.g & 0x7) << 5)
         } else {
-            ((self.g & 0x18) >> 3) | (self.b << 2)
+            ((self.g >> 3) & 0x3) | (self.b << 2)
         }
     }
 
@@ -58,10 +58,10 @@ impl Colour {
         if low_byte {
             self.r = val & 0x1F;
             self.g &= 0x18;
-            self.g |= (val & 0xE0) >> 5;
+            self.g |= (val >> 5) & 0x7;
         } else {
             self.g &= 0x7;
-            self.g |= (val & 0x7) << 3;
+            self.g |= (val & 0x3) << 3;
             self.b = (val >> 2) & 0x1F;
         }
     }

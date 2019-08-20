@@ -27,7 +27,8 @@ pub struct VertexGrid {
     vertices:           Vec<Vertex>,
     row_len:            usize,
     buffer_pool:        CpuBufferPool<Vertex>,
-    current_buffer:     Option<VertexBuffer>
+    current_hi_buffer:  Option<VertexBuffer>,
+    current_lo_buffer:  Option<VertexBuffer>,
 }
 
 impl VertexGrid {
@@ -65,7 +66,8 @@ impl VertexGrid {
             vertices:           vertices,
             row_len:            grid_size.0,
             buffer_pool:        CpuBufferPool::vertex_buffer(device.clone()),
-            current_buffer:     None
+            current_hi_buffer:  None,
+            current_lo_buffer:  None,
         }
     }
 
@@ -78,8 +80,9 @@ impl VertexGrid {
             self.vertices[i].data = (self.vertices[i].data & 0xFFFFFF00) | tex_num as u32;
         }
 
-        // Invalidate buffer chunk.
-        self.current_buffer = None;
+        // Invalidate buffer chunks.
+        self.current_hi_buffer = None;
+        self.current_lo_buffer = None;
     }
 
     // Gets the tex number for a tile.
@@ -115,8 +118,9 @@ impl VertexGrid {
         self.vertices[index + 4].data = (self.vertices[index].data & 0x000000FF) | tr | data;
         self.vertices[index + 5].data = (self.vertices[index].data & 0x000000FF) | br | data;
 
-        // Invalidate buffer chunk.
-        self.current_buffer = None;
+        // Invalidate buffer chunks.
+        self.current_hi_buffer = None;
+        self.current_lo_buffer = None;
     }
 
     pub fn get_tile_attribute(&self, tile_x: usize, tile_y: usize) -> u8 {
@@ -127,14 +131,46 @@ impl VertexGrid {
     }
 
     // Makes a new vertex buffer if the data has changed. Else, retrieves the current one.
-    pub fn get_vertex_buffer(&mut self) -> VertexBuffer {
-        if let Some(buf) = &self.current_buffer {
-            buf.clone()
+    // Only retrieves the vertices that appear below the objects.
+    // This will get the whole background in GB mode.
+    pub fn get_lo_vertex_buffer(&mut self) -> Option<VertexBuffer> {
+        if let Some(buf) = &self.current_lo_buffer {
+            Some(buf.clone())
         } else {
-            let buf = self.buffer_pool.chunk(
-                self.vertices.iter().cloned()
-            ).unwrap();
-            self.current_buffer = Some(buf.clone());
+            let tile_map = self.vertices.iter()
+                    .cloned()
+                    .filter(|v| (v.data & (1 << 17)) == 0)
+                    .collect::<Vec<_>>();
+
+            let buf = if tile_map.is_empty() {
+                None
+            } else {
+                Some(self.buffer_pool.chunk(tile_map).unwrap())
+            };
+            
+            self.current_lo_buffer = buf.clone();
+            buf
+        }
+    }
+
+    // Makes a new vertex buffer if the data has changed. Else, retrieves the current one.
+    // Only retrieves the vertices that appear below the objects.
+    pub fn get_hi_vertex_buffer(&mut self) -> Option<VertexBuffer> {
+        if let Some(buf) = &self.current_hi_buffer {
+            Some(buf.clone())
+        } else {
+            let tile_map = self.vertices.iter()
+                    .cloned()
+                    .filter(|v| (v.data & (1 << 17)) != 0)
+                    .collect::<Vec<_>>();
+
+            let buf = if tile_map.is_empty() {
+                None
+            } else {
+                Some(self.buffer_pool.chunk(tile_map).unwrap())
+            };
+            
+            self.current_hi_buffer = buf.clone();
             buf
         }
     }

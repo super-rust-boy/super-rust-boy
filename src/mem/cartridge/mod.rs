@@ -146,7 +146,7 @@ impl Cartridge {
         self.rom_file.seek(SeekFrom::Start(pos))
             .expect("Couldn't swap in bank");
 
-        self.rom_file.read(&mut self.rom_bank_n)
+        self.rom_file.read_exact(&mut self.rom_bank_n)
             .expect("Couldn't swap in bank");
     }
 
