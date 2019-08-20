@@ -14,6 +14,9 @@ bitflags! {
     }
 }
 
+const GB_STEP: u32 = 4;
+const CGB_STEP: u32 = 2;
+
 // LR35902 CPU
 pub struct CPU {
     // Accumulator
@@ -43,6 +46,7 @@ pub struct CPU {
 
     // Internals
     cycle_count: u32,
+    step_cycles: u32
 }
 
 
@@ -121,6 +125,7 @@ impl CPU {
             pc:     0x100,
             mem:    mem,
             cycle_count: 0,
+            step_cycles: GB_STEP
         }
     }
 
@@ -152,7 +157,7 @@ impl CPU {
     // Increment cycle count and update timer.
     #[inline]
     fn clock_inc(&mut self) {
-        self.cycle_count += 4;
+        self.cycle_count += self.step_cycles;
         self.mem.update_timer();
     }
 
@@ -476,13 +481,26 @@ impl CPU {
     #[inline]
     fn read_mem(&mut self, loc: u16) -> u8 {
         self.clock_inc();
-        self.mem.read(loc)
+        if loc == 0xFF4D {
+            if self.step_cycles == GB_STEP {0} else {0x80}
+        } else {
+            self.mem.read(loc)
+        }
     }
 
     #[inline]
     fn write_mem(&mut self, loc: u16, val: u8) {
         self.clock_inc();
-        self.mem.write(loc, val);
+        if (loc == 0xFF4D) && ((val & 1) == 1) {
+            self.switch_speed();
+        } else {
+            self.mem.write(loc, val);
+        }
+    }
+
+    // CGB double speed
+    fn switch_speed(&mut self) {
+        self.step_cycles = if self.step_cycles == GB_STEP {CGB_STEP} else {GB_STEP};
     }
 
     // read mem pointed to by pc (and inc pc)

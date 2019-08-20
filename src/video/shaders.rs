@@ -124,7 +124,7 @@ layout(location = 1) in flat uint paletteNum;
 
 layout(set = 0, binding = 0) uniform usampler2D atlas;
 layout(set = 1, binding = 0) uniform Palette {
-    mat4 colours[4];
+    mat4 colours[4]; //16
 } PaletteTable;
 
 layout(location = 0) out vec4 outColor;

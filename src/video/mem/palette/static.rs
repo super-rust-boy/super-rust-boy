@@ -1,8 +1,8 @@
+// Game Boy and Super Game Boy 2-bit palettes.
+
 use vulkano::{
     buffer::CpuBufferPool,
-    buffer::cpu_pool::CpuBufferPoolChunk,
-    device::Device,
-    memory::pool::StdMemoryPool
+    device::Device
 };
 
 use cgmath::{
@@ -12,12 +12,12 @@ use cgmath::{
 
 use std::sync::Arc;
 
+use super::PaletteBuffer;
+
 use crate::video::{
     PaletteColours,
     sgbpalettes::SGBPalette
 };
-
-pub type PaletteBuffer = CpuBufferPoolChunk<PaletteColours, Arc<StdMemoryPool>>;
 
 // A palette with hard-coded colours.
 struct StaticPalette {
@@ -68,15 +68,15 @@ impl StaticPalette {
 }
 
 // A group of palettes
-pub struct PaletteMem {
+pub struct StaticPaletteMem {
     palettes: Vec<StaticPalette>,
     buffer_pool: CpuBufferPool<PaletteColours>,
     current_buffer: Option<PaletteBuffer>
 }
 
-impl PaletteMem {
-    pub fn new_static(device: &Arc<Device>, colours: SGBPalette) -> Self {
-        PaletteMem {
+impl StaticPaletteMem {
+    pub fn new(device: &Arc<Device>, colours: SGBPalette) -> Self {
+        StaticPaletteMem {
             palettes: vec![
                 StaticPalette::new(colours.bg),
                 StaticPalette::new(colours.obj0),

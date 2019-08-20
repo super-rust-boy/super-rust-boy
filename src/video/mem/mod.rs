@@ -20,7 +20,11 @@ use super::sgbpalettes::SGBPalette;
 
 use tilemem::*;
 use vertexgrid::*;
-use palette::*;
+use palette::{
+    PaletteBuffer,
+    r#static::StaticPaletteMem,
+    dynamic::DynamicPaletteMem
+};
 use sprite::ObjectMem;
 
 const TILE_SIZE: usize = 8;         // Width / Height of a tile in pixels.
@@ -109,10 +113,11 @@ pub struct VideoMem {
     lcdc_y: u8,
     ly_compare: u8,
 
-    palettes: PaletteMem,
-
     window_y: u8,
     window_x: u8,
+
+    palettes: StaticPaletteMem,
+    colour_palettes: DynamicPaletteMem,
 
     // Misc
     clear_colour: Vector4<f32>
@@ -133,10 +138,11 @@ impl VideoMem {
             lcdc_y: 0,
             ly_compare: 0,
 
-            palettes: PaletteMem::new_static(device, palette),
-
             window_y: 0,
             window_x: 0,
+
+            palettes: StaticPaletteMem::new(device, palette),
+            colour_palettes: DynamicPaletteMem::new(device),
 
             clear_colour: palette.get_colour_0()
         }
@@ -303,6 +309,11 @@ impl MemDevice for VideoMem {
             0xFF49 => self.palettes.read(2),
             0xFF4A => self.window_y,
             0xFF4B => self.window_x,
+            // Colour palettes
+            0xFF68 => self.colour_palettes.read_bg_index(),
+            0xFF69 => self.colour_palettes.read_bg(),
+            0xFF6A => self.colour_palettes.read_obj_index(),
+            0xFF6B => self.colour_palettes.read_obj(),
             _ => 0
         };
         val
@@ -376,6 +387,11 @@ impl MemDevice for VideoMem {
             0xFF49 => self.palettes.write(2, val),
             0xFF4A => self.window_y = val,
             0xFF4B => self.window_x = val,
+            // Colour palettes
+            0xFF68 => self.colour_palettes.write_bg_index(val),
+            0xFF69 => self.colour_palettes.write_bg(val),
+            0xFF6A => self.colour_palettes.write_obj_index(val),
+            0xFF6B => self.colour_palettes.write_obj(val),
             _ => {}
         }
     }

@@ -55,7 +55,7 @@ impl Timer {
     pub fn update(&mut self) -> bool {
         let trigger = self.trigger;
 
-        self.divider = (self.divider as u32 + 4) as u16;
+        self.divider = (self.divider as u32 + 4) as u16;    // TODO: check this is ok for CGB.
 
         if self.timer_enable {
             let inc = match self.clock_select {
