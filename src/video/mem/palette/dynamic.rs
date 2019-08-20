@@ -106,16 +106,14 @@ impl DynamicPalette {
 
 impl MemDevice for DynamicPalette {
     fn read(&self, loc: u16) -> u8 {
-        let select = loc % 8;
-        let colour = (select / 2) as usize;
-        let low_byte = (select % 2) == 0;
+        let colour = (loc / 2) as usize;
+        let low_byte = (loc % 2) == 0;
         self.colours[colour].read(low_byte)
     }
 
     fn write(&mut self, loc: u16, val: u8) {
-        let select = loc % 8;
-        let colour = (select / 2) as usize;
-        let low_byte = (select % 2) == 0;
+        let colour = (loc / 2) as usize;
+        let low_byte = (loc % 2) == 0;
         self.colours[colour].write(val, low_byte);
     }
 }
@@ -128,7 +126,7 @@ pub struct DynamicPaletteMem {
 
     obj_palettes:       Vec<DynamicPalette>,
     obj_palette_index:  usize,
-    obj_auto_inc:        PaletteIndex,
+    obj_auto_inc:       PaletteIndex,
 
     buffer_pool:        CpuBufferPool<PaletteColours>,
     current_buffer:     Option<PaletteBuffer>
@@ -198,6 +196,8 @@ impl DynamicPaletteMem {
         if self.bg_auto_inc.contains(PaletteIndex::AUTO_INCREMENT) {
             self.bg_palette_index = (self.bg_palette_index + 1) % 0x40;
         }
+
+        self.current_buffer = None;
     }
 
     pub fn read_obj(&self) -> u8 {
@@ -213,5 +213,7 @@ impl DynamicPaletteMem {
         if self.obj_auto_inc.contains(PaletteIndex::AUTO_INCREMENT) {
             self.obj_palette_index = (self.obj_palette_index + 1) % 0x40;
         }
+
+        self.current_buffer = None;
     }
 }

@@ -111,7 +111,7 @@ impl CPU {
     // Initialise CPU
     pub fn new(mem: MemBus) -> Self {
         CPU {
-            a:      0x01,   // 0x11 for CGB
+            a:      if mem.is_cgb() {0x11} else {0x01},
             b:      0x00,
             c:      0x13,
             d:      0x00,

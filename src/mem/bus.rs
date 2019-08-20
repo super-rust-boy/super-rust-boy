@@ -21,12 +21,15 @@ pub struct MemBus {
     interrupt_enable:   InterruptFlags,
 
     video_device:       VideoDevice,
-
     audio_device:       AudioDevice,
-
     timer:              Timer,
 
-    cgb_ram_offset:     u16
+    // CGB
+    cgb_ram_offset:     u16,
+    cgb_dma_src:        u16,
+    cgb_dma_dst:        u16,
+
+    cgb_mode:           bool
 }
 
 impl MemBus {
@@ -57,7 +60,10 @@ impl MemBus {
             video_device:       VideoDevice::new(palette, cgb_mode),
             audio_device:       audio_device,
             timer:              Timer::new(),
-            cgb_ram_offset:     0x1000
+            cgb_ram_offset:     0x1000,
+            cgb_dma_src:        0,
+            cgb_dma_dst:        0,
+            cgb_mode:           cgb_mode
         }
     }
 
@@ -106,11 +112,16 @@ impl MemBus {
     pub fn flush_cart(&mut self) {
         self.cart.flush_ram();
     }
+
+    // See if the memory is in CGB mode.
+    pub fn is_cgb(&self) -> bool {
+        self.cgb_mode
+    }
 }
 
 // Internal functions
 impl MemBus {
-    // Direct memory access for palettes.
+    // Direct memory access for object memory.
     fn dma(&mut self, val: u8) {
         let hi_byte = (val as u16) << 8;
         for lo_byte in 0_u16..=0x9F_u16 {
@@ -118,6 +129,18 @@ impl MemBus {
             let dest_addr = 0xFE00 | lo_byte;
             let byte = self.read(src_addr);
             self.video_device.write(dest_addr, byte);
+        }
+    }
+
+    // Direct memory access for CGB.
+    fn cgb_dma(&mut self, val: u8) {
+        let src_start = self.cgb_dma_src & 0xFFF0;
+        let dst_start = (self.cgb_dma_dst & 0x1FF0) | 0x8000;
+        let len = ((val & 0x7F) as u16 + 1) * 0x10;
+
+        for i in 0..len {
+            let byte = self.read(src_start + i);
+            self.write(dst_start + i, byte);
         }
     }
 
@@ -152,6 +175,10 @@ impl MemDevice for MemBus {
             0xFF0F          => self.interrupt_flag.bits(),
             0xFF10..=0xFF3F => self.audio_device.read(loc),
             0xFF40..=0xFF4B => self.video_device.read(loc),
+            0xFF51          => ((self.cgb_dma_src & 0xFF00) >> 8) as u8,
+            0xFF52          => self.cgb_dma_src as u8,
+            0xFF53          => ((self.cgb_dma_dst & 0xFF00) >> 8) as u8,
+            0xFF54          => self.cgb_dma_dst as u8,
             0xFF68..=0xFF6B => self.video_device.read(loc),
             0xFF70          => self.get_cgb_ram_bank(),
             0xFF80..=0xFFFE => self.high_ram.read(loc - 0xFF80),
@@ -177,6 +204,11 @@ impl MemDevice for MemBus {
             0xFF40..=0xFF45 => self.video_device.write(loc, val), 
             0xFF46          => self.dma(val),
             0xFF47..=0xFF4B => self.video_device.write(loc, val),
+            0xFF51          => self.cgb_dma_src = (self.cgb_dma_src & 0xFF) | ((val as u16) << 8),
+            0xFF52          => self.cgb_dma_src = (self.cgb_dma_src & 0xFF00) | (val as u16),
+            0xFF53          => self.cgb_dma_dst = (self.cgb_dma_dst & 0xFF) | ((val as u16) << 8),
+            0xFF54          => self.cgb_dma_dst = (self.cgb_dma_dst & 0xFF00) | (val as u16),
+            0xFF55          => self.cgb_dma(val),
             0xFF68..=0xFF6B => self.video_device.write(loc, val),
             0xFF70          => self.set_cgb_ram_bank(val),
             0xFF80..=0xFFFE => self.high_ram.write(loc - 0xFF80, val),

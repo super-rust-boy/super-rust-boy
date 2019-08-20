@@ -37,7 +37,7 @@ pub use sgbpalettes::UserPalette;
 pub type PaletteColours = Matrix4<f32>;
 
 // Modes
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Mode {
     _0 = 0, // H-blank
     _1 = 1, // V-blank

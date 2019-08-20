@@ -79,7 +79,7 @@ impl LCDStatus {
     }
 
     fn read(&self) -> u8 {
-        self.flags.bits() | self.video_mode.clone() as u8
+        self.flags.bits() | self.video_mode as u8
     }
 
     fn write(&mut self, val: u8) {
@@ -92,7 +92,7 @@ impl LCDStatus {
     }
 
     pub fn read_mode(&self) -> super::Mode {
-        self.video_mode.clone()
+        self.video_mode
     }
 
     pub fn write_mode(&mut self, mode: super::Mode) {
