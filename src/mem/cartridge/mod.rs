@@ -2,11 +2,9 @@
 
 mod ram;
 mod mbc1;
-mod mbc3;
 
 use ram::*;
 use mbc1::MBC1;
-use mbc3::MBC3;
 
 use std::{
     collections::BTreeMap,
@@ -26,7 +24,7 @@ enum MBC {
     _0,
     _1(MBC1),
     _2,
-    _3(MBC3),
+    _3,
     _5(u16),
 }
 
@@ -58,16 +56,17 @@ impl Cartridge {
         let mut buf = [0_u8; 0x4000];
         reader.read(&mut buf).map_err(|e| e.to_string())?;
 
-        let (bank_type, battery) = match buf[0x147] {
-            0x1 | 0x2           => (MBC::_1(MBC1::new()), false),
-            0x3                 => (MBC::_1(MBC1::new()), true),
-            0x5                 => (MBC::_2, false),
-            0x6                 => (MBC::_2, true),
-            0xF | 0x10 | 0x13   => (MBC::_3(MBC3::new()), true),
-            0x11 | 0x12         => (MBC::_3(MBC3::new()), false),
-            0x19 | 0x1A | 0x1C | 0x1D => (MBC::_5(1), false),
-            0x1B | 0x1E         => (MBC::_5(1), true),
-            _                   => (MBC::_0, false)
+        let (bank_type, battery, timer) = match buf[0x147] {
+            0x1 | 0x2           => (MBC::_1(MBC1::new()), false, false),
+            0x3                 => (MBC::_1(MBC1::new()), true, false),
+            0x5                 => (MBC::_2, false, false),
+            0x6                 => (MBC::_2, true, false),
+            0xF | 0x10          => (MBC::_3, true, true),
+            0x11 | 0x12         => (MBC::_3, false, false),
+            0x13                => (MBC::_3, true, false),
+            0x19 | 0x1A | 0x1C | 0x1D => (MBC::_5(1), false, false),
+            0x1B | 0x1E         => (MBC::_5(1), true, false),
+            _                   => (MBC::_0, false, false)
         };
 
         let ram_size = match (&bank_type, buf[0x149]) {
@@ -80,7 +79,9 @@ impl Cartridge {
             _               => 0,
         };
 
-        let ram = if battery {
+        let ram = if timer {
+            Box::new(ClockRAM::new(ram_size, save_file_name)?) as Box<dyn RAM>
+        } else if battery {
             Box::new(BatteryRAM::new(ram_size, save_file_name)?) as Box<dyn RAM>
         } else {
             Box::new(BankedRAM::new(ram_size)) as Box<dyn RAM>
@@ -144,6 +145,7 @@ impl Cartridge {
 // Internal swapping methods.
 impl Cartridge {
     fn swap_rom_bank(&mut self, bank: u16) {
+        //println!("Swapping bank to {:X}", bank);
         self.rom_bank_offset = (bank as usize) * 0x4000;
 
         if self.rom_bank_cache.get(&self.rom_bank_offset).is_none() {
@@ -161,17 +163,13 @@ impl Cartridge {
 
     #[inline]
     fn swap_ram_bank(&mut self, bank: u8) {
-        self.ram.set_offset((bank as usize) * 0x2000);
+        self.ram.set_bank(bank);
     }
 
     #[inline]
     fn read_ram(&self, loc: u16) -> u8 {
         if self.ram_enable {
-            match self.mem_bank {
-                MBC::_3(ref mb) => if mb.ram_select {self.ram.read(loc)}
-                                   else {mb.get_rtc_reg()},
-                _ => self.ram.read(loc),
-            }
+            self.ram.read(loc)
         }
         else {
             0
@@ -182,9 +180,7 @@ impl Cartridge {
     fn write_ram(&mut self, loc: u16, val: u8) {
         if self.ram_enable {
             match self.mem_bank {
-                MBC::_2             => self.ram.write(loc, val & 0xF),
-                MBC::_3(ref mut mb) => if mb.ram_select {self.ram.write(loc, val)}
-                                       else {mb.set_rtc_reg(val)},
+                MBC::_2 => self.ram.write(loc, val & 0xF),
                 _ => self.ram.write(loc, val),
             }
         }
@@ -232,20 +228,14 @@ impl MemDevice for Cartridge {
                 },
                 MBC::_2 => match loc {
                     0x0000..=0x1FFF => {self.ram_enable = (loc & 0x100) == 0; Swap::None},
-                    0x2000..=0x3FFF => if (loc & 0x100) != 0 {
-                        Swap::ROM((val & 0xF) as u16)
-                    } else {
-                        Swap::None
-                    },
+                    0x2000..=0x3FFF if (loc & 0x100) != 0 => Swap::ROM((val & 0xF) as u16),
                     _ => Swap::None,
                 },
-                MBC::_3(ref mut mb) => match (loc, val) {
-                    (0x0000..=0x1FFF, _)            => {self.ram_enable = (val & 0xF) == 0xA; Swap::None},
-                    (0x2000..=0x3FFF, 0)            => Swap::ROM(1),
-                    (0x2000..=0x3FFF, _)            => Swap::ROM((val & 0x7F) as u16),
-                    (0x4000..=0x5FFF, 0..=7)        => Swap::RAM(val & 0x7),
-                    (0x4000..=0x5FFF, 8..=0xC)      => {mb.select_rtc(val); Swap::None},
-                    (0x6000..=0x7FFF, 1)            => {mb.latch_clock(); Swap::None},
+                MBC::_3 => match (loc, val) {
+                    (0x0000..=0x1FFF, _)    => {self.ram_enable = (val & 0xF) == 0xA; Swap::None},
+                    (0x2000..=0x3FFF, 0)    => Swap::ROM(1),
+                    (0x2000..=0x3FFF, _)    => Swap::ROM((val & 0x7F) as u16),
+                    (0x4000..=0x5FFF, _)    => Swap::RAM(val),
                     _ => Swap::None,
                 },
                 MBC::_5(ref mut rom) => match (loc, val) {
