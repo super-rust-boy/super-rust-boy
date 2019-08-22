@@ -270,7 +270,7 @@ impl Renderer {
 
         // Make image with current texture.
         // TODO: only re-create the image when the data has changed.
-        let (image, write_future) = video_mem.get_tile_atlas(self.queue.clone());
+        let (image, write_future) = video_mem.get_tile_atlas(&self.device, &self.queue);
         
         // Start building command buffer using pipeline and framebuffer, starting with the background vertices.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap()
@@ -611,7 +611,8 @@ impl Renderer {
         command_buffer
     }
 
-    /*fn draw_debug(
+    #[allow(dead_code)]
+    fn draw_debug(
         &mut self,
         video_mem: &mut super::mem::VideoMem,
         mut command_buffer: AutoCommandBufferBuilder,
@@ -670,5 +671,5 @@ impl Renderer {
         ).unwrap();
 
         command_buffer
-    }*/
+    }
 }

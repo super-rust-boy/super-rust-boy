@@ -28,6 +28,13 @@ enum MBC {
     _5(u16),
 }
 
+// Cartridge extra features
+enum CartFeatures {
+    None,
+    Battery,
+    Timer
+}
+
 pub struct Cartridge {
     rom_bank_0:         [u8; 0x4000],
     rom_bank_cache:     BTreeMap<usize, Vec<u8>>,
@@ -48,17 +55,17 @@ impl Cartridge {
         let mut buf = [0_u8; 0x4000];
         reader.read(&mut buf).map_err(|e| e.to_string())?;
 
-        let (bank_type, battery, timer) = match buf[0x147] {
-            0x1 | 0x2           => (MBC::_1(MBC1::new()), false, false),
-            0x3                 => (MBC::_1(MBC1::new()), true, false),
-            0x5                 => (MBC::_2, false, false),
-            0x6                 => (MBC::_2, true, false),
-            0xF | 0x10          => (MBC::_3, true, true),
-            0x11 | 0x12         => (MBC::_3, false, false),
-            0x13                => (MBC::_3, true, false),
-            0x19 | 0x1A | 0x1C | 0x1D => (MBC::_5(0), false, false),
-            0x1B | 0x1E         => (MBC::_5(0), true, false),
-            _                   => (MBC::_0, false, false)
+        let (bank_type, features) = match buf[0x147] {
+            0x1 | 0x2           => (MBC::_1(MBC1::new()), CartFeatures::None),
+            0x3                 => (MBC::_1(MBC1::new()), CartFeatures::Battery),
+            0x5                 => (MBC::_2,              CartFeatures::None),
+            0x6                 => (MBC::_2,              CartFeatures::Battery),
+            0xF | 0x10          => (MBC::_3,              CartFeatures::Timer),
+            0x11 | 0x12         => (MBC::_3,              CartFeatures::None),
+            0x13                => (MBC::_3,              CartFeatures::Battery),
+            0x19 | 0x1A | 0x1C | 0x1D => (MBC::_5(0),     CartFeatures::None),
+            0x1B | 0x1E         => (MBC::_5(0),           CartFeatures::Battery),
+            _                   => (MBC::_0,              CartFeatures::None)
         };
 
         let ram_size = match (&bank_type, buf[0x149]) {
@@ -71,12 +78,10 @@ impl Cartridge {
             _               => 0,
         };
 
-        let ram = if timer {
-            Box::new(ClockRAM::new(ram_size, save_file_name)?) as Box<dyn RAM>
-        } else if battery {
-            Box::new(BatteryRAM::new(ram_size, save_file_name)?) as Box<dyn RAM>
-        } else {
-            Box::new(BankedRAM::new(ram_size)) as Box<dyn RAM>
+        let ram: Box<dyn RAM> = match features {
+            CartFeatures::None      => Box::new(BankedRAM::new(ram_size)),
+            CartFeatures::Battery   => Box::new(BatteryRAM::new(ram_size, save_file_name)?),
+            CartFeatures::Timer     => Box::new(ClockRAM::new(ram_size, save_file_name)?)
         };
 
         let mut ret = Cartridge {

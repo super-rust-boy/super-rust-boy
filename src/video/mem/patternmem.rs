@@ -13,11 +13,10 @@
 
 
 use vulkano::{
-    command_buffer::{
-        AutoCommandBuffer,
-        CommandBufferExecFuture,
+    device::{
+        Device,
+        Queue
     },
-    device::Queue,
     image::{
         Dimensions,
         immutable::ImmutableImage
@@ -25,18 +24,22 @@ use vulkano::{
     format::{
         R8Uint
     },
-    sync::NowFuture
+    sync::{
+        now, GpuFuture
+    }
 };
 
 use std::sync::Arc;
 
 pub type TileImage = Arc<ImmutableImage<R8Uint>>;
-pub type TileFuture = CommandBufferExecFuture<NowFuture, AutoCommandBuffer>;
+pub type TileFuture = Box<dyn GpuFuture>;
 
 pub struct TileAtlas {
-    pub atlas: Vec<u8>,         // formatted atlas of tiles
+    atlas:  Vec<u8>,            // formatted atlas of tiles
     atlas_size: (usize, usize), // width/height of texture in tiles
-    tex_size: usize             // width/height of tile in texels
+    tex_size:   usize,          // width/height of tile in texels
+    
+    image:      Option<TileImage>
 }
 
 impl TileAtlas {
@@ -46,20 +49,71 @@ impl TileAtlas {
         TileAtlas {
             atlas:      vec![0; atlas_area],
             atlas_size: atlas_size,
-            tex_size:   tex_size
+            tex_size:   tex_size,
+
+            image:      None,
         }
     }
 
+    // Write a pixel to the atlas.
+    // The least significant bit.
+    #[inline]
+    pub fn set_pixel_lower_row(&mut self, loc: usize, row: u8) {
+        for i in 0..8 {
+            let bit = (row >> (7 - i)) & 1;
+            self.atlas[loc + i] = (self.atlas[loc + i] & 0b10) | bit;
+        }
+
+        self.image = None;
+    }
+
+    // The most significant bit.
+    #[inline]
+    pub fn set_pixel_upper_row(&mut self, loc: usize, row: u8) {
+        for i in 0..8 {
+            let bit = (row >> (7 - i)) & 1;
+            self.atlas[loc + i] = (self.atlas[loc + i] & 0b01) | (bit << 1);
+        }
+
+        self.image = None;
+    }
+
+    // Read a pixel row from the atlas.
+    pub fn get_pixel_lower_row(&self, loc: usize) -> u8 {
+        let mut ret = 0;
+        for i in 0..8 {
+            ret |= (self.atlas[loc + i] & 0b01) << (7 - i);
+        }
+        ret
+    }
+
+    pub fn get_pixel_upper_row(&self, loc: usize) -> u8 {
+        let mut ret = 0;
+        for i in 0..8 {
+            ret |= ((self.atlas[loc + i] & 0b10) >> 1) << (7 - i);
+        }
+        ret
+    }
+
     // Make an image from the atlas.
-    pub fn make_image(&self, queue: Arc<Queue>) -> (TileImage, TileFuture) {
-        let width = (self.atlas_size.0 * self.tex_size) as u32;
-        let height = (self.atlas_size.1 * self.tex_size) as u32;
-        ImmutableImage::from_iter(
-            self.atlas.clone().into_iter(),
-            Dimensions::Dim2d { width: width, height: height },
-            R8Uint,
-            queue
-        ).expect("Couldn't create image.")
+    pub fn get_image(&mut self, device: &Arc<Device>, queue: &Arc<Queue>) -> (TileImage, TileFuture) {
+        if let Some(image) = &self.image {
+            (image.clone(), Box::new(now(device.clone())))
+        } else {
+            let width = (self.atlas_size.0 * self.tex_size) as u32;
+            let height = (self.atlas_size.1 * self.tex_size) as u32;
+
+            let (image, future) = ImmutableImage::from_iter(
+                self.atlas.clone().into_iter(),
+                Dimensions::Dim2d { width: width, height: height },
+                R8Uint,
+                queue.clone()
+            ).expect("Couldn't create image.");
+
+            self.image = Some(image.clone());
+
+            (image, Box::new(future))
+        }
     }
 
     // Get the size of a tile in the atlas.

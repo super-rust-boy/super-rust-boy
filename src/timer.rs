@@ -52,10 +52,10 @@ impl Timer {
     }
 
     // Call this every cycle. Returns true if an interrupt is triggered (after 1 cycle delay).
-    pub fn update(&mut self) -> bool {
+    pub fn update(&mut self, cycles: u32) -> bool {
         let trigger = self.trigger;
 
-        self.divider = (self.divider as u32 + 4) as u16;    // TODO: check this is ok for CGB.
+        self.divider = (self.divider as u32 + cycles) as u16;    // TODO: check this is ok for CGB.
 
         if self.timer_enable {
             let inc = match self.clock_select {

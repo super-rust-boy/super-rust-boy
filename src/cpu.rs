@@ -160,7 +160,7 @@ impl CPU {
     #[inline]
     fn clock_inc(&mut self) {
         self.cycle_count += self.step_cycles;
-        self.mem.update_timer();
+        self.mem.clock(self.step_cycles);
     }
 
     // Check for interrupts. Return true if they are serviced.

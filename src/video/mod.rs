@@ -10,7 +10,7 @@ mod constants {
     pub const H_CYCLES: u32     = 456;              // Cycles per Line
     pub const MODE_1: u32       = 154 * H_CYCLES;   // Mode 1: V-Blank
     pub const MODE_2: u32       = 80;               // Mode 2: Reading OAM
-    pub const MODE_3: u32       = MODE_2 + 172;     // Mode 3: Reading OAM & VRAM
+    pub const MODE_3: u32       = MODE_2 + 168;     // Mode 3: Reading OAM & VRAM
     pub const FRAME_CYCLE: u32  = 144 * H_CYCLES;   // Time spent cycling through modes 2,3 and 0 before V-Blank
 }
 
@@ -178,7 +178,7 @@ impl VideoDevice {
     fn update_mode(&mut self, mode: Mode) -> InterruptFlags {
         use mem::LCDStatusFlags;
 
-        self.mem.lcd_status.write_mode(mode.clone());
+        self.mem.lcd_status.write_mode(mode);
         let stat_flags = self.mem.lcd_status.read_flags();
 
         // Trigger STAT interrupt

@@ -216,7 +216,7 @@ impl MemDevice for ClockRAM {
                     H => hours,
                     DL => days as u8,
                     DH => (days >> 8) as u8,
-                    _ => 0,
+                    _ => unreachable!()
                 }
             },
         }

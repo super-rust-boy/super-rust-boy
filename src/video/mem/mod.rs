@@ -269,8 +269,8 @@ impl VideoMem {
     }
 
     // Get tile atlas
-    pub fn get_tile_atlas(&mut self, queue: Arc<Queue>) -> (TileImage, TileFuture) {
-        self.tile_mem.make_image(queue)
+    pub fn get_tile_atlas(&mut self, device: &Arc<Device>, queue: &Arc<Queue>) -> (TileImage, TileFuture) {
+        self.tile_mem.get_image(device, queue)
     }
 
     // Get palettes
@@ -310,31 +310,53 @@ impl VideoMem {
     }
 }
 
+// Checks to see if mem can be accessed
+impl VideoMem {
+    #[inline]
+    fn can_access_vram(&self) -> bool {
+        !self.display_enabled() ||
+        self.lcd_status.read_mode() != super::Mode::_3
+    }
+
+    #[inline]
+    fn can_access_oam(&self) -> bool {
+        !self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) ||
+        !self.display_enabled() ||
+        (self.lcd_status.read_mode() == super::Mode::_0) ||
+        (self.lcd_status.read_mode() == super::Mode::_1)
+    }
+}
+
 impl MemDevice for VideoMem {
     fn read(&self, loc: u16) -> u8 {
         match loc {
             // Raw tile data
-            0x8000..=0x97FF => {
+            0x8000..=0x97FF if self.can_access_vram() => {
                 let base = (loc - 0x8000) as usize + (self.vram_bank as usize * 0x1800);
 
-                let mut ret = 0;
-
                 if base % 2 == 0 {  // Lower bit
-                    let base_pixel = base * 4;
-                    for i in 0..8 {
-                        ret |= (self.tile_mem.atlas[base_pixel + i] & 0b01) << (7 - i);
-                    }
-                } else {    // Upper bit
-                    let base_pixel = (base - 1) * 4;
-                    for i in 0..8 {
-                        ret |= ((self.tile_mem.atlas[base_pixel + i] & 0b10) >> 1) << (7 - i);
-                    }
-                }
+                    let tile_x = (base % 0x100) / 0x10;
+                    let tile_y = base / 0x100;
 
-                ret
+                    let pixel_row_num = (base / 2) % 8;
+
+                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
+
+                    self.tile_mem.get_pixel_lower_row(base_pixel * 8)
+                } else {    // Upper bit
+                    let base = base - 1;
+                    let tile_x = (base % 0x100) / 0x10;
+                    let tile_y = base / 0x100;
+
+                    let pixel_row_num = (base / 2) % 8;
+
+                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
+
+                    self.tile_mem.get_pixel_upper_row(base_pixel * 8)
+                }
             },
             // Background Map A
-            0x9800..=0x9BFF => {
+            0x9800..=0x9BFF if self.can_access_vram() => {
                 let base = (loc - 0x9800) as usize;
                 let x = base % 0x20;
                 let y = base / 0x20;
@@ -346,7 +368,7 @@ impl MemDevice for VideoMem {
                 }
             },
             // Background Map B
-            0x9C00..=0x9FFF => {
+            0x9C00..=0x9FFF if self.can_access_vram() => {
                 let base = (loc - 0x9C00) as usize;
                 let x = base % 0x20;
                 let y = base / 0x20;
@@ -358,7 +380,7 @@ impl MemDevice for VideoMem {
                 }
             },
             // Sprite data
-            0xFE00..=0xFE9F => self.object_mem.read(loc - 0xFE00),
+            0xFE00..=0xFE9F if self.can_access_oam() => self.object_mem.read(loc - 0xFE00),
             // Registers
             0xFF40 => self.lcd_control.bits(),
             0xFF41 => self.lcd_status.read(),
@@ -377,14 +399,14 @@ impl MemDevice for VideoMem {
             0xFF69 => self.colour_palettes.read_bg(),
             0xFF6A => self.colour_palettes.read_obj_index(),
             0xFF6B => self.colour_palettes.read_obj(),
-            _ => 0
+            _ => 0xFF
         }
     }
 
     fn write(&mut self, loc: u16, val: u8) {
         match loc {
             // Raw tile data
-            0x8000..=0x97FF => {
+            0x8000..=0x97FF if self.can_access_vram() => {
                 let base = (loc - 0x8000) as usize + (self.vram_bank as usize * 0x1800);
 
                 if base % 2 == 0 {  // Lower bit
@@ -395,15 +417,11 @@ impl MemDevice for VideoMem {
                     let pixel_row_num = (base / 2) % 8;
 
                     // tile_x * 8 pixels across per tile
-                    // tile_y * 64 pixels per tile * 16 tiles per row
                     // pixel_row_num * 8 pixels across per tile * 16 tiles per row
-                    let base_pixel = (tile_x * 8) + (tile_y * 64 * 16) + (pixel_row_num * 8 * 16);
+                    // tile_y * 8x8 pixels per tile * 16 tiles per row
+                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
 
-                    for i in 0..8 {
-                        let lower_bit = (val >> (7 - i)) & 1;
-                        let upper_bit = self.tile_mem.atlas[base_pixel + i] & 0b10;
-                        self.tile_mem.atlas[base_pixel + i] = upper_bit | lower_bit;
-                    }
+                    self.tile_mem.set_pixel_lower_row(base_pixel * 8, val);
                 } else {    // Upper bit
                     let base = base - 1;
                     let tile_x = (base % 0x100) / 0x10;
@@ -411,17 +429,13 @@ impl MemDevice for VideoMem {
 
                     let pixel_row_num = (base / 2) % 8;
 
-                    let base_pixel = (tile_x * 8) + (tile_y * 64 * 16) + (pixel_row_num * 8 * 16);
+                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
 
-                    for i in 0..8 {
-                        let upper_bit = (val >> (7 - i)) & 1;
-                        let lower_bit = self.tile_mem.atlas[base_pixel + i] & 0b01;
-                        self.tile_mem.atlas[base_pixel + i] = (upper_bit << 1) | lower_bit;
-                    }
+                    self.tile_mem.set_pixel_upper_row(base_pixel * 8, val);
                 }
             },
             // Background Map A
-            0x9800..=0x9BFF => {
+            0x9800..=0x9BFF if self.can_access_vram() => {
                 let base = (loc - 0x9800) as usize;
                 let x = base % 0x20;
                 let y = base / 0x20;
@@ -433,7 +447,7 @@ impl MemDevice for VideoMem {
                 }
             },
             // Background Map B
-            0x9C00..=0x9FFF => {
+            0x9C00..=0x9FFF if self.can_access_vram() => {
                 let base = (loc - 0x9C00) as usize;
                 let x = base % 0x20;
                 let y = base / 0x20;
@@ -445,7 +459,7 @@ impl MemDevice for VideoMem {
                 }
             },
             // Sprite data
-            0xFE00..=0xFE9F => self.object_mem.write(loc - 0xFE00, val),
+            0xFE00..=0xFE9F if self.can_access_oam() => self.object_mem.write(loc - 0xFE00, val),
             0xFF40 => self.lcd_control = LCDControl::from_bits_truncate(val),
             0xFF41 => self.lcd_status.write(val),
             0xFF42 => self.scroll_y = val,
@@ -463,7 +477,7 @@ impl MemDevice for VideoMem {
             0xFF69 => self.colour_palettes.write_bg(val),
             0xFF6A => self.colour_palettes.write_obj_index(val),
             0xFF6B => self.colour_palettes.write_obj(val),
-            _ => {}
+            _ => {}//unreachable!()
         }
     }
 }

@@ -24,6 +24,10 @@ pub struct MemBus {
     audio_device:       AudioDevice,
     timer:              Timer,
 
+    // DMA
+    dma_addr:           u16,
+    dma_active:         bool,
+
     // CGB
     cgb_ram_offset:     u16,
     cgb_dma_src:        u16,
@@ -53,16 +57,23 @@ impl MemBus {
 
         MemBus {
             cart:               rom,
+
             ram:                WriteableMem::new(0x8000),
             high_ram:           WriteableMem::new(0x7F),
+
             interrupt_flag:     InterruptFlags::default(),
             interrupt_enable:   InterruptFlags::default(),
+
             video_device:       VideoDevice::new(palette, cgb_mode),
             audio_device:       audio_device,
             timer:              Timer::new(),
+
+            dma_addr:           0,
+            dma_active:         false,
+
             cgb_ram_offset:     0x1000,
-            cgb_dma_src:        0,
-            cgb_dma_dst:        0,
+            cgb_dma_src:        0xFFFF,
+            cgb_dma_dst:        0xFFFF,
             cgb_mode:           cgb_mode
         }
     }
@@ -77,10 +88,13 @@ impl MemBus {
         self.audio_device.send_update(clock_count);
     }
 
-    // Increment timer.
-    pub fn update_timer(&mut self) {
-        if self.timer.update() {
+    // Clock memory: update timer and DMA transfers.
+    pub fn clock(&mut self, cycles: u32) {
+        if self.timer.update(cycles) {
             self.interrupt_flag.insert(InterruptFlags::TIMER);
+        }
+        if self.dma_active {
+            self.dma_tick();
         }
     }
 
@@ -122,13 +136,19 @@ impl MemBus {
 // Internal functions
 impl MemBus {
     // Direct memory access for object memory.
-    fn dma(&mut self, val: u8) {
-        let hi_byte = (val as u16) << 8;
-        for lo_byte in 0_u16..=0x9F_u16 {
-            let src_addr = hi_byte | lo_byte;
-            let dest_addr = 0xFE00 | lo_byte;
-            let byte = self.read(src_addr);
-            self.video_device.write(dest_addr, byte);
+    fn start_dma(&mut self, val: u8) {
+        self.dma_addr = (val as u16) << 8;
+        self.dma_active = true;
+    }
+
+    fn dma_tick(&mut self) {
+        let dest_addr = 0xFE00 | (self.dma_addr & 0xFF);
+        let byte = self.read(self.dma_addr);
+        self.video_device.write(dest_addr, byte);
+        self.dma_addr += 1;
+
+        if (self.dma_addr & 0xFF) >= 0xA0 {
+            self.dma_active = false;
         }
     }
 
@@ -174,16 +194,16 @@ impl MemDevice for MemBus {
             0xFF03..=0xFF07 => self.timer.read(loc),
             0xFF0F          => self.interrupt_flag.bits(),
             0xFF10..=0xFF3F => self.audio_device.read(loc),
-            0xFF40..=0xFF4F => self.video_device.read(loc),
-            0xFF51          => ((self.cgb_dma_src & 0xFF00) >> 8) as u8,
-            0xFF52          => self.cgb_dma_src as u8,
-            0xFF53          => ((self.cgb_dma_dst & 0xFF00) >> 8) as u8,
-            0xFF54          => self.cgb_dma_dst as u8,
+            0xFF40..=0xFF45 => self.video_device.read(loc),
+            0xFF46          => (self.dma_addr >> 8) as u8,
+            0xFF47..=0xFF4B => self.video_device.read(loc),
+            0xFF4F          => self.video_device.read(loc),
+            0xFF55          => 0x00,
             0xFF68..=0xFF6B => self.video_device.read(loc),
             0xFF70          => self.get_cgb_ram_bank(),
             0xFF80..=0xFFFE => self.high_ram.read(loc - 0xFF80),
             0xFFFF          => self.interrupt_enable.bits(),
-            _ => self.ram.read(0),
+            _ => 0xFF,
         }
     }
 
@@ -202,7 +222,7 @@ impl MemDevice for MemBus {
             0xFF0F          => self.interrupt_flag = InterruptFlags::from_bits_truncate(val),
             0xFF10..=0xFF3F => self.audio_device.write(loc, val),
             0xFF40..=0xFF45 => self.video_device.write(loc, val), 
-            0xFF46          => self.dma(val),
+            0xFF46          => self.start_dma(val),
             0xFF47..=0xFF4F => self.video_device.write(loc, val),
             0xFF51          => self.cgb_dma_src = (self.cgb_dma_src & 0xFF) | ((val as u16) << 8),
             0xFF52          => self.cgb_dma_src = (self.cgb_dma_src & 0xFF00) | (val as u16),
