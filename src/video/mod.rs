@@ -90,6 +90,11 @@ impl VideoDevice {
         self.renderer.render(&mut self.mem, self.cgb_mode);
     }
 
+    // Query to see if the video device is in H-Blank.
+    pub fn is_in_hblank(&self) -> bool {
+        self.mem.lcd_status.read_mode() == Mode::_0
+    }
+
     // Read inputs and store, return true if joypad interrupt is triggered.
     pub fn read_inputs(&mut self) -> bool {
         let joypad = &mut self.joypad;

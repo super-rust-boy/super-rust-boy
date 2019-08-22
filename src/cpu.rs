@@ -47,7 +47,8 @@ pub struct CPU {
     // Internals
     cycle_count: u32,
     step_cycles: u32,
-    double_speed_latch: bool
+    double_speed_latch: bool,
+    cgb_dma_active: bool
 }
 
 
@@ -127,7 +128,8 @@ impl CPU {
             mem:    mem,
             cycle_count: 0,
             step_cycles: GB_STEP,
-            double_speed_latch: false
+            double_speed_latch: false,
+            cgb_dma_active: false
         }
     }
 
@@ -145,7 +147,7 @@ impl CPU {
         }
 
         // Keep cycling
-        if !self.cont {
+        if !self.cont || self.cgb_dma_active {
             self.clock_inc();
         } else {
             self.exec_instruction();
@@ -160,7 +162,7 @@ impl CPU {
     #[inline]
     fn clock_inc(&mut self) {
         self.cycle_count += self.step_cycles;
-        self.mem.clock(self.step_cycles);
+        self.cgb_dma_active = self.mem.clock(self.step_cycles);
     }
 
     // Check for interrupts. Return true if they are serviced.

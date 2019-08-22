@@ -32,6 +32,8 @@ pub struct MemBus {
     cgb_ram_offset:     u16,
     cgb_dma_src:        u16,
     cgb_dma_dst:        u16,
+    cgb_dma_len:        u16,
+    cgb_dma_hblank_len: Option<u16>,
 
     cgb_mode:           bool
 }
@@ -72,8 +74,10 @@ impl MemBus {
             dma_active:         false,
 
             cgb_ram_offset:     0x1000,
-            cgb_dma_src:        0xFFFF,
-            cgb_dma_dst:        0xFFFF,
+            cgb_dma_src:        0x0FF0,
+            cgb_dma_dst:        0x8FF0,
+            cgb_dma_len:        0,
+            cgb_dma_hblank_len: None,
             cgb_mode:           cgb_mode
         }
     }
@@ -89,12 +93,24 @@ impl MemBus {
     }
 
     // Clock memory: update timer and DMA transfers.
-    pub fn clock(&mut self, cycles: u32) {
+    // Return true if CGB DMA is active.
+    pub fn clock(&mut self, cycles: u32) -> bool {
         if self.timer.update(cycles) {
             self.interrupt_flag.insert(InterruptFlags::TIMER);
         }
         if self.dma_active {
             self.dma_tick();
+        }
+        if self.cgb_dma_len > 0 {
+            self.cgb_dma_tick();
+            if cycles == 4 && self.cgb_dma_len > 0 {    // In single speed mode, transfer 2 bytes per instruction.
+                self.cgb_dma_tick();
+            }
+
+            (self.cgb_dma_hblank_len.is_none() && (self.cgb_dma_len != 0)) ||
+            ((self.cgb_dma_hblank_len.unwrap_or(0) > 0) && self.video_device.is_in_hblank())
+        } else {
+            false
         }
     }
 
@@ -153,15 +169,62 @@ impl MemBus {
     }
 
     // Direct memory access for CGB.
-    fn cgb_dma(&mut self, val: u8) {
-        let src_start = self.cgb_dma_src & 0xFFF0;
-        let dst_start = (self.cgb_dma_dst & 0x1FF0) | 0x8000;
-        let len = ((val & 0x7F) as u16 + 1) * 0x10;
-
-        for i in 0..len {
-            let byte = self.read(src_start + i);
-            self.write(dst_start + i, byte);
+    fn start_cgb_dma(&mut self, val: u8) {
+        if self.cgb_dma_hblank_len.is_some() && ((val & 0x80) == 0) {
+            self.cgb_dma_len = 0; // This shouldn't actually set this to zero.
+            self.cgb_dma_hblank_len = None;
+        } else {
+            self.cgb_dma_len = ((val & 0x7F) as u16 + 1) * 0x10;
+            self.cgb_dma_hblank_len = if (val & 0x80) == 0 {None} else {Some(0x10)};
         }
+    }
+
+    // Get CGB DMA remaining length.
+    fn get_cgb_len(&self) -> u8 {
+        if self.cgb_dma_len == 0 {
+            0xFF
+        } else {
+            ((self.cgb_dma_len - 1) / 0x10) as u8
+        }
+    }
+
+    fn cgb_dma_tick(&mut self) {
+        // Transfer 16 bytes each H-Blank.
+        if let Some(l) = self.cgb_dma_hblank_len {
+            if (l > 0) && self.video_device.is_in_hblank() {
+                self.cgb_dma_transfer();
+                self.cgb_dma_hblank_len = Some(l - 1);
+            } else if (l == 0) && !self.video_device.is_in_hblank() {
+                self.cgb_dma_hblank_len = Some(0x10);
+            }
+        } else {
+            self.cgb_dma_transfer();
+        }
+    }
+
+    // Transfer of one byte.
+    fn cgb_dma_transfer(&mut self) {
+        let byte = self.read(self.cgb_dma_src);
+        self.write(self.cgb_dma_dst, byte);
+
+        self.cgb_dma_src += 1;
+        self.cgb_dma_dst += 1;
+        self.cgb_dma_len -= 1;
+    }
+
+    // Setting CGB DMA source and destination addresses.
+    fn set_cgb_dma_upper_src(&mut self, val: u8) {
+        self.cgb_dma_src = (self.cgb_dma_src & 0xFF) | ((val as u16) << 8);
+    }
+    fn set_cgb_dma_lower_src(&mut self, val: u8) {
+        self.cgb_dma_src = (self.cgb_dma_src & 0xFF00) | ((val as u16) & 0xF0);
+    }
+
+    fn set_cgb_dma_upper_dst(&mut self, val: u8) {
+        self.cgb_dma_dst = (self.cgb_dma_dst & 0xFF) | (((val as u16) & 0x1F) << 8) | 0x8000;
+    }
+    fn set_cgb_dma_lower_dst(&mut self, val: u8) {
+        self.cgb_dma_dst = (self.cgb_dma_dst & 0xFF00) | ((val as u16) & 0xF0);
     }
 
     // Game Boy Color RAM bank.
@@ -198,7 +261,7 @@ impl MemDevice for MemBus {
             0xFF46          => (self.dma_addr >> 8) as u8,
             0xFF47..=0xFF4B => self.video_device.read(loc),
             0xFF4F          => self.video_device.read(loc),
-            0xFF55          => 0x00,
+            0xFF55          => self.get_cgb_len(),
             0xFF68..=0xFF6B => self.video_device.read(loc),
             0xFF70          => self.get_cgb_ram_bank(),
             0xFF80..=0xFFFE => self.high_ram.read(loc - 0xFF80),
@@ -224,11 +287,11 @@ impl MemDevice for MemBus {
             0xFF40..=0xFF45 => self.video_device.write(loc, val), 
             0xFF46          => self.start_dma(val),
             0xFF47..=0xFF4F => self.video_device.write(loc, val),
-            0xFF51          => self.cgb_dma_src = (self.cgb_dma_src & 0xFF) | ((val as u16) << 8),
-            0xFF52          => self.cgb_dma_src = (self.cgb_dma_src & 0xFF00) | (val as u16),
-            0xFF53          => self.cgb_dma_dst = (self.cgb_dma_dst & 0xFF) | ((val as u16) << 8),
-            0xFF54          => self.cgb_dma_dst = (self.cgb_dma_dst & 0xFF00) | (val as u16),
-            0xFF55          => self.cgb_dma(val),
+            0xFF51          => self.set_cgb_dma_upper_src(val),
+            0xFF52          => self.set_cgb_dma_lower_src(val),
+            0xFF53          => self.set_cgb_dma_upper_dst(val),
+            0xFF54          => self.set_cgb_dma_lower_dst(val),
+            0xFF55          => self.start_cgb_dma(val),
             0xFF68..=0xFF6B => self.video_device.write(loc, val),
             0xFF70          => self.set_cgb_ram_bank(val),
             0xFF80..=0xFFFE => self.high_ram.write(loc - 0xFF80, val),
