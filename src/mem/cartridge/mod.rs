@@ -159,7 +159,7 @@ impl Cartridge {
 
     #[inline]
     fn swap_ram_bank(&mut self, bank: u8) {
-        self.ram.set_bank(bank);
+        self.ram.set_bank(bank, 0);
     }
 
     #[inline]
@@ -227,8 +227,8 @@ impl MemDevice for Cartridge {
                     (0x0000..=0x1FFF, _)    => self.ram_enable = (val & 0xF) == 0xA,
                     (0x2000..=0x3FFF, 0)    => self.swap_rom_bank(1),
                     (0x2000..=0x3FFF, _)    => self.swap_rom_bank((val & 0x7F) as u16),
-                    (0x4000..=0x5FFF, _)    => self.swap_ram_bank(val),
-                    _ => {},
+                    (0x4000..=0x7FFF, _)    => self.ram.set_bank(val, loc),
+                    _ => unreachable!(),
                 },
                 MBC::_5(ref mut rom) => match (loc, val) {
                     (0x0000..=0x1FFF, _)    => self.ram_enable = (val & 0xF) == 0xA,
@@ -240,7 +240,7 @@ impl MemDevice for Cartridge {
                     },
                     (0x3000..=0x3FFF, _)    => {
                         *rom &= 0xFF;
-                        *rom |= 0x100;
+                        *rom |= ((val & 1) as u16) << 8;
                         let rom_bank = *rom;
                         self.swap_rom_bank(rom_bank);
                     },

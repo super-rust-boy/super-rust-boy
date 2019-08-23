@@ -6,7 +6,7 @@ use crate::interrupt::*;
 
 bitflags! {
     #[derive(Default)]
-    pub struct CPUFlags: u8 {
+    struct CPUFlags: u8 {
         const ZERO  = 0b10000000;
         const NEG   = 0b01000000;
         const HC    = 0b00100000;

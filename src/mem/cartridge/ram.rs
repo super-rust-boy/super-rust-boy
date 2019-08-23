@@ -21,7 +21,7 @@ use std::{
 use crate::mem::MemDevice;
 
 pub trait RAM: MemDevice {
-    fn set_bank(&mut self, bank: u8);
+    fn set_bank(&mut self, bank: u8, loc: u16);
     fn flush(&mut self) {}
 }
 
@@ -51,7 +51,7 @@ impl MemDevice for BankedRAM {
 }
 
 impl RAM for BankedRAM {
-    fn set_bank(&mut self, bank: u8) {
+    fn set_bank(&mut self, bank: u8, _: u16) {
         self.offset = (bank as usize) * 0x2000;
     }
 }
@@ -100,7 +100,7 @@ impl MemDevice for BatteryRAM {
 }
 
 impl RAM for BatteryRAM {
-    fn set_bank(&mut self, bank: u8) {
+    fn set_bank(&mut self, bank: u8, _: u16) {
         self.offset = (bank as usize) * 0x2000;
     }
 
@@ -144,6 +144,7 @@ pub struct ClockRAM {
     hours:      u8,
     days:       u16,
     time:       DateTime<Utc>,
+    latch:      bool,
 }
 
 impl ClockRAM {
@@ -191,7 +192,8 @@ impl ClockRAM {
             minutes:    minutes,
             hours:      hours,
             days:       days,
-            time:       now
+            time:       now,
+            latch:      false
         })
     }
 }
@@ -207,8 +209,12 @@ impl MemDevice for ClockRAM {
                 let mut hours = self.hours;
                 let mut days = self.days;
 
-                let now = Utc::now();
-                update_times(&now.signed_duration_since(self.time), &mut seconds, &mut minutes, &mut hours, &mut days);
+                if !self.latch{
+                    let now = Utc::now();
+                    update_times(&now.signed_duration_since(self.time), &mut seconds, &mut minutes, &mut hours, &mut days);
+                } else {
+                    days |= 0x4000;
+                }
 
                 match self.ram_map {
                     S => seconds,
@@ -249,16 +255,30 @@ impl MemDevice for ClockRAM {
 }
 
 impl RAM for ClockRAM {
-    fn set_bank(&mut self, bank: u8) {
+    fn set_bank(&mut self, bank: u8, loc: u16) {
         use RamMap::*;
-        self.ram_map = match bank & 0xF {
-            x @ 0..=3 => { self.offset = (x as usize) * 0x2000; RAM },
-            0x8 => S,
-            0x9 => M,
-            0xA => H,
-            0xB => DL,
-            _   => DH
-        };
+
+        if loc < 0x6000 {
+            self.ram_map = match bank & 0xF {
+                x @ 0..=3 => { self.offset = (x as usize) * 0x2000; RAM },
+                0x8 => S,
+                0x9 => M,
+                0xA => H,
+                0xB => DL,
+                _   => DH
+            };
+        } else {
+            if (bank == 1) && !self.latch {
+                self.latch = true;
+
+                let now = Utc::now();
+                update_times(&now.signed_duration_since(self.time), &mut self.seconds, &mut self.minutes, &mut self.hours, &mut self.days);
+
+                self.time = now;
+            } else if (bank == 1) && self.latch {
+                self.latch = false;
+            }
+        }
     }
 
     fn flush(&mut self) {
