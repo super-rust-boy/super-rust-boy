@@ -123,6 +123,7 @@ impl RAM for BatteryRAM {
 // Battery backed RAM with real-time clock
 
 // What maps to the area of cart RAM.
+#[derive(Debug)]
 enum RamMap {
     RAM,    // RAM
     S,      // Seconds
@@ -139,12 +140,13 @@ pub struct ClockRAM {
     dirty:      bool,
     ram_map:    RamMap,
 
-    seconds:    u8,
-    minutes:    u8,
-    hours:      u8,
-    days:       u16,
-    time:       DateTime<Utc>,
-    latch:      bool,
+    seconds:        u8,
+    minutes:        u8,
+    hours:          u8,
+    days:           u16,
+    microseconds:   usize,
+    time:           DateTime<Utc>,
+    latch:          bool,
 }
 
 impl ClockRAM {
@@ -154,6 +156,7 @@ impl ClockRAM {
         let timer_size = 5 + now.to_rfc3339().len();
         let mut timer = vec![0; timer_size];
 
+        let mut microseconds = 0;
         let mut seconds = 0;
         let mut minutes = 0;
         let mut hours = 0;
@@ -175,7 +178,7 @@ impl ClockRAM {
             let old_time = chrono::DateTime::parse_from_rfc3339(&time_string).expect(&format!("Couldn't parse time: {}", time_string));
             let diff = now.signed_duration_since(old_time);
 
-            update_times(&diff, &mut seconds, &mut minutes, &mut hours, &mut days);
+            update_times(&diff, &mut microseconds, &mut seconds, &mut minutes, &mut hours, &mut days);
         } else {
             let file = File::create(save_file_name).map_err(|e| e.to_string())?;
             file.set_len((ram_size + timer_size) as u64).map_err(|e| e.to_string())?;
@@ -188,12 +191,13 @@ impl ClockRAM {
             dirty:      false,
             ram_map:    RamMap::RAM,
 
-            seconds:    seconds,
-            minutes:    minutes,
-            hours:      hours,
-            days:       days,
-            time:       now,
-            latch:      false
+            seconds:        seconds,
+            minutes:        minutes,
+            hours:          hours,
+            days:           days,
+            microseconds:   microseconds,
+            time:           now,
+            latch:          false
         })
     }
 }
@@ -204,16 +208,15 @@ impl MemDevice for ClockRAM {
         match self.ram_map {
             RAM => self.ram[self.offset + (loc as usize)],
             _ => {
+                let mut microseconds = self.microseconds;
                 let mut seconds = self.seconds;
                 let mut minutes = self.minutes;
                 let mut hours = self.hours;
                 let mut days = self.days;
 
-                if !self.latch{
+                if !self.latch {
                     let now = Utc::now();
-                    update_times(&now.signed_duration_since(self.time), &mut seconds, &mut minutes, &mut hours, &mut days);
-                } else {
-                    days |= 0x4000;
+                    update_times(&now.signed_duration_since(self.time), &mut microseconds, &mut seconds, &mut minutes, &mut hours, &mut days);
                 }
 
                 match self.ram_map {
@@ -245,8 +248,11 @@ impl MemDevice for ClockRAM {
                 self.days |= val as u16;
             },
             DH => {
+                if (val & 0x40) != 0 {
+                    println!("Stop the clocks!");
+                }
                 self.days &= 0xFF;
-                self.days |= (val as u16) << 8;
+                self.days |= ((val & 1) as u16) << 8;
             },
         }
 
@@ -267,17 +273,13 @@ impl RAM for ClockRAM {
                 0xB => DL,
                 _   => DH
             };
-        } else {
-            if (bank == 1) && !self.latch {
-                self.latch = true;
+        } else if bank == 1 { // Latch the clock.
+            self.latch = !self.latch;
 
-                let now = Utc::now();
-                update_times(&now.signed_duration_since(self.time), &mut self.seconds, &mut self.minutes, &mut self.hours, &mut self.days);
+            let now = Utc::now();
+            update_times(&now.signed_duration_since(self.time), &mut self.microseconds, &mut self.seconds, &mut self.minutes, &mut self.hours, &mut self.days);
 
-                self.time = now;
-            } else if (bank == 1) && self.latch {
-                self.latch = false;
-            }
+            self.time = now;
         }
     }
 
@@ -292,7 +294,7 @@ impl RAM for ClockRAM {
 
             let old_time = self.time;
             self.time = Utc::now();
-            update_times(&self.time.signed_duration_since(old_time), &mut self.seconds, &mut self.minutes, &mut self.hours, &mut self.days);
+            update_times(&self.time.signed_duration_since(old_time), &mut self.microseconds, &mut self.seconds, &mut self.minutes, &mut self.hours, &mut self.days);
 
             let time = [
                 self.seconds, self.minutes, self.hours,
@@ -310,12 +312,14 @@ impl RAM for ClockRAM {
 }
 
 // Read in a duration and update time registers.
-fn update_times(time_diff: &Duration, seconds: &mut u8, minutes: &mut u8, hours: &mut u8, days: &mut u16) {
-    let new_seconds = (*seconds as i64) + time_diff.num_seconds();
+fn update_times(time_diff: &Duration, microseconds: &mut usize, seconds: &mut u8, minutes: &mut u8, hours: &mut u8, days: &mut u16) {
+    let new_microseconds = (*microseconds as i64) + time_diff.num_microseconds().unwrap_or(0);
+    let new_seconds = (*seconds as i64) + (new_microseconds / 1_000_000);
     let new_minutes = (*minutes as i64) + (new_seconds / 60);
     let new_hours = (*hours as i64) + (new_minutes / 60);
     let new_days = ((*days & 0x1FF) as i64) + (new_hours / 24);
 
+    *microseconds = (new_microseconds % 1_000_000) as usize;
     *seconds = (new_seconds % 60) as u8;
     *minutes = (new_minutes % 60) as u8;
     *hours = (new_hours % 24) as u8;
