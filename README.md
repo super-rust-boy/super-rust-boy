@@ -12,9 +12,9 @@ By default the emulator will try and run the game in colour if it is available. 
 
 ### TODO video:
 * Better error checking.
-* Minor issue of sprites appearing above window.
 * Separate video thread to enable "turbo" mode.
 * Some bugs in Color mode when drawing sprites below the background.
+* Draw individual lines.
 
 ### TODO audio:
 * Noise wave high freq. higher precision.

@@ -139,7 +139,7 @@ impl ObjectMem {
         if let Some(buf) = &self.current_lo_buffer {
             Some(buf.clone())
         } else {
-            let objects = self.objects.iter()
+            let objects = self.objects.iter().rev()
                 .map(|o| o.make_vertices(large, true, cgb_mode))
                 .fold(Vec::new(), |mut v, mut o| {v.append(&mut o); v});
 
@@ -166,7 +166,7 @@ impl ObjectMem {
         if let Some(buf) = &self.current_hi_buffer {
             Some(buf.clone())
         } else {
-            let objects = self.objects.iter()
+            let objects = self.objects.iter().rev()
                 .map(|o| o.make_vertices(large, false, cgb_mode))
                 .fold(Vec::new(), |mut v, mut o| {v.append(&mut o); v});
 

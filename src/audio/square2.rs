@@ -7,6 +7,8 @@ pub struct Square2Regs {
     vol_envelope_reg:   u8,
     freq_lo_reg:        u8,
     freq_hi_reg:        u8,
+
+    trigger:            bool,
 }
 
 impl Square2Regs {
@@ -16,6 +18,8 @@ impl Square2Regs {
             vol_envelope_reg:   0,
             freq_lo_reg:        0,
             freq_hi_reg:        0,
+
+            trigger:            false,
         }
     }
 }
@@ -31,7 +35,7 @@ impl AudioChannelRegs for Square2Regs {
         self.freq_lo_reg
     }
     fn read_nrx4(&self) -> u8 {
-        self.freq_hi_reg
+        self.freq_hi_reg & 0x7F
     }
 
     fn write_nrx1(&mut self, val: u8) {
@@ -44,12 +48,13 @@ impl AudioChannelRegs for Square2Regs {
         self.freq_lo_reg = val;
     }
     fn write_nrx4(&mut self, val: u8) {
+        self.trigger = true;
         self.freq_hi_reg = val;
     }
 
     fn triggered(&mut self) -> bool {
-        if (self.freq_hi_reg & 0x80) != 0 {
-            self.freq_hi_reg &= 0x7F;
+        if self.trigger {
+            self.trigger = false;
             return true;
         } else {
             return false;
@@ -58,7 +63,9 @@ impl AudioChannelRegs for Square2Regs {
 }
 
 pub struct Square2Gen {
-    sample_rate: usize,
+    enable:             bool,
+
+    sample_rate:        usize,
 
     phase_int_count:    usize,
     phase_frac_count:   f32,
@@ -78,7 +85,8 @@ pub struct Square2Gen {
 impl Square2Gen {
     pub fn new(sample_rate: usize) -> Self {
         Square2Gen {
-            sample_rate:    sample_rate,
+            enable:             false,
+            sample_rate:        sample_rate,
 
             phase_int_count:    0,
             phase_frac_count:   0.0,
@@ -99,6 +107,8 @@ impl Square2Gen {
 
 impl AudioChannelGen<Square2Regs> for Square2Gen {
     fn init_signal(&mut self, regs: &Square2Regs) {
+        self.enable = regs.freq_hi_reg & 0x80 != 0;
+
         let freq_n = (((regs.freq_hi_reg & 0x7) as usize) << 8) | (regs.freq_lo_reg as usize);
         let frequency = FREQ_MAX / (FREQ_MOD - freq_n) as f32;
 
@@ -139,50 +149,55 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
         let skip = (buffer.len() as f32 * start) as usize;
 
         for i in buffer.iter_mut().take(take).skip(skip) {
-            *i = if (self.length.unwrap_or(1) > 0) && (self.phase_int_count < self.duty_len) {
-                self.amplitude  // HI
-            } else if self.length == Some(0) {
-                0               // OFF
-            } else {
-                -self.amplitude // LO
-            };
-            self.phase_int_count = (self.phase_int_count + 1).checked_rem(self.phase_int_len).unwrap_or(0);
-
-            if self.phase_int_count == 0 {
-                if !self.extra_sample {
-                    self.phase_frac_count += self.phase_frac_len;
-                    if self.phase_frac_count >= 1.0 {
-                        self.phase_frac_count -= 1.0;
-                        self.phase_int_count = self.phase_int_len.checked_sub(1).unwrap_or(0);
-                        self.extra_sample = true;
-                    }
+            if self.enable {
+                *i = if (self.length.unwrap_or(1) > 0) && (self.phase_int_count < self.duty_len) {
+                    self.amplitude  // HI
+                } else if self.length == Some(0) {
+                    0               // OFF
                 } else {
-                    self.extra_sample = false;
-                }
-            }
+                    -self.amplitude // LO
+                };
+                self.phase_int_count = (self.phase_int_count + 1).checked_rem(self.phase_int_len).unwrap_or(0);
 
-            match self.length {
-                Some(n) if n > 0 => self.length = Some(n - 1),
-                _ => {},
-            }
-
-            self.amp_counter += 1;
-            if self.amp_counter >= self.amp_sweep_step {
-                match self.amp_sweep_dir {
-                    Direction::Increase => {
-                        if self.amplitude < 15 {
-                            self.amplitude += 1;
+                if self.phase_int_count == 0 {
+                    if !self.extra_sample {
+                        self.phase_frac_count += self.phase_frac_len;
+                        if self.phase_frac_count >= 1.0 {
+                            self.phase_frac_count -= 1.0;
+                            self.phase_int_count = self.phase_int_len.checked_sub(1).unwrap_or(0);
+                            self.extra_sample = true;
                         }
-                    },
-                    Direction::Decrease => {
-                        if self.amplitude > 0 {
-                            self.amplitude -= 1;
-                        }
-                    },
-                    Direction::None => {},
+                    } else {
+                        self.extra_sample = false;
+                    }
                 }
-                self.amp_counter = 0;
+
+                match self.length {
+                    Some(n) if n > 0 => self.length = Some(n - 1),
+                    _ => {},
+                }
+
+                self.amp_counter += 1;
+                if self.amp_counter >= self.amp_sweep_step {
+                    match self.amp_sweep_dir {
+                        Direction::Increase => {
+                            if self.amplitude < 15 {
+                                self.amplitude += 1;
+                            }
+                        },
+                        Direction::Decrease => {
+                            if self.amplitude > 0 {
+                                self.amplitude -= 1;
+                            }
+                        },
+                        Direction::None => {},
+                    }
+                    self.amp_counter = 0;
+                }
+            } else {
+                *i = 0;
             }
         }
     }
+
 }

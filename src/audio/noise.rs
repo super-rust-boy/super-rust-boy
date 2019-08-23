@@ -20,6 +20,8 @@ pub struct NoiseRegs {
     vol_envelope_reg:   u8,
     poly_counter_reg:   u8,
     init_reg:           u8,
+
+    trigger:            bool,
 }
 
 impl NoiseRegs {
@@ -29,6 +31,8 @@ impl NoiseRegs {
             vol_envelope_reg:   0,
             poly_counter_reg:   0,
             init_reg:           0,
+
+            trigger:            false,
         }
     }
 }
@@ -44,7 +48,7 @@ impl AudioChannelRegs for NoiseRegs {
         self.poly_counter_reg
     }
     fn read_nrx4(&self) -> u8 {
-        self.init_reg
+        self.init_reg & 0x7F
     }
 
     fn write_nrx1(&mut self, val: u8) {
@@ -57,12 +61,13 @@ impl AudioChannelRegs for NoiseRegs {
         self.poly_counter_reg = val;
     }
     fn write_nrx4(&mut self, val: u8) {
+        self.trigger = true;
         self.init_reg = val;
     }
 
     fn triggered(&mut self) -> bool {
-        if (self.init_reg & 0x80) != 0 {
-            self.init_reg &= 0x7F;
+        if self.trigger {
+            self.trigger = false;
             return true;
         } else {
             return false;
@@ -71,7 +76,9 @@ impl AudioChannelRegs for NoiseRegs {
 }
 
 pub struct NoiseGen {
-    sample_rate: usize,
+    enable:         bool,
+
+    sample_rate:    usize,
 
     freq_counter:   usize,
     freq_step:      usize,
@@ -89,6 +96,8 @@ pub struct NoiseGen {
 impl NoiseGen {
     pub fn new(sample_rate: usize) -> Self {
         NoiseGen {
+            enable:         false,
+
             sample_rate:    sample_rate,
 
             freq_counter:   0,
@@ -109,6 +118,8 @@ impl NoiseGen {
 
 impl AudioChannelGen<NoiseRegs> for NoiseGen {
     fn init_signal(&mut self, regs: &NoiseRegs) {
+        self.enable = (regs.init_reg & 0x80) != 0;
+
         let s = ((regs.poly_counter_reg & 0xF0) >> 4) as usize;
         let r = (regs.poly_counter_reg & 0x7) as usize;
         let divisor = DIVISOR[r] << s;
@@ -140,52 +151,57 @@ impl AudioChannelGen<NoiseRegs> for NoiseGen {
         let skip = (buffer.len() as f32 * start) as usize;
 
         for i in buffer.iter_mut().take(take).skip(skip) {
-            *i = if (self.length.unwrap_or(1) > 0) && (self.rand_counter & 1 == 1) {
-                self.amplitude  // HI
-            } else if self.length == Some(0) {
-                0               // OFF
+            if self.enable {
+                *i = if (self.length.unwrap_or(1) > 0) && (self.rand_counter & 1 == 1) {
+                    self.amplitude  // HI
+                } else if self.length == Some(0) {
+                    0               // OFF
+                } else {
+                    -self.amplitude // LO
+                };
+                
+                self.freq_counter += 1;
+                if self.freq_counter >= self.freq_step {
+                    let low_bit = self.rand_counter & 1;
+                    self.rand_counter >>= 1;
+                    let xor_bit = (self.rand_counter & 1) ^ low_bit;
+
+                    self.rand_counter &= 0x3FFF;
+                    self.rand_counter |= xor_bit << 14;
+                    if self.counter_width {
+                        self.rand_counter &= 0xFFBF;
+                        self.rand_counter |= xor_bit << 6;
+                    }
+
+                    self.freq_counter = 0;
+                }
+
+                match self.length {
+                    Some(n) if n > 0 => self.length = Some(n - 1),
+                    _ => {},
+                }
+
+                self.amp_counter += 1;
+                if self.amp_counter >= self.amp_sweep_step {
+                    match self.amp_sweep_dir {
+                        Direction::Increase => {
+                            if self.amplitude < 15 {
+                                self.amplitude += 1;
+                            }
+                        },
+                        Direction::Decrease => {
+                            if self.amplitude > 0 {
+                                self.amplitude -= 1;
+                            }
+                        },
+                        Direction::None => {},
+                    }
+                    self.amp_counter = 0;
+                }
             } else {
-                -self.amplitude // LO
-            };
-            
-            self.freq_counter += 1;
-            if self.freq_counter >= self.freq_step {
-                let low_bit = self.rand_counter & 1;
-                self.rand_counter >>= 1;
-                let xor_bit = (self.rand_counter & 1) ^ low_bit;
-
-                self.rand_counter &= 0x3FFF;
-                self.rand_counter |= xor_bit << 14;
-                if self.counter_width {
-                    self.rand_counter &= 0xFFBF;
-                    self.rand_counter |= xor_bit << 6;
-                }
-
-                self.freq_counter = 0;
-            }
-
-            match self.length {
-                Some(n) if n > 0 => self.length = Some(n - 1),
-                _ => {},
-            }
-
-            self.amp_counter += 1;
-            if self.amp_counter >= self.amp_sweep_step {
-                match self.amp_sweep_dir {
-                    Direction::Increase => {
-                        if self.amplitude < 15 {
-                            self.amplitude += 1;
-                        }
-                    },
-                    Direction::Decrease => {
-                        if self.amplitude > 0 {
-                            self.amplitude -= 1;
-                        }
-                    },
-                    Direction::None => {},
-                }
-                self.amp_counter = 0;
+                *i = 0
             }
         }
     }
+
 }

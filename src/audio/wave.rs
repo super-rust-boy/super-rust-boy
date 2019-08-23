@@ -12,6 +12,8 @@ pub struct WaveRegs {
     freq_hi_reg:    u8,
 
     samples:        [u8; 16],
+
+    trigger:        bool,
 }
 
 impl WaveRegs {
@@ -24,6 +26,8 @@ impl WaveRegs {
             freq_hi_reg:    0,
 
             samples:        [0; 16],
+
+            trigger:        false,
         }
     }
 
@@ -55,7 +59,7 @@ impl AudioChannelRegs for WaveRegs {
         self.freq_lo_reg
     }
     fn read_nrx4(&self) -> u8 {
-        self.freq_hi_reg
+        self.freq_hi_reg & 0x7F
     }
 
     fn write_nrx1(&mut self, val: u8) {
@@ -68,12 +72,13 @@ impl AudioChannelRegs for WaveRegs {
         self.freq_lo_reg = val;
     }
     fn write_nrx4(&mut self, val: u8) {
+        self.trigger = true;
         self.freq_hi_reg = val;
     }
 
     fn triggered(&mut self) -> bool {
-        if (self.freq_hi_reg & 0x80) != 0 {
-            self.freq_hi_reg &= 0x7F;
+        if self.trigger {
+            self.trigger = false;
             return true;
         } else {
             return false;
@@ -82,6 +87,8 @@ impl AudioChannelRegs for WaveRegs {
 }
 
 pub struct WaveGen {
+    enable:             bool,
+
     sample_rate:        usize,
 
     phase_int_count:    usize,
@@ -94,13 +101,15 @@ pub struct WaveGen {
 
     length:             Option<usize>,
 
-    enable:             bool,
+    sound_on:           bool,
     output_shift:       Option<usize>,
 }
 
 impl WaveGen {
     pub fn new(sample_rate: usize) -> Self {
         WaveGen {
+            enable:             false,
+
             sample_rate:        sample_rate,
 
             phase_int_count:    0,
@@ -113,7 +122,7 @@ impl WaveGen {
 
             length:             None,
 
-            enable:             false,
+            sound_on:           false,
             output_shift:       Some(0),
         }
     }
@@ -121,7 +130,8 @@ impl WaveGen {
 
 impl AudioChannelGen<WaveRegs> for WaveGen {
     fn init_signal(&mut self, regs: &WaveRegs) {
-        self.enable = (regs.on_off_reg & 0x80) != 0;
+        self.enable = regs.freq_hi_reg & 0x80 != 0;
+        self.sound_on = (regs.on_off_reg & 0x80) != 0;
 
         let freq_n = (((regs.freq_hi_reg & 0x7) as usize) << 8) | (regs.freq_lo_reg as usize);
         let frequency = FREQ_MAX / (FREQ_MOD - freq_n) as f32;
@@ -159,34 +169,39 @@ impl AudioChannelGen<WaveRegs> for WaveGen {
         let skip = (buffer.len() as f32 * start) as usize;
 
         for i in buffer.iter_mut().take(take).skip(skip) {
-            // Sample
-            *i = if (self.length.unwrap_or(1) > 0) && self.enable {
-                if let Some(shift) = self.output_shift {
-                    self.samples[self.index] >> shift
-                } else { 0 }
-            } else {
-                0
-            };
+            if self.enable {
+                // Sample
+                *i = if (self.length.unwrap_or(1) > 0) && self.sound_on {
+                    if let Some(shift) = self.output_shift {
+                        self.samples[self.index] >> shift
+                    } else { 0 }
+                } else {
+                    0
+                };
 
-            self.phase_int_count += 1;
-            if self.phase_int_count == self.phase_int_len {
-                self.phase_frac_count += self.phase_frac_len;
-                // If the fractional part has 'rolled over', add another sample.
-                if self.phase_frac_count >= 1.0 {
-                    self.phase_frac_count -= 1.0;
-                } else {    // Otherwise move onto the next.
+                self.phase_int_count += 1;
+                if self.phase_int_count == self.phase_int_len {
+                    self.phase_frac_count += self.phase_frac_len;
+                    // If the fractional part has 'rolled over', add another sample.
+                    if self.phase_frac_count >= 1.0 {
+                        self.phase_frac_count -= 1.0;
+                    } else {    // Otherwise move onto the next.
+                        self.index = (self.index + 1) % 32;
+                        self.phase_int_count = 0;
+                    }
+                } else if self.phase_int_count > self.phase_int_len {
                     self.index = (self.index + 1) % 32;
                     self.phase_int_count = 0;
                 }
-            } else if self.phase_int_count > self.phase_int_len {
-                self.index = (self.index + 1) % 32;
-                self.phase_int_count = 0;
-            }
 
-            match self.length {
-                Some(n) if n > 0 => self.length = Some(n - 1),
-                _ => {},
+                match self.length {
+                    Some(n) if n > 0 => self.length = Some(n - 1),
+                    _ => {},
+                }
+            } else {
+                *i = 0;
             }
         }
     }
+
 }
