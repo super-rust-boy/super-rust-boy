@@ -19,7 +19,6 @@ use std::sync::mpsc::Sender;
 pub use self::handler::start_audio_handler_thread;
 
 const MAX_CYCLES: u32 = 154 * 456;
-const V_BLANK_TIME: u32 = 10 * 456;
 const MAX_CYCLES_FLOAT: f32 = MAX_CYCLES as f32;
 
 // The structure that exists in memory. Sends data to the audio thread.
@@ -39,6 +38,8 @@ pub struct AudioDevice {
     update:          bool,
     control_update:  bool,
     sender:          Sender<AudioCommand>,
+
+    cycle_count:     u32,
 }
 
 impl AudioDevice {
@@ -56,16 +57,19 @@ impl AudioDevice {
             update:         false,
             control_update: false,
             sender:         sender,
+
+            cycle_count:    0,
         }
     }
 
     // Call every instruction to send update
-    pub fn send_update(&mut self, cycle_count: u32) {
+    pub fn send_update(&mut self, cycles: u32) {
+        self.cycle_count += cycles;
+        self.cycle_count %= MAX_CYCLES;
+
         // If trigger bit was just written, send timed update
         if self.update {
-            // Moment of V-blank needs to be 0.0
-            let offset_cycle = (cycle_count + V_BLANK_TIME) % MAX_CYCLES;
-            let time_in_frame = (offset_cycle as f32) / MAX_CYCLES_FLOAT;
+            let time_in_frame = (self.cycle_count as f32) / MAX_CYCLES_FLOAT;
 
             if self.nr1.triggered() {
                 self.sender.send(AudioCommand::NR1(self.nr1.clone(), time_in_frame)).unwrap();

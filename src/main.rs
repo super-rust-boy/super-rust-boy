@@ -29,12 +29,12 @@ fn main() {
     let app = clap_app!(rustboy =>
         (version: crate_version!())
         (author: "Simon Cooper")
-        (about: "Game Boy emulator.")
-        (@arg CART: "The location of the game cart to use.")
+        (about: "Game Boy and Game Boy Color emulator.")
+        (@arg CART: "The path to the game cart to use.")
         (@arg debug: -d "Enter debug mode.")
         (@arg mute: -m "Mutes the emulator.")
         (@arg palette: -p +takes_value "Choose a palette. 'g' selects the classic green scheme, 'bw' forces greyscale. By default SGB colour will be used if available.")
-        (@arg save: -s +takes_value "Save file location.")
+        (@arg save: -s +takes_value "Save file path.")
     );
 
     let cmd_args = app.get_matches();

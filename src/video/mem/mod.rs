@@ -127,7 +127,8 @@ pub struct VideoMem {
     vram_bank:          u8,
 
     // Misc
-    clear_colour: Vector4<f32>
+    clear_colour:   Vector4<f32>,
+    cycle_count:    u32,
 }
 
 impl VideoMem {
@@ -141,7 +142,7 @@ impl VideoMem {
             tile_map_1: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
             object_mem: ObjectMem::new(device),
 
-            lcd_control:    LCDControl::default(),
+            lcd_control:    LCDControl::ENABLE,
             lcd_status:     LCDStatus::new(),
             scroll_y:       0,
             scroll_x:       0,
@@ -156,7 +157,8 @@ impl VideoMem {
             colour_palettes:    DynamicPaletteMem::new(device),
             vram_bank:          0,
 
-            clear_colour: palette.get_colour_0()
+            clear_colour:   palette.get_colour_0(),
+            cycle_count:    0
         }
     }
     
@@ -172,6 +174,18 @@ impl VideoMem {
 
     pub fn compare_ly_equal(&self) -> bool {
         self.lcdc_y == self.ly_compare
+    }
+
+    pub fn inc_cycle_count(&mut self, cycles: u32) {
+        self.cycle_count += cycles;
+    }
+
+    pub fn frame_cycle_reset(&mut self) {
+        self.cycle_count -= 154 * 456;
+    }
+
+    pub fn get_cycle_count(&self) -> u32 {
+        self.cycle_count
     }
 }
 
@@ -310,20 +324,35 @@ impl VideoMem {
     }
 }
 
-// Checks to see if mem can be accessed
+// Internal methods.
 impl VideoMem {
     #[inline]
     fn can_access_vram(&self) -> bool {
-        !self.display_enabled() ||
         self.lcd_status.read_mode() != super::Mode::_3
     }
 
     #[inline]
     fn can_access_oam(&self) -> bool {
         !self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) ||
-        !self.display_enabled() ||
         (self.lcd_status.read_mode() == super::Mode::_0) ||
         (self.lcd_status.read_mode() == super::Mode::_1)
+    }
+
+    fn set_lcd_control(&mut self, val: u8) {
+        let was_display_enabled = self.display_enabled();
+        self.lcd_control = LCDControl::from_bits_truncate(val);
+        let is_display_enabled = self.display_enabled();
+
+        // Has display been toggled on/off?
+        if is_display_enabled != was_display_enabled {
+            if is_display_enabled { // ON
+                self.lcd_status.write_mode(super::Mode::_2);
+                self.cycle_count = 0;
+            } else {                // OFF
+                self.lcd_status.write_mode(super::Mode::_0);
+                self.lcdc_y = 0;
+            }
+        }
     }
 }
 
@@ -460,7 +489,7 @@ impl MemDevice for VideoMem {
             },
             // Sprite data
             0xFE00..=0xFE9F if self.can_access_oam() => self.object_mem.write(loc - 0xFE00, val),
-            0xFF40 => self.lcd_control = LCDControl::from_bits_truncate(val),
+            0xFF40 => self.set_lcd_control(val),
             0xFF41 => self.lcd_status.write(val),
             0xFF42 => self.scroll_y = val,
             0xFF43 => self.scroll_x = val,

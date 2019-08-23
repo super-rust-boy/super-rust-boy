@@ -45,8 +45,8 @@ pub struct CPU {
     mem: MemBus,
 
     // Internals
-    cycle_count: u32,
     step_cycles: u32,
+    v_blank_latch: bool,
     double_speed_latch: bool,
     cgb_dma_active: bool
 }
@@ -126,8 +126,8 @@ impl CPU {
             sp:     0xFFFE,
             pc:     0x100,
             mem:    mem,
-            cycle_count: 0,
             step_cycles: GB_STEP,
+            v_blank_latch: false,
             double_speed_latch: false,
             cgb_dma_active: false
         }
@@ -137,12 +137,12 @@ impl CPU {
     // If it returns true, keep stepping.
     // If it returns false, wait.
     pub fn step(&mut self) -> bool {
-        if !self.mem.video_mode(&mut self.cycle_count) {
-            return false;   // Wait until frame is ready.
+        if self.v_blank_latch {
+            self.v_blank_latch = false;
+            return false;   // V-Blank has been entered, emulator needs to sync up.
         }
 
         if self.handle_interrupts() {
-            self.mem.update_audio(self.cycle_count);
             return true;
         }
 
@@ -153,16 +153,15 @@ impl CPU {
             self.exec_instruction();
         }
 
-        self.mem.update_audio(self.cycle_count);
-
         return true;
     }
 
     // Increment cycle count and update timer.
     #[inline]
     fn clock_inc(&mut self) {
-        self.cycle_count += self.step_cycles;
         self.cgb_dma_active = self.mem.clock(self.step_cycles);
+        self.v_blank_latch = self.v_blank_latch || self.mem.video_mode(self.step_cycles);
+        self.mem.update_audio(self.step_cycles);
     }
 
     // Check for interrupts. Return true if they are serviced.

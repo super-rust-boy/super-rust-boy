@@ -88,8 +88,8 @@ impl MemBus {
     }
 
     // Send new audio update.
-    pub fn update_audio(&mut self, clock_count: u32) {
-        self.audio_device.send_update(clock_count);
+    pub fn update_audio(&mut self, cycles: u32) {
+        self.audio_device.send_update(cycles);
     }
 
     // Clock memory: update timer and DMA transfers.
@@ -115,8 +115,9 @@ impl MemBus {
     }
 
     // Set the current video mode based on the cycle count.
-    pub fn video_mode(&mut self, cycle_count: &mut u32) -> bool {
-        let (ret, int) = self.video_device.video_mode(cycle_count);
+    // Returns true if V-blank has been entered.
+    pub fn video_mode(&mut self, cycles: u32) -> bool {
+        let (ret, int) = self.video_device.video_mode(cycles);
         self.interrupt_flag.insert(int);
         ret
     }
@@ -254,6 +255,7 @@ impl MemDevice for MemBus {
             0xF000..=0xFDFF => self.ram.read((loc - 0xF000) + self.cgb_ram_offset),
             0xFE00..=0xFE9F => self.video_device.read(loc),
             0xFF00          => self.video_device.read(loc),
+            0xFF01..=0xFF02 => 0,
             0xFF03..=0xFF07 => self.timer.read(loc),
             0xFF0F          => self.interrupt_flag.bits(),
             0xFF10..=0xFF3F => self.audio_device.read(loc),

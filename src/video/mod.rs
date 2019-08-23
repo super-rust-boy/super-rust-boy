@@ -143,40 +143,52 @@ impl VideoDevice {
 
     // Set the current video mode based on the cycle count.
     // May trigger an interrupt.
-    pub fn video_mode(&mut self, cycle_count: &mut u32) -> (bool, InterruptFlags) {
+    // Returns true if transitioned to V-Blank.
+    pub fn video_mode(&mut self, cycles: u32) -> (bool, InterruptFlags) {
         use self::constants::*;
+        self.mem.inc_cycle_count(cycles);
 
-        // First, calculate how many cycles into the horizontal line we are.
-        let frame_cycle = *cycle_count % H_CYCLES;
+        if self.mem.display_enabled() {
+            // First, calculate how many cycles into the horizontal line we are.
+            let line_cycle = self.mem.get_cycle_count() % H_CYCLES;
 
-        let int = match self.mem.lcd_status.read_mode() {
-            Mode::_2 if frame_cycle >= MODE_2 => self.update_mode(Mode::_3),
-            Mode::_3 if frame_cycle >= MODE_3 => self.update_mode(Mode::_0),
-            Mode::_0 if *cycle_count >= FRAME_CYCLE => {
-                self.mem.inc_lcdc_y();
-                self.update_mode(Mode::_1) | InterruptFlags::V_BLANK
-            },
-            Mode::_0 if frame_cycle < MODE_3 => {
-                self.mem.inc_lcdc_y();
-                self.update_mode(Mode::_2)
-            },
-            Mode::_1 => if *cycle_count >= MODE_1 {
-                self.mem.set_lcdc_y(0);
-                *cycle_count -= MODE_1;
-                self.update_mode(Mode::_2)
+            let int = match self.mem.lcd_status.read_mode() {
+                Mode::_2 if line_cycle >= MODE_2 => self.update_mode(Mode::_3),
+                Mode::_3 if line_cycle >= MODE_3 => self.update_mode(Mode::_0),
+                Mode::_0 if self.mem.get_cycle_count() >= FRAME_CYCLE => {
+                    self.mem.inc_lcdc_y();
+                    self.update_mode(Mode::_1) | InterruptFlags::V_BLANK
+                },
+                Mode::_0 if line_cycle < MODE_3 => {
+                    self.mem.inc_lcdc_y();
+                    self.update_mode(Mode::_2)
+                },
+                Mode::_1 => if self.mem.get_cycle_count() >= MODE_1 {
+                    self.mem.set_lcdc_y(0);
+                    self.mem.frame_cycle_reset();
+                    self.update_mode(Mode::_2)
+                } else {
+                    let new_ly = (self.mem.get_cycle_count() / H_CYCLES) as u8;
+                    self.mem.set_lcdc_y(new_ly);
+                    InterruptFlags::default()
+                },
+                _ => InterruptFlags::default(),
+            };
+
+            (if int.contains(InterruptFlags::V_BLANK) {
+                true
             } else {
-                let new_ly = (*cycle_count / H_CYCLES) as u8;
-                self.mem.set_lcdc_y(new_ly);
-                InterruptFlags::default()
-            },
-            _ => InterruptFlags::default(),
-        };
-
-        (if int.contains(InterruptFlags::V_BLANK) {
-            false
+                false
+            }, int)
         } else {
-            true
-        }, int)
+            let keep_cycling = if self.mem.get_cycle_count() > MODE_1 {
+                self.mem.frame_cycle_reset();
+                true
+            } else {
+                false
+            };
+            (keep_cycling, InterruptFlags::default())
+        }
     }
 
     // Update status reg, Trigger LCDC Status interrupt if necessary
