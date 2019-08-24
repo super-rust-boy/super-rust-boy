@@ -58,9 +58,12 @@ fn main() {
 
     let mut state = CPU::new(mem);
 
-    if !cmd_args.is_present("mute") {
+    let mut audio_recv = if !cmd_args.is_present("mute") {
         start_audio_handler_thread(recv);
-    }
+        None
+    } else {
+        Some(recv)
+    };
     
     if cmd_args.is_present("debug") {
         #[cfg(feature = "debug")]
@@ -74,6 +77,10 @@ fn main() {
             state.frame_update();   // Draw video and read inputs
 
             while frame.to(PreciseTime::now()) < Duration::microseconds(FRAME_TIME) {};  // Wait until next frame.
+
+            if let Some(recv) = &mut audio_recv {
+                while let Ok(_) = recv.try_recv() {}
+            }
         }
     }
 }
