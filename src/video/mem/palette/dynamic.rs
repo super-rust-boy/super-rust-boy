@@ -154,7 +154,8 @@ impl DynamicPaletteMem {
         } else {
             let buf = self.buffer_pool.chunk(
                 self.bg_palettes.iter()
-                    .map(|p| p.get_palette(false))
+                    .map(|p| p.get_palette(true))
+                    .chain(self.bg_palettes.iter().map(|p| p.get_palette(false)))
                     .chain(self.obj_palettes.iter().map(|p| p.get_palette(true)))
                     .collect::<Vec<_>>()
                     .iter()

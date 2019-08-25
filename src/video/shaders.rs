@@ -24,6 +24,9 @@ const uint BOTTOM_LEFT  = 1 << 8;
 const uint TOP_RIGHT    = 2 << 8;
 const uint BOTTOM_RIGHT = 3 << 8;
 
+// Flags
+const uint WRAPAROUND = 1;
+
 // Functions
 vec2 calc_vertex_wraparound(vec2, uint);
 vec2 calc_vertex_compare(vec2, uint);
@@ -40,7 +43,7 @@ layout(push_constant) uniform PushConstants {
     vec2 atlas_size;
     uint tex_offset;
     uint palette_offset;    // 1 for window in GB mode, 8 for sprites in CGB mode
-    uint wraparound;
+    uint flags;
 } push_constants;
 
 // Output
@@ -51,7 +54,7 @@ void main() {
     // Vertex position offset with scroll / position
     vec2 vertex_position = position + push_constants.vertex_offset;
 
-    if (push_constants.wraparound == 1) {
+    if ((push_constants.flags & WRAPAROUND) != 0) {
         uint corner = data & 0x300;
         vertex_position = calc_vertex_wraparound(vertex_position, corner);
     }
@@ -120,19 +123,35 @@ pub mod fs {
         src: r#"
 #version 450
 
+// Flags
+const uint BLOCK_COLOUR = 2;
+
 layout(location = 0) in vec2 texCoord;
 layout(location = 1) in flat uint paletteNum;
 
 layout(set = 0, binding = 0) uniform usampler2D atlas;
 layout(set = 1, binding = 0) uniform Palette {
-    mat4 colours[16];
+    mat4 colours[24];
 } PaletteTable;
+
+layout(push_constant) uniform PushConstants {
+    vec2 vertex_offset;
+    vec2 tex_size;
+    vec2 atlas_size;
+    uint tex_offset;
+    uint palette_offset;
+    uint flags;
+} push_constants;
 
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    uint texel = texture(atlas, texCoord).x;
-    outColor = PaletteTable.colours[paletteNum][texel];
+    if ((push_constants.flags & BLOCK_COLOUR) != 0) {
+        outColor = PaletteTable.colours[paletteNum][0];
+    } else {
+        uint texel = texture(atlas, texCoord).x;
+        outColor = PaletteTable.colours[paletteNum][texel];
+    }
 }
 "#
     }

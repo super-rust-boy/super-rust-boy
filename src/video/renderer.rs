@@ -45,7 +45,17 @@ use winit::{
     WindowBuilder
 };
 
+use bitflags::bitflags;
+
 use std::sync::Arc;
+
+bitflags!{
+    #[derive(Default)]
+    struct ShaderFlags: u32 {
+        const WRAPAROUND =      1;
+        const BLOCK_COLOUR =    2;
+    }
+}
 
 #[derive(Default, Copy, Clone)]
 pub struct Vertex {
@@ -55,12 +65,12 @@ pub struct Vertex {
 
 #[derive(Clone)]
 struct PushConstants {
-    pub vertex_offset: [f32; 2],
-    pub tex_size: [f32; 2],
-    pub atlas_size: [f32; 2],
-    pub tex_offset: u32,
+    pub vertex_offset:  [f32; 2],
+    pub tex_size:       [f32; 2],
+    pub atlas_size:     [f32; 2],
+    pub tex_offset:     u32,
     pub palette_offset: u32,
-    pub wraparound: u32
+    pub flags:          u32
 }
 
 vulkano::impl_vertex!(Vertex, position, data);
@@ -342,7 +352,7 @@ impl Renderer {
                 atlas_size: video_mem.get_atlas_size(),
                 tex_offset: 0,
                 palette_offset: 0,
-                wraparound: 0
+                flags: ShaderFlags::default().bits()
             };
 
             if let Some(bg_vertices) = video_mem.get_background() {
@@ -364,7 +374,7 @@ impl Renderer {
                     atlas_size: video_mem.get_atlas_size(),
                     tex_offset: video_mem.get_tile_data_offset(),
                     palette_offset: 0,
-                    wraparound: 1
+                    flags: ShaderFlags::WRAPAROUND.bits()
                 };
 
                 // Add the background.
@@ -384,7 +394,7 @@ impl Renderer {
                         atlas_size: video_mem.get_atlas_size(),
                         tex_offset: video_mem.get_tile_data_offset(),
                         palette_offset: 1,
-                        wraparound: 0
+                        flags: ShaderFlags::default().bits()
                     };
 
                     command_buffer = command_buffer.draw(
@@ -449,28 +459,37 @@ impl Renderer {
             .add_buffer(video_mem.get_palette_buffer().clone()).unwrap()
             .build().unwrap());
 
-        // Make push constants for background.
-        let background_push_constants = PushConstants {
-            vertex_offset: video_mem.get_bg_scroll(),
-            tex_size: video_mem.get_tile_size(),
-            atlas_size: video_mem.get_atlas_size(),
-            tex_offset: video_mem.get_tile_data_offset(),
-            palette_offset: 0,
-            wraparound: 1
-        };
-
         // Make push constants for sprites.
         let sprite_push_constants = PushConstants {
             vertex_offset: [0.0, 0.0],
             tex_size: video_mem.get_tile_size(),
             atlas_size: video_mem.get_atlas_size(),
             tex_offset: 0,
-            palette_offset: 8,
-            wraparound: 0
+            palette_offset: 16,
+            flags: ShaderFlags::default().bits()
         };
 
         if video_mem.get_background_priority() {
-            // TODO: Draw background tile clear colours.
+            // Draw background tile clear colours
+            if let Some(background) = video_mem.get_background() {
+                // Make push constants for background.
+                let background_push_constants = PushConstants {
+                    vertex_offset: video_mem.get_bg_scroll(),
+                    tex_size: video_mem.get_tile_size(),
+                    atlas_size: video_mem.get_atlas_size(),
+                    tex_offset: video_mem.get_tile_data_offset(),
+                    palette_offset: 8,
+                    flags: (ShaderFlags::WRAPAROUND | ShaderFlags::BLOCK_COLOUR).bits()
+                };
+
+                command_buffer = command_buffer.draw(
+                    self.pipeline.clone(),
+                    &self.dynamic_state,
+                    background,
+                    (set0.clone(), set1.clone()),
+                    background_push_constants
+                ).unwrap();
+            }
 
             // Draw sprites below background.
             if let Some(sprite_vertices) = video_mem.get_sprites_lo() {
@@ -485,12 +504,22 @@ impl Renderer {
 
             // Add background.
             if let Some(background) = video_mem.get_background() {
+                // Make push constants for background.
+                let background_push_constants = PushConstants {
+                    vertex_offset: video_mem.get_bg_scroll(),
+                    tex_size: video_mem.get_tile_size(),
+                    atlas_size: video_mem.get_atlas_size(),
+                    tex_offset: video_mem.get_tile_data_offset(),
+                    palette_offset: 0,
+                    flags: ShaderFlags::WRAPAROUND.bits()
+                };
+
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
                     &self.dynamic_state,
                     background,
                     (set0.clone(), set1.clone()),
-                    background_push_constants.clone()
+                    background_push_constants
                 ).unwrap();
             }
 
@@ -501,8 +530,8 @@ impl Renderer {
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
                     tex_offset: video_mem.get_tile_data_offset(),
-                    palette_offset: 0,
-                    wraparound: 0
+                    palette_offset: 8,
+                    flags: ShaderFlags::default().bits()
                 };
 
                 command_buffer = command_buffer.draw(
@@ -527,12 +556,22 @@ impl Renderer {
 
             // Add high priority background and window.
             if let Some(background) = video_mem.get_background_hi() {
+                // Make push constants for background.
+                let background_push_constants = PushConstants {
+                    vertex_offset: video_mem.get_bg_scroll(),
+                    tex_size: video_mem.get_tile_size(),
+                    atlas_size: video_mem.get_atlas_size(),
+                    tex_offset: video_mem.get_tile_data_offset(),
+                    palette_offset: 8,
+                    flags: ShaderFlags::WRAPAROUND.bits()
+                };
+
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
                     &self.dynamic_state,
                     background,
                     (set0.clone(), set1.clone()),
-                    background_push_constants.clone()
+                    background_push_constants
                 ).unwrap();
             }
 
@@ -543,8 +582,8 @@ impl Renderer {
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
                     tex_offset: video_mem.get_tile_data_offset(),
-                    palette_offset: 0,
-                    wraparound: 0
+                    palette_offset: 8,
+                    flags: ShaderFlags::default().bits()
                 };
 
                 command_buffer = command_buffer.draw(
@@ -559,6 +598,16 @@ impl Renderer {
             // Ignore priority bits.
 
             // Add the background.
+            // Make push constants for background.
+            let background_push_constants = PushConstants {
+                vertex_offset: video_mem.get_bg_scroll(),
+                tex_size: video_mem.get_tile_size(),
+                atlas_size: video_mem.get_atlas_size(),
+                tex_offset: video_mem.get_tile_data_offset(),
+                palette_offset: 8,
+                flags: ShaderFlags::WRAPAROUND.bits()
+            };
+
             command_buffer = command_buffer.draw(
                 self.pipeline.clone(),
                 &self.dynamic_state,
@@ -574,8 +623,8 @@ impl Renderer {
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
                     tex_offset: video_mem.get_tile_data_offset(),
-                    palette_offset: 0,
-                    wraparound: 0
+                    palette_offset: 8,
+                    flags: ShaderFlags::default().bits()
                 };
 
                 command_buffer = command_buffer.draw(
@@ -659,7 +708,7 @@ impl Renderer {
             atlas_size: video_mem.get_atlas_size(),
             tex_offset: 0,  // 256
             palette_offset: 0,
-            wraparound: 0
+            flags: ShaderFlags::default().bits()
         };
 
         command_buffer = command_buffer.draw(
