@@ -1,5 +1,5 @@
 mod patternmem;
-pub mod vertex;
+mod vertex;
 mod palette;
 
 use vulkano::device::{
@@ -24,10 +24,12 @@ use vertex::{
     sprite::ObjectMem
 };
 use palette::{
-    PaletteBuffer,
     r#static::StaticPaletteMem,
     dynamic::DynamicPaletteMem
 };
+
+pub use patternmem::TileImage;
+pub use palette::PaletteBuffer;
 
 const TILE_SIZE: usize = 8;             // Width / Height of a tile in pixels.
 const TILE_DATA_WIDTH: usize = 16;      // Width of the tile data in tiles.
@@ -210,73 +212,73 @@ impl VideoMem {
         self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY)
     }
 
-    // Get background vertices.
-    pub fn get_background(&mut self) -> Option<VertexBuffer> {
+    // Get background vertices for given y line.
+    pub fn get_background(&mut self, y: u8) -> Option<VertexBuffer> {
         if self.cgb_mode || self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY) {
             if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
-                self.tile_map_0.get_lo_vertex_buffer()
+                self.tile_map_0.get_lo_vertex_buffer(y)
             } else {
-                self.tile_map_1.get_lo_vertex_buffer()
+                self.tile_map_1.get_lo_vertex_buffer(y)
             }
         } else {
             None
         }
     }
 
-    // Get background vertices with priority bit set.
-    pub fn get_background_hi(&mut self) -> Option<VertexBuffer> {
+    // Get background vertices with priority bit set for given y line.
+    pub fn get_background_hi(&mut self, y: u8) -> Option<VertexBuffer> {
         if self.cgb_mode {
             if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
-                self.tile_map_0.get_hi_vertex_buffer()
+                self.tile_map_0.get_hi_vertex_buffer(y)
             } else {
-                self.tile_map_1.get_hi_vertex_buffer()
+                self.tile_map_1.get_hi_vertex_buffer(y)
             }
         } else {
             None
         }
     }
 
-    // Get window
-    pub fn get_window(&mut self) -> Option<VertexBuffer> {
+    // Get window for given y line.
+    pub fn get_window(&mut self, y: u8) -> Option<VertexBuffer> {
         if self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY | LCDControl::WINDOW_DISPLAY_ENABLE) {
             if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
-                self.tile_map_0.get_lo_vertex_buffer()
+                self.tile_map_0.get_lo_vertex_buffer(y)
             } else {
-                self.tile_map_1.get_lo_vertex_buffer()
+                self.tile_map_1.get_lo_vertex_buffer(y)
             }
         } else {
             None
         }
     }
 
-    // Get window vertices with priority bit set.
-    pub fn get_window_hi(&mut self) -> Option<VertexBuffer> {
+    // Get window vertices with priority bit set for given y line.
+    pub fn get_window_hi(&mut self, y: u8) -> Option<VertexBuffer> {
         if self.cgb_mode {
             if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
-                self.tile_map_0.get_hi_vertex_buffer()
+                self.tile_map_0.get_hi_vertex_buffer(y)
             } else {
-                self.tile_map_1.get_hi_vertex_buffer()
+                self.tile_map_1.get_hi_vertex_buffer(y)
             }
         } else {
             None
         }
     }
 
-    // Get low-priority sprites (below the background).
-    pub fn get_sprites_lo(&mut self) -> Option<VertexBuffer> {
+    // Get low-priority sprites (below the background) for given y line.
+    pub fn get_sprites_lo(&mut self, y: u8) -> Option<VertexBuffer> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            self.object_mem.get_lo_vertex_buffer(large_sprites, self.cgb_mode)
+            self.object_mem.get_lo_vertex_buffer(y, large_sprites, self.cgb_mode)
         } else {
             None
         }
     }
 
-    // Get high-priority sprites (above the background).
-    pub fn get_sprites_hi(&mut self) -> Option<VertexBuffer> {
+    // Get high-priority sprites (above the background) for given y line.
+    pub fn get_sprites_hi(&mut self, y: u8) -> Option<VertexBuffer> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            self.object_mem.get_hi_vertex_buffer(large_sprites, self.cgb_mode)
+            self.object_mem.get_hi_vertex_buffer(y, large_sprites, self.cgb_mode)
         } else {
             None
         }
@@ -321,6 +323,19 @@ impl VideoMem {
     // Get the size of the atlas (in tiles).
     pub fn get_atlas_size(&self) -> [f32; 2] {
         self.tile_mem.get_atlas_size()
+    }
+
+    // Y lines
+    pub fn get_lcd_y(&self) -> u8 {
+        self.lcdc_y
+    }
+
+    pub fn get_scroll_y(&self) -> u8 {
+        self.scroll_y
+    }
+
+    pub fn get_window_y(&self) -> u8 {
+        self.window_y
     }
 }
 

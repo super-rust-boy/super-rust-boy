@@ -70,8 +70,10 @@ pub struct VideoDevice {
 impl VideoDevice {
     pub fn new(palette: SGBPalette, cgb_mode: bool) -> Self {
         let events_loop = EventsLoop::new();
-        let renderer = Renderer::new(&events_loop);
-        let mem = VideoMem::new(&renderer.get_device(), palette, cgb_mode);
+        let mut renderer = Renderer::new(&events_loop);
+        let mut mem = VideoMem::new(&renderer.get_device(), palette, cgb_mode);
+
+        renderer.frame_start(&mut mem);
 
         VideoDevice {
             mem:            mem,
@@ -86,8 +88,8 @@ impl VideoDevice {
     }
 
     // Drawing for a single frame
-    pub fn render_frame(&mut self) {
-        self.renderer.render(&mut self.mem, self.cgb_mode);
+    pub fn frame(&mut self) {
+        self.renderer.frame_end();
     }
 
     // Query to see if the video device is in H-Blank.
@@ -164,6 +166,7 @@ impl VideoDevice {
                     self.update_mode(Mode::_2)
                 },
                 Mode::_1 => if self.mem.get_cycle_count() >= MODE_1 {
+                    self.renderer.frame_start(&mut self.mem);
                     self.mem.set_lcdc_y(0);
                     self.mem.frame_cycle_reset();
                     self.update_mode(Mode::_2)
@@ -198,6 +201,10 @@ impl VideoDevice {
         self.mem.lcd_status.write_mode(mode);
         let stat_flags = self.mem.lcd_status.read_flags();
 
+        if mode == Mode::_0 {
+            self.draw_line();
+        }
+
         // Trigger STAT interrupt
         if !stat_flags.is_empty() {
             // LY Coincidence interrupt
@@ -221,6 +228,11 @@ impl VideoDevice {
         }
 
         InterruptFlags::default()
+    }
+
+    // Draw a single line
+    fn draw_line(&mut self) {
+        self.renderer.draw_line(self.mem.get_lcd_y(), &mut self.mem, self.cgb_mode);
     }
 }
 

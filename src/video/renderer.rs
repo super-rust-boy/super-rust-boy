@@ -15,7 +15,9 @@ use vulkano::{
         vertex::SingleBufferDefinition
     },
     command_buffer::{
-        AutoCommandBufferBuilder, DynamicState
+        AutoCommandBufferBuilder,
+        AutoCommandBuffer,
+        DynamicState
     },
     sampler::{
         Filter,
@@ -30,11 +32,15 @@ use vulkano::{
         now, GpuFuture
     },
     descriptor::{
-        descriptor_set::FixedSizeDescriptorSetsPool,
+        descriptor_set::{
+            PersistentDescriptorSetBuf,
+            PersistentDescriptorSetImg,
+            PersistentDescriptorSetSampler,
+            FixedSizeDescriptorSet,
+            FixedSizeDescriptorSetsPool
+        },
         pipeline_layout::PipelineLayoutAbstract
-    },
-    image::immutable::ImmutableImage,
-    format::R8Uint
+    }
 };
 
 use vulkano_win::VkSurfaceBuild;
@@ -63,11 +69,11 @@ pub struct Vertex {
     pub data: u32
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct PushConstants {
-    pub vertex_offset:  [f32; 2],
     pub tex_size:       [f32; 2],
     pub atlas_size:     [f32; 2],
+    pub vertex_offset:  [f32; 2],
     pub tex_offset:     u32,
     pub palette_offset: u32,
     pub flags:          u32
@@ -80,6 +86,17 @@ type RenderPipeline = GraphicsPipeline<
     Box<dyn PipelineLayoutAbstract + Send + Sync>,
     Arc<dyn RenderPassAbstract + Send + Sync>
 >;
+
+// Data for a single render
+struct RenderData {
+    command_buffer: Option<AutoCommandBufferBuilder>,
+    acquire_future: Box<dyn GpuFuture>,
+    image_num:      usize,
+    image_future:   Box<dyn GpuFuture>,
+    pipeline:       Arc<RenderPipeline>,
+    set0:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, (((), PersistentDescriptorSetImg<super::mem::TileImage>), PersistentDescriptorSetSampler)>>,
+    set1:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, ((), PersistentDescriptorSetBuf<super::mem::PaletteBuffer>)>>
+}
 
 pub struct Renderer {
     // Core
@@ -95,8 +112,9 @@ pub struct Renderer {
     swapchain: Arc<Swapchain<Window>>,
     framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
     dynamic_state: DynamicState,
-    previous_frame_future: Box<dyn GpuFuture>
-    // Custom data
+    // Frame data
+    previous_frame_future: Box<dyn GpuFuture>,
+    render_data: Option<RenderData>
 }
 
 impl Renderer {
@@ -234,7 +252,9 @@ impl Renderer {
             swapchain: swapchain,
             framebuffers: framebuffers,
             dynamic_state: dynamic_state,
-            previous_frame_future: Box::new(now(device.clone())) as Box<dyn GpuFuture>
+
+            previous_frame_future: Box::new(now(device.clone())),
+            render_data: None
         }
     }
 
@@ -270,10 +290,8 @@ impl Renderer {
         self.swapchain = new_swapchain;
     }
 
-    // Render a frame.
-    pub fn render(&mut self, video_mem: &mut super::mem::VideoMem, cgb_mode: bool) {
-        self.previous_frame_future.cleanup_finished();
-
+    // Start the process of rendering a frame.
+    pub fn frame_start(&mut self, video_mem: &mut super::mem::VideoMem) {
         // Get current framebuffer index from the swapchain.
         let (image_num, acquire_future) = acquire_next_image(self.swapchain.clone(), None)
             .expect("Didn't get next image");
@@ -281,174 +299,7 @@ impl Renderer {
         // Make image with current texture.
         // TODO: only re-create the image when the data has changed.
         let (image, write_future) = video_mem.get_tile_atlas(&self.device, &self.queue);
-        
-        // Start building command buffer using pipeline and framebuffer, starting with the background vertices.
-        let mut command_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap()
-            .begin_render_pass(self.framebuffers[image_num].clone(), false, vec![video_mem.get_clear_colour().into()]).unwrap();
 
-        // Render in the specified mode.
-        command_buffer_builder = if cgb_mode {
-            self.draw_cgb(video_mem, command_buffer_builder, image)
-        } else {
-            self.draw_gb(video_mem, command_buffer_builder, image)
-        };
-
-        // DEBUG
-        //command_buffer_builder = self.draw_debug(video_mem, command_buffer_builder, image);
-
-        // Finish command buffer.
-        let command_buffer = command_buffer_builder.end_render_pass().unwrap().build().unwrap();
-
-        // Wait until previous frame is done.
-        let mut now_future = Box::new(now(self.device.clone())) as Box<dyn GpuFuture>;
-        std::mem::swap(&mut self.previous_frame_future, &mut now_future);
-
-        // Wait until previous frame is done,
-        // _and_ the framebuffer has been acquired,
-        // _and_ the texture has been uploaded.
-        let future = now_future.join(acquire_future)
-            .join(write_future)
-            .then_execute(self.queue.clone(), command_buffer).unwrap()                      // Run the commands (pipeline and render)
-            .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), image_num)  // Present newly rendered image.
-            .then_signal_fence_and_flush();                                                 // Signal done and flush the pipeline.
-
-        match future {
-            Ok(future) => self.previous_frame_future = Box::new(future) as Box<_>,
-            Err(e) => println!("Err: {:?}", e),
-        }
-    }
-
-
-    pub fn get_device(&self) -> Arc<Device> {
-        self.device.clone()
-    }
-}
-
-// Internal render functions.
-impl Renderer {
-    // Render a frame in GB mode.
-    fn draw_gb(
-        &mut self,
-        video_mem: &mut super::mem::VideoMem,
-        mut command_buffer: AutoCommandBufferBuilder,
-        image: Arc<ImmutableImage<R8Uint>>
-    ) -> AutoCommandBufferBuilder {
-
-        if video_mem.display_enabled() {
-            // Make descriptor set to bind texture atlas.
-            let set0 = Arc::new(self.set_pools[0].next()
-                .add_sampled_image(image, self.sampler.clone()).unwrap()
-                .build().unwrap());
-
-            // Make descriptor set for palette.
-            let set1 = Arc::new(self.set_pools[1].next()
-                .add_buffer(video_mem.get_palette_buffer().clone()).unwrap()
-                .build().unwrap());
-
-            // Make push constants for sprites.
-            let sprite_push_constants = PushConstants {
-                vertex_offset: [0.0, 0.0],
-                tex_size: video_mem.get_tile_size(),
-                atlas_size: video_mem.get_atlas_size(),
-                tex_offset: 0,
-                palette_offset: 0,
-                flags: ShaderFlags::default().bits()
-            };
-
-            if let Some(bg_vertices) = video_mem.get_background() {
-                // Add sprites below background.
-                if let Some(sprite_vertices) = video_mem.get_sprites_lo() {
-                    command_buffer = command_buffer.draw(
-                        self.pipeline.clone(),
-                        &self.dynamic_state,
-                        sprite_vertices,
-                        (set0.clone(), set1.clone()),
-                        sprite_push_constants.clone()
-                    ).unwrap();
-                }
-
-                // Make push constants for background.
-                let background_push_constants = PushConstants {
-                    vertex_offset: video_mem.get_bg_scroll(),
-                    tex_size: video_mem.get_tile_size(),
-                    atlas_size: video_mem.get_atlas_size(),
-                    tex_offset: video_mem.get_tile_data_offset(),
-                    palette_offset: 0,
-                    flags: ShaderFlags::WRAPAROUND.bits()
-                };
-
-                // Add the background.
-                command_buffer = command_buffer.draw(
-                    self.pipeline.clone(),
-                    &self.dynamic_state,
-                    bg_vertices,
-                    (set0.clone(), set1.clone()),
-                    background_push_constants
-                ).unwrap();
-
-                // Add the window if it is enabled.
-                if let Some(window_vertices) = video_mem.get_window() {
-                    let window_push_constants = PushConstants {
-                        vertex_offset: video_mem.get_window_position(),
-                        tex_size: video_mem.get_tile_size(),
-                        atlas_size: video_mem.get_atlas_size(),
-                        tex_offset: video_mem.get_tile_data_offset(),
-                        palette_offset: 1,
-                        flags: ShaderFlags::default().bits()
-                    };
-
-                    command_buffer = command_buffer.draw(
-                        self.pipeline.clone(),
-                        &self.dynamic_state,
-                        window_vertices,
-                        (set0.clone(), set1.clone()),
-                        window_push_constants
-                    ).unwrap();
-                }
-
-                // Add sprites above background.
-                if let Some(sprite_vertices) = video_mem.get_sprites_hi() {
-                    command_buffer = command_buffer.draw(
-                        self.pipeline.clone(),
-                        &self.dynamic_state,
-                        sprite_vertices,
-                        (set0.clone(), set1.clone()),
-                        sprite_push_constants
-                    ).unwrap();
-                }
-            } else {
-                // Add just sprites.
-                if let Some(sprite_vertices) = video_mem.get_sprites_lo() {
-                    command_buffer = command_buffer.draw(
-                        self.pipeline.clone(),
-                        &self.dynamic_state,
-                        sprite_vertices,
-                        (set0.clone(), set1.clone()),
-                        sprite_push_constants.clone()
-                    ).unwrap();
-                }
-                if let Some(sprite_vertices) = video_mem.get_sprites_hi() {
-                    command_buffer = command_buffer.draw(
-                        self.pipeline.clone(),
-                        &self.dynamic_state,
-                        sprite_vertices,
-                        (set0.clone(), set1.clone()),
-                        sprite_push_constants
-                    ).unwrap();
-                }
-            }
-        }
-        
-        command_buffer
-    }
-
-    // Render a frame in CGB mode.
-    fn draw_cgb(
-        &mut self,
-        video_mem: &mut super::mem::VideoMem,
-        mut command_buffer: AutoCommandBufferBuilder,
-        image: Arc<ImmutableImage<R8Uint>>
-    ) -> AutoCommandBufferBuilder {
         // Make descriptor set to bind texture atlas.
         let set0 = Arc::new(self.set_pools[0].next()
             .add_sampled_image(image, self.sampler.clone()).unwrap()
@@ -458,12 +309,196 @@ impl Renderer {
         let set1 = Arc::new(self.set_pools[1].next()
             .add_buffer(video_mem.get_palette_buffer().clone()).unwrap()
             .build().unwrap());
+        
+        // Start building command buffer using pipeline and framebuffer, starting with the background vertices.
+        let command_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap()
+            .begin_render_pass(self.framebuffers[image_num].clone(), false, vec![video_mem.get_clear_colour().into()]).unwrap();
+
+        // DEBUG
+        //command_buffer_builder = self.draw_debug(video_mem, command_buffer_builder, image);
+
+        self.render_data = Some(RenderData{
+            command_buffer: Some(command_buffer_builder),
+            acquire_future: Box::new(acquire_future),
+            image_num:      image_num,
+            image_future:   write_future,
+            pipeline:       self.pipeline.clone(),
+            set0:           set0,
+            set1:           set1
+        });
+    }
+
+    pub fn frame_end(&mut self) {
+        let render_data = std::mem::replace(&mut self.render_data, None);
+
+        if let Some(render_data) = render_data {
+            // Finish command buffer.
+            let (command_buffer, acquire_future, image_future, image_num) = render_data.finish_drawing();
+
+            // Wait until previous frame is done.
+            let mut now_future = Box::new(now(self.device.clone())) as Box<dyn GpuFuture>;
+            std::mem::swap(&mut self.previous_frame_future, &mut now_future);
+
+            // Wait until previous frame is done,
+            // _and_ the framebuffer has been acquired,
+            // _and_ the texture has been uploaded.
+            let future = now_future.join(acquire_future)
+                .join(image_future)
+                .then_execute(self.queue.clone(), command_buffer).unwrap()                      // Run the commands (pipeline and render)
+                .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), image_num)  // Present newly rendered image.
+                .then_signal_fence_and_flush();                                                 // Signal done and flush the pipeline.
+
+            match future {
+                Ok(future) => self.previous_frame_future = Box::new(future) as Box<_>,
+                Err(e) => println!("Err: {:?}", e),
+            }
+
+            self.previous_frame_future.cleanup_finished();
+        }
+    }
+
+    // Draw a scan-line.
+    pub fn draw_line(&mut self, y: u8, video_mem: &mut super::mem::VideoMem, cgb_mode: bool) {
+        if let Some(render_data) = &mut self.render_data {
+            if cgb_mode {
+                render_data.draw_cgb_line(y, video_mem, &self.dynamic_state);
+            } else {
+                render_data.draw_gb_line(y, video_mem, &self.dynamic_state);
+            }
+        }
+    }
+
+    pub fn get_device(&self) -> Arc<Device> {
+        self.device.clone()
+    }
+}
+
+// Internal render functions.
+impl RenderData {
+    fn draw_gb_line(
+        &mut self,
+        y: u8,
+        video_mem: &mut super::mem::VideoMem,
+        dynamic_state: &DynamicState
+    ) {
+        if video_mem.display_enabled() {
+            let mut command_buffer = std::mem::replace(&mut self.command_buffer, None).unwrap();
+
+            // Make push constants for sprites.
+            let sprite_push_constants = PushConstants {
+                tex_size: video_mem.get_tile_size(),
+                atlas_size: video_mem.get_atlas_size(),
+                vertex_offset: [0.0, 0.0],
+                tex_offset: 0,
+                palette_offset: 0,
+                flags: ShaderFlags::default().bits()
+            };
+
+            let bg_y = (y as u16 + video_mem.get_scroll_y() as u16) as u8;
+            if let Some(bg_vertices) = video_mem.get_background(bg_y) {
+                // Add sprites below background.
+                if let Some(sprite_vertices) = video_mem.get_sprites_lo(y) {
+                    command_buffer = command_buffer.draw(
+                        self.pipeline.clone(),
+                        dynamic_state,
+                        sprite_vertices,
+                        (self.set0.clone(), self.set1.clone()),
+                        sprite_push_constants.clone()
+                    ).unwrap();
+                }
+
+                // Make push constants for background.
+                let background_push_constants = PushConstants {
+                    tex_size: video_mem.get_tile_size(),
+                    atlas_size: video_mem.get_atlas_size(),
+                    vertex_offset: video_mem.get_bg_scroll(),
+                    tex_offset: video_mem.get_tile_data_offset(),
+                    palette_offset: 0,
+                    flags: ShaderFlags::WRAPAROUND.bits()
+                };
+
+                // Add the background.
+                command_buffer = command_buffer.draw(
+                    self.pipeline.clone(),
+                    dynamic_state,
+                    bg_vertices,
+                    (self.set0.clone(), self.set1.clone()),
+                    background_push_constants
+                ).unwrap();
+
+                // Add the window if it is enabled.
+                let window_y = match y as i16 - video_mem.get_window_y() as i16 {
+                    val if val >= 0 => val as u8,
+                    _               => 0,
+                };
+                if let Some(window_vertices) = video_mem.get_window(window_y) {
+                    let window_push_constants = PushConstants {
+                        tex_size: video_mem.get_tile_size(),
+                        atlas_size: video_mem.get_atlas_size(),
+                        vertex_offset: video_mem.get_window_position(),
+                        tex_offset: video_mem.get_tile_data_offset(),
+                        palette_offset: 1,
+                        flags: ShaderFlags::default().bits()
+                    };
+
+                    command_buffer = command_buffer.draw(
+                        self.pipeline.clone(),
+                        dynamic_state,
+                        window_vertices,
+                        (self.set0.clone(), self.set1.clone()),
+                        window_push_constants
+                    ).unwrap();
+                }
+
+                // Add sprites above background.
+                if let Some(sprite_vertices) = video_mem.get_sprites_hi(y) {
+                    command_buffer = command_buffer.draw(
+                        self.pipeline.clone(),
+                        dynamic_state,
+                        sprite_vertices,
+                        (self.set0.clone(), self.set1.clone()),
+                        sprite_push_constants
+                    ).unwrap();
+                }
+            } else {
+                // Add just sprites.
+                if let Some(sprite_vertices) = video_mem.get_sprites_lo(y) {
+                    command_buffer = command_buffer.draw(
+                        self.pipeline.clone(),
+                        dynamic_state,
+                        sprite_vertices,
+                        (self.set0.clone(), self.set1.clone()),
+                        sprite_push_constants.clone()
+                    ).unwrap();
+                }
+                if let Some(sprite_vertices) = video_mem.get_sprites_hi(y) {
+                    command_buffer = command_buffer.draw(
+                        self.pipeline.clone(),
+                        dynamic_state,
+                        sprite_vertices,
+                        (self.set0.clone(), self.set1.clone()),
+                        sprite_push_constants
+                    ).unwrap();
+                }
+            }
+
+            self.command_buffer = Some(command_buffer);
+        }
+    }
+
+    fn draw_cgb_line(
+        &mut self,
+        y: u8,
+        video_mem: &mut super::mem::VideoMem,
+        dynamic_state: &DynamicState
+    ) {
+        let mut command_buffer = std::mem::replace(&mut self.command_buffer, None).unwrap();
 
         // Make push constants for sprites.
         let sprite_push_constants = PushConstants {
-            vertex_offset: [0.0, 0.0],
             tex_size: video_mem.get_tile_size(),
             atlas_size: video_mem.get_atlas_size(),
+            vertex_offset: [0.0, 0.0],
             tex_offset: 0,
             palette_offset: 16,
             flags: ShaderFlags::default().bits()
@@ -471,12 +506,18 @@ impl Renderer {
 
         if video_mem.get_background_priority() {
             // Draw background tile clear colours
-            if let Some(background) = video_mem.get_background() {
+            let bg_y = (y as u16 + video_mem.get_scroll_y() as u16) as u8;
+            let window_y = match y as i16 - video_mem.get_window_y() as i16 {
+                val if val >= 0 => val as u8,
+                _               => 0,
+            };
+
+            if let Some(background) = video_mem.get_background(bg_y) {
                 // Make push constants for background.
                 let background_push_constants = PushConstants {
-                    vertex_offset: video_mem.get_bg_scroll(),
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
+                    vertex_offset: video_mem.get_bg_scroll(),
                     tex_offset: video_mem.get_tile_data_offset(),
                     palette_offset: 8,
                     flags: (ShaderFlags::WRAPAROUND | ShaderFlags::BLOCK_COLOUR).bits()
@@ -484,31 +525,31 @@ impl Renderer {
 
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
-                    &self.dynamic_state,
+                    dynamic_state,
                     background,
-                    (set0.clone(), set1.clone()),
+                    (self.set0.clone(), self.set1.clone()),
                     background_push_constants
                 ).unwrap();
             }
 
             // Draw sprites below background.
-            if let Some(sprite_vertices) = video_mem.get_sprites_lo() {
+            if let Some(sprite_vertices) = video_mem.get_sprites_lo(y) {
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
-                    &self.dynamic_state,
+                    dynamic_state,
                     sprite_vertices.clone(),
-                    (set0.clone(), set1.clone()),
+                    (self.set0.clone(), self.set1.clone()),
                     sprite_push_constants.clone()
                 ).unwrap();
             }
 
             // Add background.
-            if let Some(background) = video_mem.get_background() {
+            if let Some(background) = video_mem.get_background(bg_y) {
                 // Make push constants for background.
                 let background_push_constants = PushConstants {
-                    vertex_offset: video_mem.get_bg_scroll(),
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
+                    vertex_offset: video_mem.get_bg_scroll(),
                     tex_offset: video_mem.get_tile_data_offset(),
                     palette_offset: 0,
                     flags: ShaderFlags::WRAPAROUND.bits()
@@ -516,19 +557,19 @@ impl Renderer {
 
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
-                    &self.dynamic_state,
+                    dynamic_state,
                     background,
-                    (set0.clone(), set1.clone()),
+                    (self.set0.clone(), self.set1.clone()),
                     background_push_constants
                 ).unwrap();
             }
 
             // Add the window if it is enabled.
-            if let Some(window_vertices) = video_mem.get_window() {
+            if let Some(window_vertices) = video_mem.get_window(window_y) {
                 let window_push_constants = PushConstants {
-                    vertex_offset: video_mem.get_window_position(),
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
+                    vertex_offset: video_mem.get_window_position(),
                     tex_offset: video_mem.get_tile_data_offset(),
                     palette_offset: 8,
                     flags: ShaderFlags::default().bits()
@@ -536,31 +577,31 @@ impl Renderer {
 
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
-                    &self.dynamic_state,
+                    dynamic_state,
                     window_vertices,
-                    (set0.clone(), set1.clone()),
+                    (self.set0.clone(), self.set1.clone()),
                     window_push_constants
                 ).unwrap();
             }
 
             // Add sprites above background.
-            if let Some(sprite_vertices) = video_mem.get_sprites_hi() {
+            if let Some(sprite_vertices) = video_mem.get_sprites_hi(y) {
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
-                    &self.dynamic_state,
+                    dynamic_state,
                     sprite_vertices,
-                    (set0.clone(), set1.clone()),
+                    (self.set0.clone(), self.set1.clone()),
                     sprite_push_constants
                 ).unwrap();
             }
 
             // Add high priority background and window.
-            if let Some(background) = video_mem.get_background_hi() {
+            if let Some(background) = video_mem.get_background_hi(bg_y) {
                 // Make push constants for background.
                 let background_push_constants = PushConstants {
-                    vertex_offset: video_mem.get_bg_scroll(),
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
+                    vertex_offset: video_mem.get_bg_scroll(),
                     tex_offset: video_mem.get_tile_data_offset(),
                     palette_offset: 8,
                     flags: ShaderFlags::WRAPAROUND.bits()
@@ -568,19 +609,19 @@ impl Renderer {
 
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
-                    &self.dynamic_state,
+                    dynamic_state,
                     background,
-                    (set0.clone(), set1.clone()),
+                    (self.set0.clone(), self.set1.clone()),
                     background_push_constants
                 ).unwrap();
             }
 
             // Add high priority window.
-            if let Some(window_vertices) = video_mem.get_window_hi() {
+            if let Some(window_vertices) = video_mem.get_window_hi(window_y) {
                 let window_push_constants = PushConstants {
-                    vertex_offset: video_mem.get_window_position(),
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
+                    vertex_offset: video_mem.get_window_position(),
                     tex_offset: video_mem.get_tile_data_offset(),
                     palette_offset: 8,
                     flags: ShaderFlags::default().bits()
@@ -588,9 +629,9 @@ impl Renderer {
 
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
-                    &self.dynamic_state,
+                    dynamic_state,
                     window_vertices,
-                    (set0.clone(), set1.clone()),
+                    (self.set0.clone(), self.set1.clone()),
                     window_push_constants
                 ).unwrap();
             }
@@ -600,28 +641,33 @@ impl Renderer {
             // Add the background.
             // Make push constants for background.
             let background_push_constants = PushConstants {
-                vertex_offset: video_mem.get_bg_scroll(),
                 tex_size: video_mem.get_tile_size(),
                 atlas_size: video_mem.get_atlas_size(),
+                vertex_offset: video_mem.get_bg_scroll(),
                 tex_offset: video_mem.get_tile_data_offset(),
                 palette_offset: 8,
                 flags: ShaderFlags::WRAPAROUND.bits()
             };
 
+            let bg_y = (y as u16 + video_mem.get_scroll_y() as u16) as u8;
             command_buffer = command_buffer.draw(
                 self.pipeline.clone(),
-                &self.dynamic_state,
-                video_mem.get_background().unwrap(),
-                (set0.clone(), set1.clone()),
+                dynamic_state,
+                video_mem.get_background(bg_y).unwrap(),
+                (self.set0.clone(), self.set1.clone()),
                 background_push_constants
             ).unwrap();
 
             // Add the window if it is enabled.
-            if let Some(window_vertices) = video_mem.get_window() {
+            let window_y = match y as i16 - video_mem.get_window_y() as i16 {
+                val if val >= 0 => val as u8,
+                _               => 0,
+            };
+            if let Some(window_vertices) = video_mem.get_window(window_y) {
                 let window_push_constants = PushConstants {
-                    vertex_offset: video_mem.get_window_position(),
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
+                    vertex_offset: video_mem.get_window_position(),
                     tex_offset: video_mem.get_tile_data_offset(),
                     palette_offset: 8,
                     flags: ShaderFlags::default().bits()
@@ -629,38 +675,48 @@ impl Renderer {
 
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
-                    &self.dynamic_state,
+                    dynamic_state,
                     window_vertices,
-                    (set0.clone(), set1.clone()),
+                    (self.set0.clone(), self.set1.clone()),
                     window_push_constants
                 ).unwrap();
             }
 
             // Add all sprites.
-            if let Some(sprite_vertices) = video_mem.get_sprites_lo() {
+            if let Some(sprite_vertices) = video_mem.get_sprites_lo(y) {
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
-                    &self.dynamic_state,
+                    dynamic_state,
                     sprite_vertices,
-                    (set0.clone(), set1.clone()),
+                    (self.set0.clone(), self.set1.clone()),
                     sprite_push_constants.clone()
                 ).unwrap();
             }
-            if let Some(sprite_vertices) = video_mem.get_sprites_hi() {
+            if let Some(sprite_vertices) = video_mem.get_sprites_hi(y) {
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
-                    &self.dynamic_state,
+                    dynamic_state,
                     sprite_vertices,
-                    (set0.clone(), set1.clone()),
+                    (self.set0.clone(), self.set1.clone()),
                     sprite_push_constants
                 ).unwrap();
             }
         }
 
-        command_buffer
+        self.command_buffer = Some(command_buffer);
     }
 
-    #[allow(dead_code)]
+    fn finish_drawing(self) -> (AutoCommandBuffer, Box<dyn GpuFuture>, Box<dyn GpuFuture>, usize) {
+        (
+            self.command_buffer.unwrap().end_render_pass().unwrap().build().unwrap(),
+            self.acquire_future,
+            self.image_future,
+            self.image_num
+        )
+    }
+}
+
+    /*#[allow(dead_code)]
     fn draw_debug(
         &mut self,
         video_mem: &mut super::mem::VideoMem,
@@ -720,5 +776,4 @@ impl Renderer {
         ).unwrap();
 
         command_buffer
-    }
-}
+    }*/

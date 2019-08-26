@@ -13,8 +13,7 @@ By default the emulator will try and run the game in colour if it is available. 
 ### TODO video:
 * Better error checking.
 * Separate video thread to enable "turbo" mode.
-* Some bugs in Color mode when drawing sprites below the background.
-* Draw individual lines.
+* Optimisations, reintroduce caching where possible.
 
 ### TODO audio:
 * Noise wave high freq. higher precision.
@@ -25,4 +24,3 @@ By default the emulator will try and run the game in colour if it is available. 
 * Add ability to use preset ROM (internally - for testing)
 * MBC 6,7 bank swapping systems
 * Save states
-* Video commands for mid-frame updates (scroll X)

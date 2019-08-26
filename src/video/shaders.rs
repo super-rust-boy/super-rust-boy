@@ -19,28 +19,26 @@ const uint SIGNED_OFFSET    = 256;
 const uint TEX_ROW_SIZE     = 16;
 
 // Corner enum
-const uint TOP_LEFT     = 0 << 8;
-const uint BOTTOM_LEFT  = 1 << 8;
-const uint TOP_RIGHT    = 2 << 8;
-const uint BOTTOM_RIGHT = 3 << 8;
+const uint LEFT     = 0 << 8;
+const uint RIGHT    = 1 << 8;
 
 // Flags
 const uint WRAPAROUND = 1;
 
 // Functions
-vec2 calc_vertex_wraparound(vec2, uint);
-vec2 calc_vertex_compare(vec2, uint);
+vec2 calc_vertex_wraparound(vec2, uint, uint);
+vec2 calc_vertex_compare(vec2, uint, uint);
 vec2 calc_tex_coords(uint, uint);
-vec2 get_tex_corner_offset(uint);
+vec2 get_tex_offset(uint, uint);
 
 // Input
 layout(location = 0) in vec2 position;
 layout(location = 1) in uint data;
 
 layout(push_constant) uniform PushConstants {
-    vec2 vertex_offset;
     vec2 tex_size;
     vec2 atlas_size;
+    vec2 vertex_offset;
     uint tex_offset;
     uint palette_offset;    // 1 for window in GB mode, 8 for sprites in CGB mode
     uint flags;
@@ -55,19 +53,20 @@ void main() {
     vec2 vertex_position = position + push_constants.vertex_offset;
 
     if ((push_constants.flags & WRAPAROUND) != 0) {
-        uint corner = data & 0x300;
-        vertex_position = calc_vertex_wraparound(vertex_position, corner);
+        uint side = data & 0x100;
+        uint tex_y = (data >> 9) & 7;
+        vertex_position = calc_vertex_wraparound(vertex_position, side, tex_y);
     }
 
     gl_Position = vec4(vertex_position, 0.0, 1.0);
 
     texCoordOut = calc_tex_coords(data, push_constants.tex_offset);
 
-    paletteNumOut = ((data & 0x1C00) >> 10) + push_constants.palette_offset;
+    paletteNumOut = ((data >> 12) & 7) + push_constants.palette_offset;
 }
 
-vec2 calc_vertex_wraparound(vec2 vertex_coords, uint corner) {
-    vec2 compare = calc_vertex_compare(vertex_coords, corner);
+vec2 calc_vertex_wraparound(vec2 vertex_coords, uint side, uint y) {
+    vec2 compare = calc_vertex_compare(vertex_coords, side, y);
     vec2 result = vertex_coords;
 
     if (compare.x < SCROLL_X_OFFSET) {
@@ -80,20 +79,20 @@ vec2 calc_vertex_wraparound(vec2 vertex_coords, uint corner) {
     return result;
 }
 
-vec2 calc_vertex_compare(vec2 vertex_coords, uint corner) {
-    switch(corner) {
-        case TOP_LEFT:      return vertex_coords;
-        case BOTTOM_LEFT:   return vertex_coords - vec2(0.0, TILE_HEIGHT);
-        case TOP_RIGHT:     return vertex_coords - vec2(TILE_WIDTH, 0.0);
-        default:            return vertex_coords - vec2(TILE_WIDTH, TILE_HEIGHT);
+vec2 calc_vertex_compare(vec2 vertex_coords, uint side, uint y) {
+    float y_offset = (float(y) * TILE_HEIGHT) / 8.0;
+    switch(side) {
+        case LEFT:  return vertex_coords - vec2(0.0, y_offset);
+        default:    return vertex_coords - vec2(TILE_WIDTH, y_offset);
     }
 }
 
 vec2 calc_tex_coords(uint tex_data, uint tex_offset) {
 // Unpack texture information
     uint tex_num = tex_data & 0xFF;
-    uint corner = tex_data & 0x300;
-    uint bank_num = tex_data & 0x2000;
+    uint side = tex_data & 0x100;
+    uint bank_num = tex_data & 0x8000;
+    uint tex_y = (tex_data >> 9) & 7;
 // Get tex number in entire tile atlas
     tex_num += tex_offset;
     tex_num = tex_num >= MAX_TEX_NUM ? tex_num - SIGNED_OFFSET : tex_num;
@@ -102,15 +101,14 @@ vec2 calc_tex_coords(uint tex_data, uint tex_offset) {
     float x = float(tex_num % TEX_ROW_SIZE) / push_constants.atlas_size.x;
     float y = float(tex_num / TEX_ROW_SIZE) / push_constants.atlas_size.y;
     
-    return vec2(x, y) + get_tex_corner_offset(corner);
+    return vec2(x, y) + get_tex_offset(side, tex_y);
 }
 
-vec2 get_tex_corner_offset(uint corner) {
-    switch (corner) {
-        case TOP_LEFT:      return vec2(0.0, 0.0);
-        case BOTTOM_LEFT:   return vec2(0.0, push_constants.tex_size.y);
-        case TOP_RIGHT:     return vec2(push_constants.tex_size.x, 0.0);
-        default:            return push_constants.tex_size;
+vec2 get_tex_offset(uint side, uint y) {
+    float y_offset = (float(y) * push_constants.tex_size.y) / 8.0;
+    switch (side) {
+        case LEFT:  return vec2(0.0, y_offset);
+        default:    return vec2(push_constants.tex_size.x, y_offset);
     }
 }
 "#
@@ -135,9 +133,9 @@ layout(set = 1, binding = 0) uniform Palette {
 } PaletteTable;
 
 layout(push_constant) uniform PushConstants {
-    vec2 vertex_offset;
     vec2 tex_size;
     vec2 atlas_size;
+    vec2 vertex_offset;
     uint tex_offset;
     uint palette_offset;
     uint flags;

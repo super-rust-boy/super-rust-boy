@@ -12,17 +12,17 @@ use std::sync::Arc;
 
 // Vertex data:
 // 0-7: Tile number
-// 8-9: Corner
-// 10-12: Palette
-// 13: VRAM bank
-// 14-16: Ignore
-// 17: priority
+// 8: Side
+// 9-11: Tile Y Coord
+// 12-14: Palette
+// 15: VRAM bank
+// 16-18: other attributes
+// 19: priority
 
-pub enum Corner {
-    TopLeft     = 0 << 8,
-    BottomLeft  = 1 << 8,
-    TopRight    = 2 << 8,
-    BottomRight = 3 << 8
+#[derive(Copy, Clone)]
+pub enum Side {
+    Left     = 0 << 8,
+    Right    = 1 << 8,
 }
 
 pub type VertexBuffer = CpuBufferPoolChunk<Vertex, Arc<StdMemoryPool>>;

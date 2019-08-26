@@ -9,16 +9,19 @@ use bitflags::bitflags;
 use crate::mem::MemDevice;
 
 use super::{
-    Corner, Vertex, VertexBuffer
+    Side, Vertex, VertexBuffer
 };
 
 use std::sync::Arc;
 
-const SPRITE_WIDTH: f32 = (8.0 / 160.0) * 2.0;
-const SPRITE_HEIGHT: f32 = (8.0 / 144.0) * 2.0;
+const SPRITE_SMALL_HEIGHT: u8 = 8;
+const SPRITE_LARGE_HEIGHT: u8 = 16;
 
-const GB_OBJ_PALETTE_0: u32 = 2 << 10;
-const GB_OBJ_PALETTE_1: u32 = 3 << 10;
+const SPRITE_WIDTH: f32 = (8.0 / 160.0) * 2.0;
+const LINE_HEIGHT: f32 = (1.0 / 144.0) * 2.0;
+
+const GB_OBJ_PALETTE_0: u32 = 2 << 12;
+const GB_OBJ_PALETTE_1: u32 = 3 << 12;
 
 bitflags! {
     #[derive(Default)]
@@ -52,132 +55,100 @@ impl Sprite {
         }
     }
 
-    // Get vertices for sprite. Needs to know if this is 8x8 or 8x16.
-    pub fn make_vertices(&self, large: bool, lo_priority: bool, cgb_mode: bool) -> Vec<Vertex> {
+    // Get vertices for sprites on a line. Needs to know if this is 8x8 or 8x16.
+    fn make_vertices(&self, line_y: u8, large: bool, lo_priority: bool, cgb_mode: bool) -> Option<[Vertex; 6]> {
+        let sprite_height = if large {SPRITE_LARGE_HEIGHT} else {SPRITE_SMALL_HEIGHT};
+        let y_compare = line_y + 16;
+        let in_range = (self.y + sprite_height > y_compare) && (self.y <= y_compare);
+
         // This sprite should be in the batch.
-        if lo_priority == self.flags.contains(SpriteFlags::PRIORITY) {
-            let lo_x = ((self.x as f32 - 8.0) / 80.0) - 1.0;
-            let hi_x = lo_x + SPRITE_WIDTH;
+        if (lo_priority == self.flags.contains(SpriteFlags::PRIORITY)) && in_range {
+            // Position
+            let pos_x = ((self.x as f32 - 8.0) / 80.0) - 1.0;
+            let pos_y = (line_y as f32 / 72.0) - 1.0;
 
-            let base_y = ((self.y as f32 - 16.0) / 72.0) - 1.0;
-            let lo_y = if large && self.flags.contains(SpriteFlags::Y_FLIP) {base_y + SPRITE_HEIGHT} else {base_y};
-            let hi_y = lo_y + SPRITE_HEIGHT;
-
-            let (top_left, bottom_left, top_right, bottom_right) = match (self.flags.contains(SpriteFlags::X_FLIP), self.flags.contains(SpriteFlags::Y_FLIP)) {
-                (false, false)  => (Corner::TopLeft, Corner::BottomLeft, Corner::TopRight, Corner::BottomRight),
-                (true, false)   => (Corner::TopRight, Corner::BottomRight, Corner::TopLeft, Corner::BottomLeft),
-                (false, true)   => (Corner::BottomLeft, Corner::TopLeft, Corner::BottomRight, Corner::TopRight),
-                (true, true)    => (Corner::BottomRight, Corner::TopRight, Corner::BottomLeft, Corner::TopLeft)
+            // Texture Y
+            let base_tex_y = (y_compare - self.y) as u32;
+            let tex_y = if self.flags.contains(SpriteFlags::Y_FLIP) {
+                (if large {15} else {7}) - base_tex_y
+            } else {
+                base_tex_y
             };
 
-            let tl = top_left as u32;
-            let bl = bottom_left as u32;
-            let tr = top_right as u32;
-            let br = bottom_right as u32;
-            let tile_num = self.tile_num as u32;
+            let (left, right) = if self.flags.contains(SpriteFlags::X_FLIP) {
+                (Side::Right, Side::Left)
+            } else {
+                (Side::Left, Side::Right)
+            };
+
             let palette_num = if cgb_mode {
-                ((self.flags.bits() & 0xF) as u32) << 10
+                ((self.flags.bits() & 0xF) as u32) << 12
             } else {
                 if self.flags.contains(SpriteFlags::PALETTE) {GB_OBJ_PALETTE_1} else {GB_OBJ_PALETTE_0}
             };
 
-            let mut vertices = Vec::with_capacity(if large {12} else {6});
-            vertices.push(Vertex{ position: [lo_x, lo_y], data: palette_num | tile_num | tl });
-            vertices.push(Vertex{ position: [lo_x, hi_y], data: palette_num | tile_num | bl });
-            vertices.push(Vertex{ position: [hi_x, lo_y], data: palette_num | tile_num | tr });
-            vertices.push(Vertex{ position: [lo_x, hi_y], data: palette_num | tile_num | bl });
-            vertices.push(Vertex{ position: [hi_x, lo_y], data: palette_num | tile_num | tr });
-            vertices.push(Vertex{ position: [hi_x, hi_y], data: palette_num | tile_num | br });
+            let tile_num = self.tile_num as u32 + if tex_y >= 8 {1} else {0};
 
-            if large {
-                let lo_y = if large && self.flags.contains(SpriteFlags::Y_FLIP) {base_y} else {hi_y};
-                let hi_y = lo_y + SPRITE_HEIGHT;
-                let tile_num = self.tile_num as u32 + 1;
-                vertices.push(Vertex{ position: [lo_x, lo_y], data: palette_num | tile_num | tl });
-                vertices.push(Vertex{ position: [lo_x, hi_y], data: palette_num | tile_num | bl });
-                vertices.push(Vertex{ position: [hi_x, lo_y], data: palette_num | tile_num | tr });
-                vertices.push(Vertex{ position: [lo_x, hi_y], data: palette_num | tile_num | bl });
-                vertices.push(Vertex{ position: [hi_x, lo_y], data: palette_num | tile_num | tr });
-                vertices.push(Vertex{ position: [hi_x, hi_y], data: palette_num | tile_num | br });
-            }
+            let y = (tex_y % 8) << 9;
 
-            vertices
-        } else {    // This sprite is not part of this batch.
-            Vec::new()
+            Some([
+                Vertex{ position: [pos_x, pos_y],                               data: palette_num | y | left as u32 | tile_num },
+                Vertex{ position: [pos_x, pos_y + LINE_HEIGHT],                 data: palette_num | y | left as u32 | tile_num },
+                Vertex{ position: [pos_x + SPRITE_WIDTH, pos_y],                data: palette_num | y | right as u32 | tile_num },
+                Vertex{ position: [pos_x, pos_y + LINE_HEIGHT],                 data: palette_num | y | left as u32 | tile_num },
+                Vertex{ position: [pos_x + SPRITE_WIDTH, pos_y],                data: palette_num | y | right as u32 | tile_num },
+                Vertex{ position: [pos_x + SPRITE_WIDTH, pos_y + LINE_HEIGHT],  data: palette_num | y | right as u32 | tile_num }
+            ])
+        } else {
+            None
         }
     }
 }
 
 pub struct ObjectMem {
-    objects: Vec<Sprite>,
-    large_objects: bool,
-    buffer_pool: CpuBufferPool<Vertex>,
-    current_lo_buffer: Option<VertexBuffer>,
-    current_hi_buffer: Option<VertexBuffer>
+    objects:        Vec<Sprite>,
+    buffer_pool:    CpuBufferPool<Vertex>
 }
 
 impl ObjectMem {
     pub fn new(device: &Arc<Device>) -> Self {
         ObjectMem {
             objects: vec![Sprite::new(); 40],
-            large_objects: false,
-            buffer_pool: CpuBufferPool::vertex_buffer(device.clone()),
-            current_lo_buffer: None,
-            current_hi_buffer: None
+            buffer_pool: CpuBufferPool::vertex_buffer(device.clone())
         }
     }
 
-    // Makes a new vertex buffer if the data has changed. Else, retrieves the current one.
+    // Gets vertices for a line.
     // Only retrieves the vertices that appear below the background.
-    pub fn get_lo_vertex_buffer(&mut self, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
-        if self.large_objects != large {
-            self.current_lo_buffer = None;
-            self.current_hi_buffer = None;
-            self.large_objects = large;
+    pub fn get_lo_vertex_buffer(&self, y: u8, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
+        let mut objects = Vec::new();
+        for o in self.objects.iter() {
+            if let Some(v) = o.make_vertices(y, large, true, cgb_mode) {
+                objects.extend(v.iter());
+            }
         }
 
-        if let Some(buf) = &self.current_lo_buffer {
-            Some(buf.clone())
+        if objects.is_empty() {
+            None
         } else {
-            let objects = self.objects.iter().rev()
-                .map(|o| o.make_vertices(large, true, cgb_mode))
-                .fold(Vec::new(), |mut v, mut o| {v.append(&mut o); v});
-
-            let buf = if objects.is_empty() {
-                None
-            } else {
-                Some(self.buffer_pool.chunk(objects).unwrap())
-            };
-            
-            self.current_lo_buffer = buf.clone();
-            buf
+            Some(self.buffer_pool.chunk(objects).unwrap())
         }
     }
 
-    // Makes a new vertex buffer if the data has changed. Else, retrieves the current one.
+    // Gets vertices for a line.
     // Only retrieves the vertices that appear above the background.
-    pub fn get_hi_vertex_buffer(&mut self, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
-        if self.large_objects != large {
-            self.current_lo_buffer = None;
-            self.current_hi_buffer = None;
-            self.large_objects = large;
+    pub fn get_hi_vertex_buffer(&self, y: u8, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
+        let mut objects = Vec::new();
+        for o in self.objects.iter() {
+            if let Some(v) = o.make_vertices(y, large, false, cgb_mode) {
+                objects.extend(v.iter());
+            }
         }
 
-        if let Some(buf) = &self.current_hi_buffer {
-            Some(buf.clone())
+        if objects.is_empty() {
+            None
         } else {
-            let objects = self.objects.iter().rev()
-                .map(|o| o.make_vertices(large, false, cgb_mode))
-                .fold(Vec::new(), |mut v, mut o| {v.append(&mut o); v});
-
-            let buf = if objects.is_empty() {
-                None
-            } else {
-                Some(self.buffer_pool.chunk(objects).unwrap())
-            };
-            
-            self.current_hi_buffer = buf.clone();
-            buf
+            Some(self.buffer_pool.chunk(objects).unwrap())
         }
     }
 }
@@ -204,8 +175,5 @@ impl MemDevice for ObjectMem {
             2 => self.objects[index].tile_num = val,
             _ => self.objects[index].flags = SpriteFlags::from_bits_truncate(val)
         }
-
-        self.current_lo_buffer = None;
-        self.current_hi_buffer = None;
     }
 }
