@@ -821,7 +821,6 @@ dependencies = [
  "chrono 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cpal 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "time 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)",
  "vulkano 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "vulkano-shaders 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "vulkano-win 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",

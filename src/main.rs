@@ -9,8 +9,8 @@ mod interrupt;
 #[cfg(feature = "debug")]
 mod debug;
 
-use time::{Duration, PreciseTime};
 use clap::{clap_app, crate_version};
+use chrono::Utc;
 
 use std::sync::mpsc::channel;
 
@@ -70,13 +70,13 @@ fn main() {
         debug::debug_mode(&mut state);
     } else {
         loop {
-            let frame = PreciseTime::now();
+            let frame = Utc::now();
 
             while state.step() {}   // Execute up to v-blanking
 
             state.frame_update();   // Draw video and read inputs
 
-            while frame.to(PreciseTime::now()) < Duration::microseconds(FRAME_TIME) {};  // Wait until next frame.
+            while (Utc::now() - frame) < chrono::Duration::microseconds(FRAME_TIME) {}  // Wait until next frame.
 
             if let Some(recv) = &mut audio_recv {
                 while let Ok(_) = recv.try_recv() {}

@@ -5,7 +5,6 @@ authors = ["coopersimon <simon.d.cooper@hotmail.co.uk>"]
 edition = "2018"
 
 [dependencies]
-time = "0.1"
 cpal = "0.8"
 vulkano = "0.13"
 vulkano-shaders = "0.13"
@@ -18,3 +17,6 @@ chrono = "0.4"
 
 [features]
 debug = []
+
+#[profile.release]
+#debug = true

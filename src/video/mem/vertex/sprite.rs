@@ -122,7 +122,7 @@ impl ObjectMem {
     // Only retrieves the vertices that appear below the background.
     pub fn get_lo_vertex_buffer(&self, y: u8, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
         let mut objects = Vec::new();
-        for o in self.objects.iter() {
+        for o in self.objects.iter().rev() {
             if let Some(v) = o.make_vertices(y, large, true, cgb_mode) {
                 objects.extend(v.iter());
             }
@@ -139,7 +139,7 @@ impl ObjectMem {
     // Only retrieves the vertices that appear above the background.
     pub fn get_hi_vertex_buffer(&self, y: u8, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
         let mut objects = Vec::new();
-        for o in self.objects.iter() {
+        for o in self.objects.iter().rev() {
             if let Some(v) = o.make_vertices(y, large, false, cgb_mode) {
                 objects.extend(v.iter());
             }
