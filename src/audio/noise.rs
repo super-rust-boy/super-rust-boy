@@ -114,36 +114,78 @@ impl NoiseGen {
             amp_sweep_dir:  Direction::None,
         }
     }
+
+    fn random_step(&mut self) {
+        self.freq_counter += 1;
+        if self.freq_counter >= self.freq_step {
+            let low_bit = self.rand_counter & 1;
+            self.rand_counter >>= 1;
+            let xor_bit = (self.rand_counter & 1) ^ low_bit;
+
+            self.rand_counter &= 0x3FFF;
+            self.rand_counter |= xor_bit << 14;
+            if self.counter_width {
+                self.rand_counter &= 0xFFBF;
+                self.rand_counter |= xor_bit << 6;
+            }
+
+            self.freq_counter = 0;
+        }
+    }
+
+    fn amp_sweep(&mut self) {
+        self.amp_counter += 1;
+        if self.amp_counter >= self.amp_sweep_step {
+            match self.amp_sweep_dir {
+                Direction::Increase => {
+                    if self.amplitude < 15 {
+                        self.amplitude += 1;
+                    }
+                },
+                Direction::Decrease => {
+                    if self.amplitude > 0 {
+                        self.amplitude -= 1;
+                    }
+                },
+                Direction::None => {},
+            }
+            self.amp_counter = 0;
+        }
+    }
 }
 
 impl AudioChannelGen<NoiseRegs> for NoiseGen {
     fn init_signal(&mut self, regs: &NoiseRegs) {
         self.enable = (regs.init_reg & 0x80) != 0;
 
-        let s = ((regs.poly_counter_reg & 0xF0) >> 4) as usize;
-        let r = (regs.poly_counter_reg & 0x7) as usize;
-        let divisor = DIVISOR[r] << s;
+        if self.enable {
+            let s = ((regs.poly_counter_reg & 0xF0) >> 4) as usize;
+            let r = (regs.poly_counter_reg & 0x7) as usize;
+            let divisor = DIVISOR[r] << s;
 
-        self.freq_step = self.sample_rate.checked_div(FREQ_CONST / divisor).unwrap_or(1); // number of samples between counter switches
-        self.freq_counter = 0;
-        self.counter_width = (regs.poly_counter_reg & 8) == 8;
+            self.freq_step = self.sample_rate.checked_div(FREQ_CONST / divisor).unwrap_or(1); // number of samples between counter switches
+            self.freq_counter = 0;
+            self.counter_width = (regs.poly_counter_reg & 8) == 8;
 
-        self.length = if (regs.init_reg & 0x40) != 0 {
-            Some((self.sample_rate * (64 - (regs.length_reg & 0x3F) as usize)) / 256) // TODO: more precise?
-        } else {
-            None
-        };
+            self.rand_counter = 0xFFFF;
 
-        self.amplitude = ((regs.vol_envelope_reg & 0xF0) >> 4) as i8;
-        self.amp_sweep_step = (self.sample_rate * (regs.vol_envelope_reg & 0x7) as usize) / 64; // TODO: more precise?
-        self.amp_counter = 0;
-        self.amp_sweep_dir = if self.amp_sweep_step == 0 {
-            Direction::None
-        } else if (regs.vol_envelope_reg & 0x8) != 0 {
-            Direction::Increase
-        } else {
-            Direction::Decrease
-        };
+            self.length = if (regs.init_reg & 0x40) != 0 {
+                Some((self.sample_rate * (64 - (regs.length_reg & 0x3F) as usize)) / 256) // TODO: more precise?
+            } else {
+                None
+            };
+
+            self.amplitude = ((regs.vol_envelope_reg & 0xF0) >> 4) as i8;
+            self.amp_sweep_step = (self.sample_rate * (regs.vol_envelope_reg & 0x7) as usize) / 64; // TODO: more precise?
+            self.amp_counter = 0;
+            self.amp_sweep_dir = if self.amp_sweep_step == 0 {
+                Direction::None
+            } else if (regs.vol_envelope_reg & 0x8) != 0 {
+                Direction::Increase
+            } else {
+                Direction::Decrease
+            };
+        }
     }
 
     fn generate_signal(&mut self, buffer: &mut [i8], start: f32, end: f32) {
@@ -159,45 +201,15 @@ impl AudioChannelGen<NoiseRegs> for NoiseGen {
                 } else {
                     -self.amplitude // LO
                 };
-                
-                self.freq_counter += 1;
-                if self.freq_counter >= self.freq_step {
-                    let low_bit = self.rand_counter & 1;
-                    self.rand_counter >>= 1;
-                    let xor_bit = (self.rand_counter & 1) ^ low_bit;
 
-                    self.rand_counter &= 0x3FFF;
-                    self.rand_counter |= xor_bit << 14;
-                    if self.counter_width {
-                        self.rand_counter &= 0xFFBF;
-                        self.rand_counter |= xor_bit << 6;
-                    }
-
-                    self.freq_counter = 0;
-                }
+                self.random_step();
 
                 match self.length {
                     Some(n) if n > 0 => self.length = Some(n - 1),
                     _ => {},
                 }
 
-                self.amp_counter += 1;
-                if self.amp_counter >= self.amp_sweep_step {
-                    match self.amp_sweep_dir {
-                        Direction::Increase => {
-                            if self.amplitude < 15 {
-                                self.amplitude += 1;
-                            }
-                        },
-                        Direction::Decrease => {
-                            if self.amplitude > 0 {
-                                self.amplitude -= 1;
-                            }
-                        },
-                        Direction::None => {},
-                    }
-                    self.amp_counter = 0;
-                }
+                self.amp_sweep();
             } else {
                 *i = 0
             }

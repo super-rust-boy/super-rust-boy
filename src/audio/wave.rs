@@ -133,34 +133,36 @@ impl AudioChannelGen<WaveRegs> for WaveGen {
         self.enable = regs.freq_hi_reg & 0x80 != 0;
         self.sound_on = (regs.on_off_reg & 0x80) != 0;
 
-        let freq_n = (((regs.freq_hi_reg & 0x7) as usize) << 8) | (regs.freq_lo_reg as usize);
-        let frequency = FREQ_MAX / (FREQ_MOD - freq_n) as f32;
-        let true_phase = self.sample_rate as f32 / frequency;
+        if self.enable {
+            let freq_n = (((regs.freq_hi_reg & 0x7) as usize) << 8) | (regs.freq_lo_reg as usize);
+            let frequency = FREQ_MAX / (FREQ_MOD - freq_n) as f32;
+            let true_phase = self.sample_rate as f32 / frequency;
 
-        // Int and frac parts must be separated (to differentiate high frequencies)
-        self.phase_int_len = true_phase.trunc() as usize;
-        self.phase_frac_len = true_phase.fract();
-        self.phase_int_count = 0;
-        self.phase_frac_count = 0.0;
+            // Int and frac parts must be separated (to differentiate high frequencies)
+            self.phase_int_len = true_phase.trunc() as usize;
+            self.phase_frac_len = true_phase.fract();
+            self.phase_int_count = 0;
+            self.phase_frac_count = 0.0;
 
-        self.length = if (regs.freq_hi_reg & 0x40) != 0 {
-            Some((self.sample_rate * (256 - regs.length_reg as usize)) / 256) // TODO: more precise?
-        } else {
-            None
-        };
+            self.length = if (regs.freq_hi_reg & 0x40) != 0 {
+                Some((self.sample_rate * (256 - regs.length_reg as usize)) / 256) // TODO: more precise?
+            } else {
+                None
+            };
 
-        self.output_shift = match (regs.output_lev_reg & 0x60) >> 5 {
-            1 => Some(0),
-            2 => Some(1),
-            3 => Some(2),
-            _ => None
-        };
+            self.output_shift = match (regs.output_lev_reg & 0x60) >> 5 {
+                1 => Some(0),
+                2 => Some(1),
+                3 => Some(2),
+                _ => None
+            };
 
-        self.index = 0;
-        for (i, s) in regs.samples.iter().enumerate() {
-            let internal_idx = i * 2;
-            self.samples[internal_idx] = (((s >> 4) as i8) - 8) * 2;
-            self.samples[internal_idx + 1] = (((s & 0xF) as i8) - 8) * 2;
+            self.index = 0;
+            for (i, s) in regs.samples.iter().enumerate() {
+                let internal_idx = i * 2;
+                self.samples[internal_idx] = (((s >> 4) as i8) - 8) * 2;
+                self.samples[internal_idx + 1] = (((s & 0xF) as i8) - 8) * 2;
+            }
         }
     }
 
