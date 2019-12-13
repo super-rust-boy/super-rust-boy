@@ -5,11 +5,11 @@ use bitflags::bitflags;
 bitflags! {
     #[derive(Default)]
     pub struct InterruptFlags: u8 {
-        const V_BLANK  = 1 << 0;
-        const LCD_STAT = 1 << 1;
-        const TIMER    = 1 << 2;
-        const SERIAL   = 1 << 3;
-        const JOYPAD   = 1 << 4;
+        const V_BLANK  = bit!(0);
+        const LCD_STAT = bit!(1);
+        const TIMER    = bit!(2);
+        const SERIAL   = bit!(3);
+        const JOYPAD   = bit!(4);
     }
 }
 

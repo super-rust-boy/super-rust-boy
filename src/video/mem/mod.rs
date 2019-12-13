@@ -45,25 +45,25 @@ const OFFSET_FRAC_Y: f32 = (MAP_SIZE as f32 / VIEW_HEIGHT as f32) / 128.0;  // M
 bitflags! {
     #[derive(Default)]
     struct LCDControl: u8 {
-        const ENABLE                    = 0b10000000;
-        const WINDOW_TILE_MAP_SELECT    = 0b01000000;
-        const WINDOW_DISPLAY_ENABLE     = 0b00100000;
-        const TILE_DATA_SELECT          = 0b00010000;
-        const BG_TILE_MAP_SELECT        = 0b00001000;
-        const OBJ_SIZE                  = 0b00000100;
-        const OBJ_DISPLAY_ENABLE        = 0b00000010;
-        const DISPLAY_PRIORITY          = 0b00000001;
+        const ENABLE                    = bit!(7);
+        const WINDOW_TILE_MAP_SELECT    = bit!(6);
+        const WINDOW_DISPLAY_ENABLE     = bit!(5);
+        const TILE_DATA_SELECT          = bit!(4);
+        const BG_TILE_MAP_SELECT        = bit!(3);
+        const OBJ_SIZE                  = bit!(2);
+        const OBJ_DISPLAY_ENABLE        = bit!(1);
+        const DISPLAY_PRIORITY          = bit!(0);
     }
 }
 
 bitflags! {
     #[derive(Default)]
     pub struct LCDStatusFlags: u8 {
-        const COINCEDENCE_INT   = 0b01000000;
-        const OAM_INT           = 0b00100000;
-        const V_BLANK_INT       = 0b00010000;
-        const H_BLANK_INT       = 0b00001000;
-        const COINCEDENCE_FLAG  = 0b00000100;
+        const COINCEDENCE_INT   = bit!(6);
+        const OAM_INT           = bit!(5);
+        const V_BLANK_INT       = bit!(4);
+        const H_BLANK_INT       = bit!(3);
+        const COINCEDENCE_FLAG  = bit!(2);
     }
 }
 

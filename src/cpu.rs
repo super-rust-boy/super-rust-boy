@@ -7,10 +7,10 @@ use crate::interrupt::*;
 bitflags! {
     #[derive(Default)]
     struct CPUFlags: u8 {
-        const ZERO  = 0b10000000;
-        const NEG   = 0b01000000;
-        const HC    = 0b00100000;
-        const CARRY = 0b00010000;
+        const ZERO  = bit!(7);
+        const NEG   = bit!(6);
+        const HC    = bit!(5);
+        const CARRY = bit!(4);
     }
 }
 
@@ -494,7 +494,7 @@ impl CPU {
     #[inline]
     fn write_mem(&mut self, loc: u16, val: u8) {
         self.clock_inc();
-        if (loc == 0xFF4D) && ((val & 1) == 1) {
+        if (loc == 0xFF4D) && test_bit!(val, 0) {
             self.double_speed_latch = true;
         } else {
             self.mem.write(loc, val);
@@ -728,37 +728,37 @@ impl CPU {
 
     // Shift/Rotate
     fn rlca(&mut self) {
-        let top_bit = (self.a >> 7) & 1;
+        let top_bit = (self.a >> 7) & bit!(0);
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::CARRY, top_bit != 0);
         self.a = (self.a << 1) | top_bit;
     }
 
     fn rla(&mut self) {
-        let carry_bit = if self.flags.contains(CPUFlags::CARRY) {1} else {0};
-        let top_bit = (self.a >> 7) & 1;
+        let carry_bit = if self.flags.contains(CPUFlags::CARRY) {bit!(0)} else {0};
+        let top_bit = (self.a >> 7) & bit!(0);
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::CARRY, top_bit != 0);
         self.a = (self.a << 1) | carry_bit;
     }
 
     fn rrca(&mut self) {
-        let bot_bit = (self.a << 7) & 0x80;
+        let bot_bit = (self.a << 7) & bit!(7);
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::CARRY, bot_bit != 0);
         self.a = (self.a >> 1) | bot_bit;
     }
 
     fn rra(&mut self) {
-        let carry_bit = if self.flags.contains(CPUFlags::CARRY) {0x80} else {0};
-        let bot_bit = (self.a << 7) & 0x80;
+        let carry_bit = if self.flags.contains(CPUFlags::CARRY) {bit!(7)} else {0};
+        let bot_bit = (self.a << 7) & bit!(7);
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::CARRY, bot_bit != 0);
         self.a = (self.a >> 1) | carry_bit;
     }
 
     fn rlc(&mut self, op: u8) -> Option<u8> {
-        let top_bit = (op >> 7) & 1;
+        let top_bit = (op >> 7) & bit!(0);
         let result = (op << 1) | top_bit;
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, result == 0);
@@ -767,8 +767,8 @@ impl CPU {
     }
 
     fn rl(&mut self, op: u8) -> Option<u8> {
-        let carry_bit = if self.flags.contains(CPUFlags::CARRY) {1} else {0};
-        let top_bit = (op >> 7) & 1;
+        let carry_bit = if self.flags.contains(CPUFlags::CARRY) {bit!(0)} else {0};
+        let top_bit = (op >> 7) & bit!(0);
         let result = (op << 1) | carry_bit;
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, result == 0);
@@ -777,7 +777,7 @@ impl CPU {
     }
 
     fn rrc(&mut self, op: u8) -> Option<u8> {
-        let bot_bit = (op << 7) & 0x80;
+        let bot_bit = (op << 7) & bit!(7);
         let result = (op >> 1) | bot_bit;
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, result == 0);
@@ -786,8 +786,8 @@ impl CPU {
     }
 
     fn rr(&mut self, op: u8) -> Option<u8> {
-        let carry_bit = if self.flags.contains(CPUFlags::CARRY) {0x80} else {0};
-        let bot_bit = (op << 7) & 0x80;
+        let carry_bit = if self.flags.contains(CPUFlags::CARRY) {bit!(7)} else {0};
+        let bot_bit = (op << 7) & bit!(7);
         let result = (op >> 1) | carry_bit;
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, result == 0);
@@ -799,15 +799,15 @@ impl CPU {
         let result = op << 1;
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, result == 0);
-        self.flags.set(CPUFlags::CARRY, (op & 0x80) != 0);
+        self.flags.set(CPUFlags::CARRY, test_bit!(op, 7));
         Some(result)
     }
 
     fn sra(&mut self, op: u8) -> Option<u8> {
-        let result = op >> 1 | (op & 0x80);
+        let result = op >> 1 | (op & bit!(7));
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, result == 0);
-        self.flags.set(CPUFlags::CARRY, (op & 0x1) != 0);
+        self.flags.set(CPUFlags::CARRY, test_bit!(op, 0));
         Some(result)
     }
 
@@ -815,7 +815,7 @@ impl CPU {
         let result = op >> 1;
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, result == 0);
-        self.flags.set(CPUFlags::CARRY, (op & 0x1) != 0);
+        self.flags.set(CPUFlags::CARRY, test_bit!(op, 0));
         Some(result)
     }
 
@@ -828,17 +828,17 @@ impl CPU {
 
     // Bit setting & testing
     fn set(&mut self, b: u8, op: u8) -> Option<u8> {
-        let result = op | (1 << b);
+        let result = op | bit!(b);
         Some(result)
     }
 
     fn res(&mut self, b: u8, op: u8) -> Option<u8> {
-        let result = op & !(1 << b);
+        let result = op & !bit!(b);
         Some(result)
     }
 
     fn bit(&mut self, b: u8, op: u8) -> Option<u8> {
-        self.flags.set(CPUFlags::ZERO, (op & (1 << b)) == 0);
+        self.flags.set(CPUFlags::ZERO, !test_bit!(op, b));
         self.flags.remove(CPUFlags::NEG);
         self.flags.insert(CPUFlags::HC);
         None

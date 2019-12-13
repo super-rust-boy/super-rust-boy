@@ -35,7 +35,7 @@ impl AudioChannelRegs for Square2Regs {
         self.freq_lo_reg
     }
     fn read_nrx4(&self) -> u8 {
-        self.freq_hi_reg & 0x7F
+        self.freq_hi_reg & !bit!(7)
     }
 
     fn write_nrx1(&mut self, val: u8) {
@@ -144,7 +144,7 @@ impl Square2Gen {
 
 impl AudioChannelGen<Square2Regs> for Square2Gen {
     fn init_signal(&mut self, regs: &Square2Regs) {
-        self.enable = regs.freq_hi_reg & 0x80 != 0;
+        self.enable = test_bit!(regs.freq_hi_reg, 7);
 
         if self.enable {
             let freq_n = (((regs.freq_hi_reg & 0x7) as usize) << 8) | (regs.freq_lo_reg as usize);
@@ -164,7 +164,7 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
             self.phase_frac_count = 0.0;
             self.extra_sample = false;
 
-            self.length = if (regs.freq_hi_reg & 0x40) != 0 {
+            self.length = if test_bit!(regs.freq_hi_reg, 6) {
                 Some((self.sample_rate * (64 - (regs.duty_length_reg & 0x3F) as usize)) / 256)
             } else {
                 None
@@ -175,7 +175,7 @@ impl AudioChannelGen<Square2Regs> for Square2Gen {
             self.amp_counter = 0;
             self.amp_sweep_dir = if self.amp_sweep_step == 0 {
                 Direction::None
-            } else if (regs.vol_envelope_reg & 0x8) != 0 {
+            } else if test_bit!(regs.vol_envelope_reg, 3) {
                 Direction::Increase
             } else {
                 Direction::Decrease

@@ -25,7 +25,7 @@ const MAX_COLOUR: f32 = 0x1F as f32;
 bitflags! {
     #[derive(Default)]
     struct PaletteIndex: u8 {
-        const AUTO_INCREMENT = 0b10000000;
+        const AUTO_INCREMENT = bit!(7);
     }
 }
 

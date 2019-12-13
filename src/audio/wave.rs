@@ -59,7 +59,7 @@ impl AudioChannelRegs for WaveRegs {
         self.freq_lo_reg
     }
     fn read_nrx4(&self) -> u8 {
-        self.freq_hi_reg & 0x7F
+        self.freq_hi_reg & !bit!(7)
     }
 
     fn write_nrx1(&mut self, val: u8) {
@@ -130,8 +130,8 @@ impl WaveGen {
 
 impl AudioChannelGen<WaveRegs> for WaveGen {
     fn init_signal(&mut self, regs: &WaveRegs) {
-        self.enable = regs.freq_hi_reg & 0x80 != 0;
-        self.sound_on = (regs.on_off_reg & 0x80) != 0;
+        self.enable = test_bit!(regs.freq_hi_reg, 7);
+        self.sound_on = test_bit!(regs.on_off_reg, 7);
 
         if self.enable {
             let freq_n = (((regs.freq_hi_reg & 0x7) as usize) << 8) | (regs.freq_lo_reg as usize);
@@ -144,7 +144,7 @@ impl AudioChannelGen<WaveRegs> for WaveGen {
             self.phase_int_count = 0;
             self.phase_frac_count = 0.0;
 
-            self.length = if (regs.freq_hi_reg & 0x40) != 0 {
+            self.length = if test_bit!(regs.freq_hi_reg, 6) {
                 Some((self.sample_rate * (256 - regs.length_reg as usize)) / 256) // TODO: more precise?
             } else {
                 None

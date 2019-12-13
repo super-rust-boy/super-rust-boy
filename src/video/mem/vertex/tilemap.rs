@@ -15,10 +15,10 @@ use super::{
 bitflags! {
     #[derive(Default)]
     struct Attributes: u8 {
-        //const BG_OAM_PRIORITY    = 0b10000000;
-        const Y_FLIP             = 0b01000000;
-        const X_FLIP             = 0b00100000;
-        //const TILE_VRAM_BANK_NUM = 0b00001000;
+        //const BG_OAM_PRIORITY    = bit!(7);
+        const Y_FLIP             = bit!(6);
+        const X_FLIP             = bit!(5);
+        //const TILE_VRAM_BANK_NUM = bit!(3);
     }
 }
 

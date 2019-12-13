@@ -1,3 +1,6 @@
+#[macro_use]
+mod utils;
+
 mod cpu;
 mod mem;
 mod video;
@@ -26,7 +29,7 @@ pub struct RustBoy {
 }
 
 impl RustBoy {
-    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool) -> Self {
+    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool) -> Box<Self> {
         let (send, recv) = channel();
 
         let ad = AudioDevice::new(send);
@@ -41,10 +44,10 @@ impl RustBoy {
             Some(recv)
         };
 
-        RustBoy {
+        Box::new(RustBoy {
             cpu: cpu,
             audio_recv: audio_recv
-        }
+        })
     }
 
     pub fn step(&mut self) -> bool {

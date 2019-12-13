@@ -53,7 +53,8 @@ impl Cartridge {
 
         let mut reader = BufReader::new(f);
         let mut buf = [0_u8; 0x4000];
-        reader.read(&mut buf).map_err(|e| e.to_string())?;
+        reader.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+        reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
 
         let (bank_type, features) = match buf[0x147] {
             0x1 | 0x2           => (MBC::_1(MBC1::new()), CartFeatures::None),
@@ -135,7 +136,7 @@ impl Cartridge {
     // Check cart for cgb mode.
     pub fn cgb_cart(&self) -> bool {
         let cgb_flag = self.read(0x143);
-        (cgb_flag & 0x80) != 0
+        test_bit!(cgb_flag, 7)
     }
 }
 
@@ -166,8 +167,7 @@ impl Cartridge {
     fn read_ram(&self, loc: u16) -> u8 {
         if self.ram_enable {
             self.ram.read(loc)
-        }
-        else {
+        } else {
             0
         }
     }

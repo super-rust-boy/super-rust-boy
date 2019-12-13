@@ -144,7 +144,7 @@ impl MemDevice for AudioDevice {
             0xFF13  => self.nr1.write_nrx3(val),
             0xFF14  => {
                 self.nr1.write_nrx4(val);
-                self.update = (val & 0x80) != 0;
+                self.update = test_bit!(val, 7);
             },
 
             0xFF16  => self.nr2.write_nrx1(val),
@@ -152,7 +152,7 @@ impl MemDevice for AudioDevice {
             0xFF18  => self.nr2.write_nrx3(val),
             0xFF19  => {
                 self.nr2.write_nrx4(val);
-                self.update = (val & 0x80) != 0;
+                self.update = test_bit!(val, 7);
             },
 
             0xFF1A  => self.nr3.write_nrx0(val),
@@ -161,7 +161,7 @@ impl MemDevice for AudioDevice {
             0xFF1D  => self.nr3.write_nrx3(val),
             0xFF1E  => {
                 self.nr3.write_nrx4(val);
-                self.update = (val & 0x80) != 0;
+                self.update = test_bit!(val, 7);
             },
 
             0xFF20  => self.nr4.write_nrx1(val),
@@ -169,7 +169,7 @@ impl MemDevice for AudioDevice {
             0xFF22  => self.nr4.write_nrx3(val),
             0xFF23  => {
                 self.nr4.write_nrx4(val);
-                self.update = (val & 0x80) != 0;
+                self.update = test_bit!(val, 7);
             },
 
             // If any of the below change, send an update at the end of the frame.

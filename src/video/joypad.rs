@@ -3,20 +3,20 @@ use bitflags::bitflags;
 bitflags! {
     #[derive(Default)]
     pub struct Buttons: u8 {
-        const START     = 0b00001000;
-        const SELECT    = 0b00000100;
-        const B         = 0b00000010;
-        const A         = 0b00000001;
+        const START     = bit!(3);
+        const SELECT    = bit!(2);
+        const B         = bit!(1);
+        const A         = bit!(0);
     }
 }
 
 bitflags! {
     #[derive(Default)]
     pub struct Directions: u8 {
-        const DOWN  = 0b00001000;
-        const UP    = 0b00000100;
-        const LEFT  = 0b00000010;
-        const RIGHT = 0b00000001;
+        const DOWN  = bit!(3);
+        const UP    = bit!(2);
+        const LEFT  = bit!(1);
+        const RIGHT = bit!(0);
     }
 }
 
@@ -26,8 +26,8 @@ enum Select {
     None
 }
 
-const SELECT_DIRECTION: u8  = 1 << 4;
-const SELECT_BUTTONS: u8    = 1 << 5;
+const SELECT_DIRECTION: u8  = bit!(4);
+const SELECT_BUTTONS: u8    = bit!(5);
 
 pub struct Joypad {
     buttons:    Buttons,

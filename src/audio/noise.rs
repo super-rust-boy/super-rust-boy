@@ -48,7 +48,7 @@ impl AudioChannelRegs for NoiseRegs {
         self.poly_counter_reg
     }
     fn read_nrx4(&self) -> u8 {
-        self.init_reg & 0x7F
+        self.init_reg & !bit!(7)
     }
 
     fn write_nrx1(&mut self, val: u8) {
@@ -156,7 +156,7 @@ impl NoiseGen {
 
 impl AudioChannelGen<NoiseRegs> for NoiseGen {
     fn init_signal(&mut self, regs: &NoiseRegs) {
-        self.enable = (regs.init_reg & 0x80) != 0;
+        self.enable = test_bit!(regs.init_reg, 7);
 
         if self.enable {
             let s = ((regs.poly_counter_reg & 0xF0) >> 4) as usize;
@@ -169,7 +169,7 @@ impl AudioChannelGen<NoiseRegs> for NoiseGen {
 
             self.rand_counter = 0xFFFF;
 
-            self.length = if (regs.init_reg & 0x40) != 0 {
+            self.length = if test_bit!(regs.init_reg, 6) {
                 Some((self.sample_rate * (64 - (regs.length_reg & 0x3F) as usize)) / 256) // TODO: more precise?
             } else {
                 None
@@ -180,7 +180,7 @@ impl AudioChannelGen<NoiseRegs> for NoiseGen {
             self.amp_counter = 0;
             self.amp_sweep_dir = if self.amp_sweep_step == 0 {
                 Direction::None
-            } else if (regs.vol_envelope_reg & 0x8) != 0 {
+            } else if test_bit!(regs.vol_envelope_reg, 3) {
                 Direction::Increase
             } else {
                 Direction::Decrease

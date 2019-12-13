@@ -16,14 +16,14 @@ use bitflags::bitflags;
 bitflags! {
     #[derive(Default)]
     struct ChannelEnables: u8 {
-        const LEFT_4    = 0b10000000;
-        const LEFT_3    = 0b01000000;
-        const LEFT_2    = 0b00100000;
-        const LEFT_1    = 0b00010000;
-        const RIGHT_4   = 0b00001000;
-        const RIGHT_3   = 0b00000100;
-        const RIGHT_2   = 0b00000010;
-        const RIGHT_1   = 0b00000001;
+        const LEFT_4    = bit!(7);
+        const LEFT_3    = bit!(6);
+        const LEFT_2    = bit!(5);
+        const LEFT_1    = bit!(4);
+        const RIGHT_4   = bit!(3);
+        const RIGHT_3   = bit!(2);
+        const RIGHT_2   = bit!(1);
+        const RIGHT_1   = bit!(0);
     }
 }
 
@@ -229,15 +229,15 @@ impl AudioHandler {
     }
 
     fn set_controls(&mut self, channel_control: u8, output_select: u8, on_off: u8) {
-        self.sound_on = (on_off & 0x80) != 0;
+        self.sound_on = test_bit!(on_off, 7);
 
-        self.left_vol = if (channel_control & 0x80) != 0 {
+        self.left_vol = if test_bit!(channel_control, 7) {
             0.0
         } else {    // Divide by max value * num of channels
             (((channel_control & 0x70) >> 4) as f32 + 1.0) / 32.0
         };
 
-        self.right_vol = if (channel_control & 0x8) != 0 {
+        self.right_vol = if test_bit!(channel_control, 3) {
             0.0
         } else {
             ((channel_control & 0x7) as f32 + 1.0) / 32.0

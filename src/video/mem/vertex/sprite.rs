@@ -26,14 +26,14 @@ const GB_OBJ_PALETTE_1: u32 = 3 << 12;
 bitflags! {
     #[derive(Default)]
     struct SpriteFlags: u8 {
-        const PRIORITY  = 0b10000000;
-        const Y_FLIP    = 0b01000000;
-        const X_FLIP    = 0b00100000;
-        const PALETTE   = 0b00010000;
-        const VRAM_BANK = 0b00001000;
-        const CGB_PAL_2 = 0b00000100;
-        const CGB_PAL_1 = 0b00000010;
-        const CGB_PAL_0 = 0b00000001;
+        const PRIORITY  = bit!(7);
+        const Y_FLIP    = bit!(6);
+        const X_FLIP    = bit!(5);
+        const PALETTE   = bit!(4);
+        const VRAM_BANK = bit!(3);
+        const CGB_PAL_2 = bit!(2);
+        const CGB_PAL_1 = bit!(1);
+        const CGB_PAL_0 = bit!(0);
     }
 }
 

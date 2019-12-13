@@ -30,7 +30,7 @@ impl Timer {
             0xFF05 => self.timer_counter,
             0xFF06 => self.timer_modulo,
             0xFF07 => {
-                let enable = if self.timer_enable {4} else {0};
+                let enable = if self.timer_enable {bit!(2)} else {0};
                 enable | self.clock_select
             },
             _ => 0,
@@ -44,7 +44,7 @@ impl Timer {
             0xFF05 => self.timer_counter = val,
             0xFF06 => self.timer_modulo = val,
             0xFF07 => {
-                self.timer_enable = (val & 4) != 0;
+                self.timer_enable = test_bit!(val, 2);
                 self.clock_select = val & 0b11;
             },
             _ => {},
