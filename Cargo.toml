@@ -8,6 +8,7 @@ default-run = "rustboy-bin"
 [lib]
 name = "rustboy"
 path = "src/lib.rs"
+crate-type = ["staticlib"]
 
 [[bin]]
 name = "rustboy-bin"
