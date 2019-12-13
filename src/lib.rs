@@ -34,9 +34,9 @@ impl RustBoy {
 
         let ad = AudioDevice::new(send);
         let mem = MemBus::new(cart_name, save_file_name, palette, ad);
-    
+
         let cpu = CPU::new(mem);
-    
+
         let audio_recv = if !mute {
             start_audio_handler_thread(recv);
             None
@@ -76,4 +76,27 @@ impl RustBoy {
     pub fn get_mem_at(&self, loc: u16) -> u8 {
         self.cpu.get_mem_at(loc)
     }
+}
+
+use std::os::raw::c_char;
+use std::ffi::{c_void, CStr};
+
+#[no_mangle]
+pub extern fn rustBoyCreate(cartridge_path: *const c_char, save_file_path: *const c_char) -> *const c_void {
+
+	let save_path_result = unsafe { CStr::from_ptr(save_file_path) };
+	let save_path = match save_path_result.to_str() {
+		Ok(c) => c,
+		Err(_) => panic!("Failed to parse save path")
+	};
+
+	let cart_path_result = unsafe { CStr::from_ptr(cartridge_path) };
+	let cart_path = match cart_path_result.to_str() {
+		Ok(c) => c,
+		Err(_) => panic!("Failed to parse cartridge path")
+	};
+
+	let instance = RustBoy::new(cart_path, save_path, UserPalette::Default, true);
+
+	Box::into_raw(instance) as *const c_void
 }
