@@ -5,4 +5,4 @@ test/
 *.txt
 *.sav
 roms/
-.vscode
+headers/
