@@ -1,26 +1,14 @@
-//use cpu;
-mod cpu;
-mod mem;
-mod video;
-mod timer;
-mod audio;
-mod interrupt;
+extern crate rustboy;
 
-#[cfg(feature = "debug")]
 mod debug;
+
+use rustboy::{
+    RustBoy,
+    UserPalette
+};
 
 use clap::{clap_app, crate_version};
 use chrono::Utc;
-
-use std::sync::mpsc::channel;
-
-use cpu::CPU;
-use video::UserPalette;
-use audio::{
-    AudioDevice,
-    start_audio_handler_thread
-};
-use mem::MemBus;
 
 const FRAME_TIME: i64 = 16_666;
 //const FRAME_TIME: i64 = 16_743; // 59.73 fps
@@ -51,36 +39,20 @@ fn main() {
 
     let palette = choose_palette(cmd_args.value_of("palette"));
 
-    let (send, recv) = channel();
-
-    let ad = AudioDevice::new(send);
-    let mem = MemBus::new(&cart, &save_file, palette, ad);
-
-    let mut state = CPU::new(mem);
-
-    let mut audio_recv = if !cmd_args.is_present("mute") {
-        start_audio_handler_thread(recv);
-        None
-    } else {
-        Some(recv)
-    };
+    let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"));
     
     if cmd_args.is_present("debug") {
-        #[cfg(feature = "debug")]
-        debug::debug_mode(&mut state);
+        //#[cfg(feature = "debug")]
+        debug::debug_mode(&mut rustboy);
     } else {
         loop {
             let frame = Utc::now();
 
-            while state.step() {}   // Execute up to v-blanking
+            while rustboy.step() {}   // Execute up to v-blanking
 
-            state.frame_update();   // Draw video and read inputs
+            rustboy.frame();   // Draw video and read inputs
 
             while (Utc::now() - frame) < chrono::Duration::microseconds(FRAME_TIME) {}  // Wait until next frame.
-
-            if let Some(recv) = &mut audio_recv {
-                while let Ok(_) = recv.try_recv() {}
-            }
         }
     }
 }
