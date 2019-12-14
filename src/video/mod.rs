@@ -22,7 +22,8 @@ use crate::mem::MemDevice;
 use self::mem::VideoMem;
 use self::sgbpalettes::SGBPalette;
 pub use self::vulkan::Renderer as VulkanRenderer;
-pub use self::vulkan::WindowType;
+
+pub use self::types::WindowType;
 
 pub use sgbpalettes::UserPalette;
 

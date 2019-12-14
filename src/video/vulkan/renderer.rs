@@ -54,7 +54,7 @@ use bitflags::bitflags;
 
 use std::sync::Arc;
 
-use super::super::types::Vertex;
+use super::super::types::*;
 
 #[derive(Clone, Debug)]
 struct PushConstants {
@@ -114,7 +114,7 @@ pub struct Renderer {
 
 impl Renderer {
     // Create and initialise renderer.
-    pub fn new(window_type: super::WindowType) -> Self {
+    pub fn new(window_type: WindowType) -> Self {
         // Make instance with window extensions.
         let instance = {
             let extensions = vulkano_win::required_extensions();
@@ -147,7 +147,7 @@ impl Renderer {
 
         // Make a surface.
         let surface = match window_type {
-            super::WindowType::Winit(events_loop) => WindowBuilder::new()
+            WindowType::Winit(events_loop) => WindowBuilder::new()
                 .with_dimensions((320, 288).into())
                 .with_title("Super Rust Boy")
                 .build_vk_surface(&events_loop, instance.clone())
