@@ -1,7 +1,7 @@
 mod mem;
-mod joypad;
-mod renderer;
-mod shaders;
+mod types;
+mod vulkan;
+
 pub mod sgbpalettes;
 
 // Video mode constants
@@ -14,22 +14,15 @@ mod constants {
     pub const FRAME_CYCLE: u32  = 144 * H_CYCLES;   // Time spent cycling through modes 2,3 and 0 before V-Blank
 }
 
-use winit::{
-    EventsLoop,
-    Event,
-    WindowEvent,
-    ElementState,
-    VirtualKeyCode
-};
+use winit::EventsLoop;
 
 use cgmath::Matrix4;
 
 use crate::interrupt::InterruptFlags;
 use crate::mem::MemDevice;
 
-use self::joypad::{Joypad, Buttons, Directions};
 use self::mem::VideoMem;
-use self::renderer::Renderer;
+use self::vulkan::Renderer;
 use self::sgbpalettes::SGBPalette;
 
 pub use sgbpalettes::UserPalette;
@@ -58,18 +51,14 @@ impl From<u8> for Mode {
 
 pub struct VideoDevice {
     mem:                VideoMem,
-    // joypad inputs
-    joypad:             Joypad,
 
     renderer:           Renderer,
-    events_loop:        EventsLoop,
 
     cgb_mode:           bool
 }
 
 impl VideoDevice {
-    pub fn new(palette: SGBPalette, cgb_mode: bool) -> Self {
-        let events_loop = EventsLoop::new();
+    pub fn new(events_loop: &EventsLoop, palette: SGBPalette, cgb_mode: bool) -> Self {
         let mut renderer = Renderer::new(&events_loop);
         let mut mem = VideoMem::new(&renderer.get_device(), palette, cgb_mode);
 
@@ -77,11 +66,8 @@ impl VideoDevice {
 
         VideoDevice {
             mem:            mem,
-            // joypad inputs
-            joypad:         Joypad::new(),
 
             renderer:       renderer,
-            events_loop:    events_loop,
 
             cgb_mode:       cgb_mode
         }
@@ -97,50 +83,9 @@ impl VideoDevice {
         self.mem.lcd_status.read_mode() == Mode::_0
     }
 
-    // Read inputs and store, return true if joypad interrupt is triggered.
-    pub fn read_inputs(&mut self) -> bool {
-        let joypad = &mut self.joypad;
-        let renderer = &mut self.renderer;
-
-        self.events_loop.poll_events(|e| {
-            match e {
-                Event::WindowEvent {
-                    window_id: _,
-                    event: w,
-                } => match w {
-                    WindowEvent::CloseRequested => {
-                        ::std::process::exit(0);
-                    },
-                    WindowEvent::KeyboardInput {
-                        device_id: _,
-                        input: k,
-                    } => {
-                        let pressed = match k.state {
-                            ElementState::Pressed => true,
-                            ElementState::Released => false,
-                        };
-                        match k.virtual_keycode {
-                            Some(VirtualKeyCode::X)         => joypad.set_button(Buttons::A, pressed),
-                            Some(VirtualKeyCode::Z)         => joypad.set_button(Buttons::B, pressed),
-                            Some(VirtualKeyCode::Space)     => joypad.set_button(Buttons::SELECT, pressed),
-                            Some(VirtualKeyCode::Return)    => joypad.set_button(Buttons::START, pressed),
-                            Some(VirtualKeyCode::Up)        => joypad.set_direction(Directions::UP, pressed),
-                            Some(VirtualKeyCode::Down)      => joypad.set_direction(Directions::DOWN, pressed),
-                            Some(VirtualKeyCode::Left)      => joypad.set_direction(Directions::LEFT, pressed),
-                            Some(VirtualKeyCode::Right)     => joypad.set_direction(Directions::RIGHT, pressed),
-                            _ => {},
-                        }
-                    },
-                    WindowEvent::Resized(_) => {
-                        renderer.create_swapchain();
-                    },
-                    _ => {}
-                },
-                _ => {},
-            }
-        });
-
-        joypad.check_interrupt()
+    // To be called when the window is resized.
+    pub fn on_resize(&mut self) {
+        self.renderer.create_swapchain();
     }
 
     // Set the current video mode based on the cycle count.
@@ -238,16 +183,10 @@ impl VideoDevice {
 
 impl MemDevice for VideoDevice {
     fn read(&self, loc: u16) -> u8 {
-        match loc {
-            0xFF00 =>   self.joypad.read(),
-            _ =>        self.mem.read(loc)
-        }
+        self.mem.read(loc)
     }
 
     fn write(&mut self, loc: u16, val: u8) {
-        match loc {
-            0xFF00 =>   self.joypad.write(val),
-            _ =>        self.mem.write(loc, val)
-        }
+        self.mem.write(loc, val);
     }
 }

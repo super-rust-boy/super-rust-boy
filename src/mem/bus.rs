@@ -1,12 +1,17 @@
 // The main memory bus that connects to the CPU.
 
-use crate::video::{
-    sgbpalettes::*,
-    VideoDevice
+use winit::EventsLoop;
+
+use crate::{
+    video::{
+        sgbpalettes::*,
+        VideoDevice
+    },
+    audio::AudioDevice,
+    timer::Timer,
+    joypad::*,
+    interrupt::InterruptFlags
 };
-use crate::audio::AudioDevice;
-use crate::timer::Timer;
-use crate::interrupt::InterruptFlags;
 
 use super::cartridge::Cartridge;
 use super::{MemDevice, WriteableMem};
@@ -23,6 +28,7 @@ pub struct MemBus {
     video_device:       VideoDevice,
     audio_device:       AudioDevice,
     timer:              Timer,
+    joypad:             Joypad,
 
     // DMA
     dma_addr:           u16,
@@ -39,7 +45,7 @@ pub struct MemBus {
 }
 
 impl MemBus {
-    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette, audio_device: AudioDevice) -> MemBus {
+    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette, audio_device: AudioDevice, events_loop: &EventsLoop) -> MemBus {
         let rom = match Cartridge::new(rom_file, save_file) {
             Ok(r) => r,
             Err(s) => panic!("Could not construct ROM: {}", s),
@@ -66,9 +72,10 @@ impl MemBus {
             interrupt_flag:     InterruptFlags::default(),
             interrupt_enable:   InterruptFlags::default(),
 
-            video_device:       VideoDevice::new(palette, cgb_mode),
+            video_device:       VideoDevice::new(events_loop, palette, cgb_mode),
             audio_device:       audio_device,
             timer:              Timer::new(),
+            joypad:             Joypad::new(),
 
             dma_addr:           0,
             dma_active:         false,
@@ -85,6 +92,9 @@ impl MemBus {
     pub fn render_frame(&mut self) {
         self.audio_device.frame_update();
         self.video_device.frame();
+        if self.joypad.check_interrupt() {
+            self.interrupt_flag.insert(InterruptFlags::JOYPAD);
+        }
     }
 
     // Send new audio update.
@@ -132,11 +142,16 @@ impl MemBus {
         self.interrupt_flag.remove(flag);
     }
 
-    // Read inputs and update registers.
-    pub fn read_inputs(&mut self) {
-        if self.video_device.read_inputs() {
-            self.interrupt_flag.insert(InterruptFlags::JOYPAD);
-        }
+    pub fn set_button(&mut self, button: Buttons, val: bool) {
+        self.joypad.set_button(button, val);
+    }
+
+    pub fn set_direction(&mut self, direction: Directions, val: bool) {
+        self.joypad.set_direction(direction, val);
+    }
+
+    pub fn on_resize(&mut self) {
+        self.video_device.on_resize();
     }
 
     // Flush the battery-backed RAM to disk.
@@ -254,7 +269,7 @@ impl MemDevice for MemBus {
             0xE000..=0xEFFF => self.ram.read(loc - 0xE000),
             0xF000..=0xFDFF => self.ram.read((loc - 0xF000) + self.cgb_ram_offset),
             0xFE00..=0xFE9F => self.video_device.read(loc),
-            0xFF00          => self.video_device.read(loc),
+            0xFF00          => self.joypad.read(),
             0xFF01..=0xFF02 => 0,
             0xFF03..=0xFF07 => self.timer.read(loc),
             0xFF0F          => self.interrupt_flag.bits(),
@@ -282,7 +297,7 @@ impl MemDevice for MemBus {
             0xE000..=0xEFFF => self.ram.write(loc - 0xE000, val),
             0xF000..=0xFDFF => self.ram.write((loc - 0xF000) + self.cgb_ram_offset, val),
             0xFE00..=0xFE9F => self.video_device.write(loc, val),
-            0xFF00          => self.video_device.write(loc, val),
+            0xFF00          => self.joypad.write(val),
             0xFF03..=0xFF07 => self.timer.write(loc, val),
             0xFF0F          => self.interrupt_flag = InterruptFlags::from_bits_truncate(val),
             0xFF10..=0xFF3F => self.audio_device.write(loc, val),
