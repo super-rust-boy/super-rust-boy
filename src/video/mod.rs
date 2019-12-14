@@ -14,16 +14,15 @@ mod constants {
     pub const FRAME_CYCLE: u32  = 144 * H_CYCLES;   // Time spent cycling through modes 2,3 and 0 before V-Blank
 }
 
-use winit::EventsLoop;
-
 use cgmath::Matrix4;
 
 use crate::interrupt::InterruptFlags;
 use crate::mem::MemDevice;
 
 use self::mem::VideoMem;
-use self::vulkan::Renderer;
 use self::sgbpalettes::SGBPalette;
+pub use self::vulkan::Renderer as VulkanRenderer;
+pub use self::vulkan::WindowType;
 
 pub use sgbpalettes::UserPalette;
 
@@ -50,16 +49,15 @@ impl From<u8> for Mode {
 }
 
 pub struct VideoDevice {
-    mem:                VideoMem,
+    mem:        VideoMem,
 
-    renderer:           Renderer,
+    renderer:   VulkanRenderer,
 
-    cgb_mode:           bool
+    cgb_mode:   bool
 }
 
 impl VideoDevice {
-    pub fn new(events_loop: &EventsLoop, palette: SGBPalette, cgb_mode: bool) -> Self {
-        let mut renderer = Renderer::new(&events_loop);
+    pub fn new(mut renderer: VulkanRenderer, palette: SGBPalette, cgb_mode: bool) -> Self {
         let mut mem = VideoMem::new(&renderer.get_device(), palette, cgb_mode);
 
         renderer.frame_start(&mut mem);

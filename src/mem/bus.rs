@@ -1,11 +1,10 @@
 // The main memory bus that connects to the CPU.
 
-use winit::EventsLoop;
-
 use crate::{
     video::{
         sgbpalettes::*,
-        VideoDevice
+        VideoDevice,
+        VulkanRenderer
     },
     audio::AudioDevice,
     timer::Timer,
@@ -45,7 +44,7 @@ pub struct MemBus {
 }
 
 impl MemBus {
-    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette, audio_device: AudioDevice, events_loop: &EventsLoop) -> MemBus {
+    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette, audio_device: AudioDevice, renderer: VulkanRenderer) -> MemBus {
         let rom = match Cartridge::new(rom_file, save_file) {
             Ok(r) => r,
             Err(s) => panic!("Could not construct ROM: {}", s),
@@ -72,7 +71,7 @@ impl MemBus {
             interrupt_flag:     InterruptFlags::default(),
             interrupt_enable:   InterruptFlags::default(),
 
-            video_device:       VideoDevice::new(events_loop, palette, cgb_mode),
+            video_device:       VideoDevice::new(renderer, palette, cgb_mode),
             audio_device:       audio_device,
             timer:              Timer::new(),
             joypad:             Joypad::new(),

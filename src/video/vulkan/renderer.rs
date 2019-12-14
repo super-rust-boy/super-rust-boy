@@ -46,7 +46,6 @@ use vulkano::{
 use vulkano_win::VkSurfaceBuild;
 
 use winit::{
-    EventsLoop,
     Window,
     WindowBuilder
 };
@@ -115,7 +114,7 @@ pub struct Renderer {
 
 impl Renderer {
     // Create and initialise renderer.
-    pub fn new(events_loop: &EventsLoop) -> Self {
+    pub fn new(window_type: super::WindowType) -> Self {
         // Make instance with window extensions.
         let instance = {
             let extensions = vulkano_win::required_extensions();
@@ -147,11 +146,13 @@ impl Renderer {
         let queue = queues.next().unwrap();
 
         // Make a surface.
-        let surface = WindowBuilder::new()
-            .with_dimensions((320, 288).into())
-            .with_title("Super Rust Boy")
-            .build_vk_surface(&events_loop, instance.clone())
-            .expect("Couldn't create surface");
+        let surface = match window_type {
+            super::WindowType::Winit(events_loop) => WindowBuilder::new()
+                .with_dimensions((320, 288).into())
+                .with_title("Super Rust Boy")
+                .build_vk_surface(&events_loop, instance.clone())
+                .expect("Couldn't create surface")
+        };
 
         // Make the sampler for the texture.
         let sampler = Sampler::new(

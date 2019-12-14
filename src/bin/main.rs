@@ -2,12 +2,7 @@ extern crate rustboy;
 
 mod debug;
 
-use rustboy::{
-    RustBoy,
-    UserPalette,
-    Buttons,
-    Directions
-};
+use rustboy::*;
 
 use clap::{clap_app, crate_version};
 use chrono::Utc;
@@ -50,7 +45,9 @@ fn main() {
 
     let mut events_loop = EventsLoop::new();
 
-    let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"), &events_loop);
+    let renderer = VulkanRenderer::new(WindowType::Winit(&events_loop));
+
+    let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"), renderer);
     
     if cmd_args.is_present("debug") {
         //#[cfg(feature = "debug")]
