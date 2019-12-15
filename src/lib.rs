@@ -7,11 +7,21 @@ mod video;
 mod timer;
 mod audio;
 mod interrupt;
+mod joypad;
 
 #[cfg(feature = "debug")]
 pub mod debug;
 
-pub use video::UserPalette;
+pub use video::{
+    UserPalette,
+    VulkanRenderer,
+    WindowType
+};
+
+pub use joypad::{
+    Buttons,
+    Directions
+};
 
 use std::sync::mpsc::{channel, Receiver};
 
@@ -29,11 +39,11 @@ pub struct RustBoy {
 }
 
 impl RustBoy {
-    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool) -> Box<Self> {
+    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool, renderer: VulkanRenderer) -> Box<Self> {
         let (send, recv) = channel();
 
         let ad = AudioDevice::new(send);
-        let mem = MemBus::new(cart_name, save_file_name, palette, ad);
+        let mem = MemBus::new(cart_name, save_file_name, palette, ad, renderer);
     
         let cpu = CPU::new(mem);
     
@@ -60,6 +70,18 @@ impl RustBoy {
         if let Some(recv) = &mut self.audio_recv {
             while let Ok(_) = recv.try_recv() {}
         }
+    }
+
+    pub fn set_button(&mut self, button: Buttons, val: bool) {
+        self.cpu.set_button(button, val);
+    }
+
+    pub fn set_direction(&mut self, direction: Directions, val: bool) {
+        self.cpu.set_direction(direction, val);
+    }
+
+    pub fn on_resize(&mut self) {
+        self.cpu.on_resize();
     }
 
     #[cfg(feature = "debug")]

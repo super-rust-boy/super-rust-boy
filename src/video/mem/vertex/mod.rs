@@ -1,7 +1,7 @@
 pub mod sprite;
 pub mod tilemap;
 
-pub use crate::video::renderer::Vertex;
+pub use super::super::types::Vertex;
 
 use vulkano::{
     buffer::cpu_pool::CpuBufferPoolChunk,
