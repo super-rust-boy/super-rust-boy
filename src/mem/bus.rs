@@ -44,7 +44,7 @@ pub struct MemBus {
 }
 
 impl MemBus {
-    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette, audio_device: AudioDevice, renderer: VulkanRenderer) -> MemBus {
+    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette, audio_device: AudioDevice, renderer: Box<VulkanRenderer>) -> MemBus {
         let rom = match Cartridge::new(rom_file, save_file) {
             Ok(r) => r,
             Err(s) => panic!("Could not construct ROM: {}", s),
