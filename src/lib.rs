@@ -23,7 +23,11 @@ pub use joypad::{
     Directions
 };
 
+use std::ffi::{c_void, CStr};
+use std::os::raw::c_char;
 use std::sync::mpsc::{channel, Receiver};
+
+use winit::EventsLoop;
 
 use cpu::CPU;
 use audio::{
@@ -100,23 +104,25 @@ impl RustBoy {
     }
 }
 
-use std::os::raw::c_char;
-use std::ffi::{c_void, CStr};
-use winit::EventsLoop;
-
 #[no_mangle]
 pub extern fn rustBoyCreate(cartridge_path: *const c_char, save_file_path: *const c_char) -> *const c_void {
 
 	let save_path_result = unsafe { CStr::from_ptr(save_file_path) };
 	let save_path = match save_path_result.to_str() {
 		Ok(c) => c,
-		Err(_) => panic!("Failed to parse save path")
+		Err(_) => {
+			println!("Failed to parse save file path");
+			return std::ptr::null()
+		}
 	};
 
 	let cart_path_result = unsafe { CStr::from_ptr(cartridge_path) };
 	let cart_path = match cart_path_result.to_str() {
 		Ok(c) => c,
-		Err(_) => panic!("Failed to parse cart path")
+		Err(_) => {
+			println!("Failed to parse cart path");
+			return std::ptr::null()
+		}
 	};
 
 	let events_loop = EventsLoop::new();
