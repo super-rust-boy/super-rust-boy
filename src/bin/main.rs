@@ -1,6 +1,7 @@
 extern crate rustboy;
 
 mod debug;
+mod avg;
 
 use rustboy::*;
 
@@ -44,13 +45,12 @@ fn main() {
     let palette = choose_palette(cmd_args.value_of("palette"));
 
     let mut events_loop = EventsLoop::new();
-
     let renderer = VulkanRenderer::new(WindowType::Winit(&events_loop));
-
     let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"), renderer);
+
+    //let mut averager = avg::Averager::<i64>::new(60);
     
     if cmd_args.is_present("debug") {
-        //#[cfg(feature = "debug")]
         debug::debug_mode(&mut rustboy);
     } else {
         loop {
@@ -60,6 +60,9 @@ fn main() {
 
             read_inputs(&mut events_loop, &mut rustboy);
             rustboy.frame();   // Draw video and read inputs
+
+            //averager.add((Utc::now() - frame).num_milliseconds());
+            //println!("Frame t: {}ms", averager.get_avg());
 
             while (Utc::now() - frame) < chrono::Duration::microseconds(FRAME_TIME) {}  // Wait until next frame.
         }
