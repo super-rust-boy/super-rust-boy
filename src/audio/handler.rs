@@ -41,10 +41,18 @@ type AudioFrame = [f32; 2];
 
 // TODO: better error handling
 pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
-    thread::spawn(move || {
-        let event_loop = cpal::EventLoop::new();
+    use cpal::traits::{
+        HostTrait,
+        DeviceTrait,
+        EventLoopTrait
+    };
 
-        let device = cpal::default_output_device().expect("no output device available.");
+    thread::spawn(move || {
+        let host = cpal::default_host();
+
+        let event_loop = host.event_loop();
+
+        let device = host.default_output_device().expect("no output device available.");
 
         let mut supported_formats_range = device.supported_output_formats()
             .expect("error while querying formats");
@@ -59,11 +67,19 @@ pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
 
         let mut handler = AudioHandler::new(recv, sample_rate);
 
-        event_loop.play_stream(stream_id);
+        event_loop.play_stream(stream_id).expect("Stream could not start.");
 
-        event_loop.run(move |_stream_id, stream_data| {
+        event_loop.run(move |_stream_id, stream_result| {
             use cpal::StreamData::*;
             use cpal::UnknownTypeOutputBuffer::*;
+
+            let stream_data = match stream_result {
+                Ok(data) => data,
+                Err(e) => {
+                    eprintln!("An error occurred in audio handler: {}", e);
+                    return;
+                }
+            };
 
             match stream_data {
                 Output { buffer: U16(mut buffer) } => {
