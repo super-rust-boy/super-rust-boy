@@ -37,6 +37,8 @@ macro_rules! sample {
     };
 }
 
+type AudioFrame = [f32; 2];
+
 // TODO: better error handling
 pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
     thread::spawn(move || {
@@ -54,8 +56,6 @@ pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
         let stream_id = event_loop.build_output_stream(&device, &format).unwrap();
 
         let sample_rate = format.sample_rate.0 as usize;
-        let mut process = true;
-        let mut right_sample = 0.0;
 
         let mut handler = AudioHandler::new(recv, sample_rate);
 
@@ -67,41 +67,26 @@ pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
 
             match stream_data {
                 Output { buffer: U16(mut buffer) } => {
-                    for elem in buffer.iter_mut() {
-                        if process {
-                            let frame = handler.process_frame();
-                            *elem = (frame.0 * u16::max_value() as f32) as u16;
-                            right_sample = frame.1;
-                            process = false;
-                        } else {
-                            *elem = (right_sample * u16::max_value() as f32) as u16;
-                            process = true;
+                    for out in buffer.chunks_exact_mut(2) {
+                        let frame = handler.process_frame();
+                        for (elem, f) in out.iter_mut().zip(frame.iter()) {
+                            *elem = (f * u16::max_value() as f32) as u16
                         }
                     }
                 },
                 Output { buffer: I16(mut buffer) } => {
-                    for elem in buffer.iter_mut() {
-                        if process {
-                            let frame = handler.process_frame();
-                            *elem = (frame.0 * i16::max_value() as f32) as i16;
-                            right_sample = frame.1;
-                            process = false;
-                        } else {
-                            *elem = (right_sample * i16::max_value() as f32) as i16;
-                            process = true;
+                    for out in buffer.chunks_exact_mut(2) {
+                        let frame = handler.process_frame();
+                        for (elem, f) in out.iter_mut().zip(frame.iter()) {
+                            *elem = (f * i16::max_value() as f32) as i16
                         }
                     }
                 },
                 Output { buffer: F32(mut buffer) } => {
-                    for elem in buffer.iter_mut() {
-                        if process {
-                            let frame = handler.process_frame();
-                            *elem = frame.0;
-                            right_sample = frame.1;
-                            process = false;
-                        } else {
-                            *elem = right_sample;
-                            process = true;
+                    for out in buffer.chunks_exact_mut(2) {
+                        let frame = handler.process_frame();
+                        for (elem, f) in out.iter_mut().zip(frame.iter()) {
+                            *elem = *f;
                         }
                     }
                 },
@@ -163,7 +148,7 @@ impl AudioHandler {
     }
 
     // Generator function that produces the next two samples (left & right channel)
-    fn process_frame(&mut self) -> (f32, f32) {
+    fn process_frame(&mut self) -> AudioFrame {
         let n = self.buffers.get_next();
         match n {
             Some(vals) => self.mix_output(vals),
@@ -204,7 +189,7 @@ impl AudioHandler {
     }
 
     #[inline]
-    fn mix_output(&mut self, vals: (i8, i8, i8, i8)) -> (f32, f32) {
+    fn mix_output(&mut self, vals: (i8, i8, i8, i8)) -> AudioFrame {
         if self.sound_on {
             let samp_0 = sample!(vals.0);
             let samp_1 = sample!(vals.1);
@@ -221,10 +206,12 @@ impl AudioHandler {
             let right_3 = if self.channel_enables.contains(ChannelEnables::RIGHT_3) {samp_2} else {0.0};
             let right_4 = if self.channel_enables.contains(ChannelEnables::RIGHT_4) {samp_3} else {0.0};
 
-            ((left_1 + left_2 + left_3 + left_4) * self.left_vol,
-             (right_1 + right_2 + right_3 + right_4) * self.right_vol)
+            let left_finished = (left_1 + left_2 + left_3 + left_4) * self.left_vol;
+            let right_finished = (right_1 + right_2 + right_3 + right_4) * self.right_vol;
+
+            [left_finished, right_finished]
         } else {
-            (0.0, 0.0)
+            [0.0, 0.0]
         }
     }
 
@@ -233,14 +220,14 @@ impl AudioHandler {
 
         self.left_vol = if test_bit!(channel_control, 7) {
             0.0
-        } else {    // Divide by max value * num of channels
-            (((channel_control & 0x70) >> 4) as f32 + 1.0) / 32.0
+        } else {    // Divide by max value * num of channels * reduction factor
+            (((channel_control & 0x70) >> 4) as f32 + 1.0) / 128.0
         };
 
         self.right_vol = if test_bit!(channel_control, 3) {
             0.0
         } else {
-            ((channel_control & 0x7) as f32 + 1.0) / 32.0
+            ((channel_control & 0x7) as f32 + 1.0) / 128.0
         };
 
         self.channel_enables = ChannelEnables::from_bits_truncate(output_select);
