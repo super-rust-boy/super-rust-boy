@@ -1,4 +1,4 @@
 mod renderer;
 mod shaders;
 
-pub use renderer::Renderer;
+pub use renderer::VulkanRenderer;

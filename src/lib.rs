@@ -39,7 +39,7 @@ pub struct RustBoy {
 }
 
 impl RustBoy {
-    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool, renderer: VulkanRenderer) -> Box<Self> {
+    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool, renderer: Box<VulkanRenderer>) -> Box<Self> {
         let (send, recv) = channel();
 
         let ad = AudioDevice::new(send);

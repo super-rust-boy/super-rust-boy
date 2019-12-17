@@ -54,7 +54,14 @@ use bitflags::bitflags;
 
 use std::sync::Arc;
 
-use super::super::types::*;
+use super::super::{
+    types::*,
+    mem::{
+        PaletteBuffer,
+        TileImage,
+        VideoMem
+    }
+};
 
 #[derive(Clone, Debug)]
 struct PushConstants {
@@ -89,11 +96,11 @@ struct RenderData {
     image_num:      usize,
     image_future:   Box<dyn GpuFuture>,
     pipeline:       Arc<RenderPipeline>,
-    set0:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, (((), PersistentDescriptorSetImg<super::super::mem::TileImage>), PersistentDescriptorSetSampler)>>,
-    set1:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, ((), PersistentDescriptorSetBuf<super::super::mem::PaletteBuffer>)>>
+    set0:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, (((), PersistentDescriptorSetImg<TileImage>), PersistentDescriptorSetSampler)>>,
+    set1:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, ((), PersistentDescriptorSetBuf<PaletteBuffer>)>>
 }
 
-pub struct Renderer {
+pub struct VulkanRenderer {
     // Core
     device: Arc<Device>,
     queue: Arc<Queue>,
@@ -112,9 +119,9 @@ pub struct Renderer {
     render_data: Option<RenderData>
 }
 
-impl Renderer {
+impl VulkanRenderer {
     // Create and initialise renderer.
-    pub fn new(window_type: WindowType) -> Self {
+    pub fn new(window_type: WindowType) -> Box<Self> {
         // Make instance with window extensions.
         let instance = {
             let extensions = vulkano_win::required_extensions();
@@ -236,7 +243,7 @@ impl Renderer {
             FixedSizeDescriptorSetsPool::new(pipeline.clone(), 1)
         ];
 
-        Renderer {
+        Box::new(VulkanRenderer {
             device: device.clone(),
             queue: queue,
             pipeline: pipeline,
@@ -252,11 +259,11 @@ impl Renderer {
 
             previous_frame_future: Box::new(now(device.clone())),
             render_data: None
-        }
+        })
     }
 
     // Re-create the swapchain and framebuffers.
-    pub fn create_swapchain(&mut self) {
+    fn create_swapchain(&mut self) {
         let window = self.surface.window();
         let dimensions = if let Some(dimensions) = window.get_inner_size() {
             let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
@@ -287,8 +294,14 @@ impl Renderer {
         self.swapchain = new_swapchain;
     }
 
+    pub fn get_device(&self) -> Arc<Device> {
+        self.device.clone()
+    }
+}
+
+impl Renderer for VulkanRenderer {
     // Start the process of rendering a frame.
-    pub fn frame_start(&mut self, video_mem: &mut super::super::mem::VideoMem) {
+    fn frame_start(&mut self, video_mem: &mut VideoMem) {
         // Get current framebuffer index from the swapchain.
         let (image_num, acquire_future) = acquire_next_image(self.swapchain.clone(), None)
             .expect("Didn't get next image");
@@ -325,7 +338,7 @@ impl Renderer {
         });
     }
 
-    pub fn frame_end(&mut self) {
+    fn frame_end(&mut self) {
         let render_data = std::mem::replace(&mut self.render_data, None);
 
         if let Some(render_data) = render_data {
@@ -355,7 +368,7 @@ impl Renderer {
     }
 
     // Draw a scan-line.
-    pub fn draw_line(&mut self, y: u8, video_mem: &mut super::super::mem::VideoMem, cgb_mode: bool) {
+    fn draw_line(&mut self, y: u8, video_mem: &mut VideoMem, cgb_mode: bool) {
         if let Some(render_data) = &mut self.render_data {
             if cgb_mode {
                 render_data.draw_cgb_line(y, video_mem, &self.dynamic_state);
@@ -365,8 +378,8 @@ impl Renderer {
         }
     }
 
-    pub fn get_device(&self) -> Arc<Device> {
-        self.device.clone()
+    fn on_resize(&mut self) {
+        self.create_swapchain();
     }
 }
 
@@ -375,7 +388,7 @@ impl RenderData {
     fn draw_gb_line(
         &mut self,
         y: u8,
-        video_mem: &mut super::super::mem::VideoMem,
+        video_mem: &mut VideoMem,
         dynamic_state: &DynamicState
     ) {
         if video_mem.display_enabled() {
@@ -486,7 +499,7 @@ impl RenderData {
     fn draw_cgb_line(
         &mut self,
         y: u8,
-        video_mem: &mut super::super::mem::VideoMem,
+        video_mem: &mut VideoMem,
         dynamic_state: &DynamicState
     ) {
         let mut command_buffer = std::mem::replace(&mut self.command_buffer, None).unwrap();

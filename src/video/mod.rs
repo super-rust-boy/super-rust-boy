@@ -21,9 +21,12 @@ use crate::mem::MemDevice;
 
 use self::mem::VideoMem;
 use self::sgbpalettes::SGBPalette;
-pub use self::vulkan::Renderer as VulkanRenderer;
+pub use self::vulkan::VulkanRenderer;
 
-pub use self::types::WindowType;
+pub use self::types::{
+    Renderer,
+    WindowType
+};
 
 pub use sgbpalettes::UserPalette;
 
@@ -52,13 +55,13 @@ impl From<u8> for Mode {
 pub struct VideoDevice {
     mem:        VideoMem,
 
-    renderer:   VulkanRenderer,
+    renderer:   Box<dyn Renderer>,
 
     cgb_mode:   bool
 }
 
 impl VideoDevice {
-    pub fn new(mut renderer: VulkanRenderer, palette: SGBPalette, cgb_mode: bool) -> Self {
+    pub fn new(mut renderer: Box<VulkanRenderer>, palette: SGBPalette, cgb_mode: bool) -> Self {
         let mut mem = VideoMem::new(&renderer.get_device(), palette, cgb_mode);
 
         renderer.frame_start(&mut mem);
@@ -84,7 +87,7 @@ impl VideoDevice {
 
     // To be called when the window is resized.
     pub fn on_resize(&mut self) {
-        self.renderer.create_swapchain();
+        self.renderer.on_resize();
     }
 
     // Set the current video mode based on the cycle count.
