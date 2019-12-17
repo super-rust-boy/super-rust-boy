@@ -7,11 +7,21 @@ mod video;
 mod timer;
 mod audio;
 mod interrupt;
+mod joypad;
 
 #[cfg(feature = "debug")]
 pub mod debug;
 
-pub use video::UserPalette;
+pub use video::{
+    UserPalette,
+    VulkanRenderer,
+    WindowType
+};
+
+pub use joypad::{
+    Buttons,
+    Directions
+};
 
 use std::sync::mpsc::{channel, Receiver};
 
@@ -29,11 +39,11 @@ pub struct RustBoy {
 }
 
 impl RustBoy {
-    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool) -> Box<Self> {
+    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool, renderer: VulkanRenderer) -> Box<Self> {
         let (send, recv) = channel();
 
         let ad = AudioDevice::new(send);
-        let mem = MemBus::new(cart_name, save_file_name, palette, ad);
+        let mem = MemBus::new(cart_name, save_file_name, palette, ad, renderer);
 
         let cpu = CPU::new(mem);
 
@@ -62,6 +72,18 @@ impl RustBoy {
         }
     }
 
+    pub fn set_button(&mut self, button: Buttons, val: bool) {
+        self.cpu.set_button(button, val);
+    }
+
+    pub fn set_direction(&mut self, direction: Directions, val: bool) {
+        self.cpu.set_direction(direction, val);
+    }
+
+    pub fn on_resize(&mut self) {
+        self.cpu.on_resize();
+    }
+
     #[cfg(feature = "debug")]
     pub fn get_state(&self) -> debug::CPUState {
         self.cpu.get_state()
@@ -80,6 +102,7 @@ impl RustBoy {
 
 use std::os::raw::c_char;
 use std::ffi::{c_void, CStr};
+use winit::EventsLoop;
 
 #[no_mangle]
 pub extern fn rustBoyCreate(cartridge_path: *const c_char, save_file_path: *const c_char) -> *const c_void {
@@ -93,10 +116,12 @@ pub extern fn rustBoyCreate(cartridge_path: *const c_char, save_file_path: *cons
 	let cart_path_result = unsafe { CStr::from_ptr(cartridge_path) };
 	let cart_path = match cart_path_result.to_str() {
 		Ok(c) => c,
-		Err(_) => panic!("Failed to parse cartridge path")
+		Err(_) => panic!("Failed to parse cart path")
 	};
 
-	let instance = RustBoy::new(cart_path, save_path, UserPalette::Default, true);
+	let events_loop = EventsLoop::new();
+	let renderer = VulkanRenderer::new(WindowType::Winit(&events_loop));
+	let instance = RustBoy::new(cart_path, save_path, UserPalette::Default, false, renderer);
 
 	Box::into_raw(instance) as *const c_void
 }

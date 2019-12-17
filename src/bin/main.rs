@@ -2,13 +2,17 @@ extern crate rustboy;
 
 mod debug;
 
-use rustboy::{
-    RustBoy,
-    UserPalette
-};
+use rustboy::*;
 
 use clap::{clap_app, crate_version};
 use chrono::Utc;
+use winit::{
+    EventsLoop,
+    Event,
+    WindowEvent,
+    ElementState,
+    VirtualKeyCode
+};
 
 const FRAME_TIME: i64 = 16_666;
 //const FRAME_TIME: i64 = 16_743; // 59.73 fps
@@ -39,7 +43,11 @@ fn main() {
 
     let palette = choose_palette(cmd_args.value_of("palette"));
 
-    let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"));
+    let mut events_loop = EventsLoop::new();
+
+    let renderer = VulkanRenderer::new(WindowType::Winit(&events_loop));
+
+    let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"), renderer);
     
     if cmd_args.is_present("debug") {
         //#[cfg(feature = "debug")]
@@ -50,6 +58,7 @@ fn main() {
 
             while rustboy.step() {}   // Execute up to v-blanking
 
+            read_inputs(&mut events_loop, &mut rustboy);
             rustboy.frame();   // Draw video and read inputs
 
             while (Utc::now() - frame) < chrono::Duration::microseconds(FRAME_TIME) {}  // Wait until next frame.
@@ -73,4 +82,41 @@ fn choose_palette(palette: Option<&str>) -> UserPalette {
         },
         None => UserPalette::Default
     }
+}
+fn read_inputs(events_loop: &mut EventsLoop, rustboy: &mut RustBoy) {
+    events_loop.poll_events(|e| {
+        match e {
+            Event::WindowEvent {
+                window_id: _,
+                event: w,
+            } => match w {
+                WindowEvent::CloseRequested => {
+                    ::std::process::exit(0);
+                },
+                WindowEvent::KeyboardInput {
+                    device_id: _,
+                    input: k,
+                } => {
+                    let pressed = match k.state {
+                        ElementState::Pressed => true,
+                        ElementState::Released => false,
+                    };
+                    match k.virtual_keycode {
+                        Some(VirtualKeyCode::X)         => rustboy.set_button(Buttons::A, pressed),
+                        Some(VirtualKeyCode::Z)         => rustboy.set_button(Buttons::B, pressed),
+                        Some(VirtualKeyCode::Space)     => rustboy.set_button(Buttons::SELECT, pressed),
+                        Some(VirtualKeyCode::Return)    => rustboy.set_button(Buttons::START, pressed),
+                        Some(VirtualKeyCode::Up)        => rustboy.set_direction(Directions::UP, pressed),
+                        Some(VirtualKeyCode::Down)      => rustboy.set_direction(Directions::DOWN, pressed),
+                        Some(VirtualKeyCode::Left)      => rustboy.set_direction(Directions::LEFT, pressed),
+                        Some(VirtualKeyCode::Right)     => rustboy.set_direction(Directions::RIGHT, pressed),
+                        _ => {},
+                    }
+                },
+                WindowEvent::Resized(_) => rustboy.on_resize(),
+                _ => {}
+            },
+            _ => {},
+        }
+    });
 }

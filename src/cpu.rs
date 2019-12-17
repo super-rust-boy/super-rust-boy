@@ -3,6 +3,10 @@ use bitflags::bitflags;
 
 use crate::mem::{MemBus, MemDevice};
 use crate::interrupt::*;
+use crate::joypad::{
+    Buttons,
+    Directions
+};
 
 bitflags! {
     #[derive(Default)]
@@ -438,8 +442,19 @@ impl CPU {
 
     pub fn frame_update(&mut self) {
         self.mem.render_frame();
-        self.mem.read_inputs();
         self.mem.flush_cart();
+    }
+
+    pub fn set_button(&mut self, button: Buttons, val: bool) {
+        self.mem.set_button(button, val);
+    }
+
+    pub fn set_direction(&mut self, direction: Directions, val: bool) {
+        self.mem.set_direction(direction, val);
+    }
+
+    pub fn on_resize(&mut self) {
+        self.mem.on_resize();
     }
 }
 

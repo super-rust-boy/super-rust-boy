@@ -46,7 +46,6 @@ use vulkano::{
 use vulkano_win::VkSurfaceBuild;
 
 use winit::{
-    EventsLoop,
     Window,
     WindowBuilder
 };
@@ -55,19 +54,7 @@ use bitflags::bitflags;
 
 use std::sync::Arc;
 
-bitflags!{
-    #[derive(Default)]
-    struct ShaderFlags: u32 {
-        const WRAPAROUND =      1;
-        const BLOCK_COLOUR =    2;
-    }
-}
-
-#[derive(Default, Copy, Clone)]
-pub struct Vertex {
-    pub position: [f32; 2],
-    pub data: u32
-}
+use super::super::types::*;
 
 #[derive(Clone, Debug)]
 struct PushConstants {
@@ -77,6 +64,14 @@ struct PushConstants {
     pub tex_offset:     u32,
     pub palette_offset: u32,
     pub flags:          u32
+}
+
+bitflags!{
+    #[derive(Default)]
+    struct ShaderFlags: u32 {
+        const WRAPAROUND =      1;
+        const BLOCK_COLOUR =    2;
+    }
 }
 
 vulkano::impl_vertex!(Vertex, position, data);
@@ -94,8 +89,8 @@ struct RenderData {
     image_num:      usize,
     image_future:   Box<dyn GpuFuture>,
     pipeline:       Arc<RenderPipeline>,
-    set0:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, (((), PersistentDescriptorSetImg<super::mem::TileImage>), PersistentDescriptorSetSampler)>>,
-    set1:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, ((), PersistentDescriptorSetBuf<super::mem::PaletteBuffer>)>>
+    set0:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, (((), PersistentDescriptorSetImg<super::super::mem::TileImage>), PersistentDescriptorSetSampler)>>,
+    set1:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, ((), PersistentDescriptorSetBuf<super::super::mem::PaletteBuffer>)>>
 }
 
 pub struct Renderer {
@@ -119,7 +114,7 @@ pub struct Renderer {
 
 impl Renderer {
     // Create and initialise renderer.
-    pub fn new(events_loop: &EventsLoop) -> Self {
+    pub fn new(window_type: WindowType) -> Self {
         // Make instance with window extensions.
         let instance = {
             let extensions = vulkano_win::required_extensions();
@@ -151,11 +146,13 @@ impl Renderer {
         let queue = queues.next().unwrap();
 
         // Make a surface.
-        let surface = WindowBuilder::new()
-            .with_dimensions((320, 288).into())
-            .with_title("Super Rust Boy")
-            .build_vk_surface(&events_loop, instance.clone())
-            .expect("Couldn't create surface");
+        let surface = match window_type {
+            WindowType::Winit(events_loop) => WindowBuilder::new()
+                .with_dimensions((320, 288).into())
+                .with_title("Super Rust Boy")
+                .build_vk_surface(&events_loop, instance.clone())
+                .expect("Couldn't create surface")
+        };
 
         // Make the sampler for the texture.
         let sampler = Sampler::new(
@@ -291,7 +288,7 @@ impl Renderer {
     }
 
     // Start the process of rendering a frame.
-    pub fn frame_start(&mut self, video_mem: &mut super::mem::VideoMem) {
+    pub fn frame_start(&mut self, video_mem: &mut super::super::mem::VideoMem) {
         // Get current framebuffer index from the swapchain.
         let (image_num, acquire_future) = acquire_next_image(self.swapchain.clone(), None)
             .expect("Didn't get next image");
@@ -358,7 +355,7 @@ impl Renderer {
     }
 
     // Draw a scan-line.
-    pub fn draw_line(&mut self, y: u8, video_mem: &mut super::mem::VideoMem, cgb_mode: bool) {
+    pub fn draw_line(&mut self, y: u8, video_mem: &mut super::super::mem::VideoMem, cgb_mode: bool) {
         if let Some(render_data) = &mut self.render_data {
             if cgb_mode {
                 render_data.draw_cgb_line(y, video_mem, &self.dynamic_state);
@@ -378,7 +375,7 @@ impl RenderData {
     fn draw_gb_line(
         &mut self,
         y: u8,
-        video_mem: &mut super::mem::VideoMem,
+        video_mem: &mut super::super::mem::VideoMem,
         dynamic_state: &DynamicState
     ) {
         if video_mem.display_enabled() {
@@ -489,7 +486,7 @@ impl RenderData {
     fn draw_cgb_line(
         &mut self,
         y: u8,
-        video_mem: &mut super::mem::VideoMem,
+        video_mem: &mut super::super::mem::VideoMem,
         dynamic_state: &DynamicState
     ) {
         let mut command_buffer = std::mem::replace(&mut self.command_buffer, None).unwrap();
