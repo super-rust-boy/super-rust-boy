@@ -1,0 +1,25 @@
+{
+	// See https://go.microsoft.com/fwlink/?LinkId=733558
+	// for the documentation about the tasks.json format
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Cargo Run Features Debug",
+			"type": "shell",
+			"command": "cargo run --features debug",
+			"problemMatcher": []
+		},
+		{
+			"label": "Cargo Build Lib",
+			"type": "shell",
+			"command": "cargo build --lib --features debug",
+			"problemMatcher": []
+		},
+		{
+			"label": "Generate C-Header",
+			"type": "shell",
+			"command": "cbindgen --config cbindgen.toml --crate rustboy --output headers/rustboy.h",
+			"problemMatcher": []
+		}
+	]
+}

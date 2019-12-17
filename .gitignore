@@ -5,3 +5,5 @@ test/
 *.txt
 *.sav
 roms/
+headers/
+rustboy.xcodeproj/

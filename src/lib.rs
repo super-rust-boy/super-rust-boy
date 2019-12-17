@@ -23,7 +23,11 @@ pub use joypad::{
     Directions
 };
 
+use std::ffi::{c_void, CStr};
+use std::os::raw::c_char;
 use std::sync::mpsc::{channel, Receiver};
+
+use winit::EventsLoop;
 
 use cpu::CPU;
 use audio::{
@@ -44,9 +48,9 @@ impl RustBoy {
 
         let ad = AudioDevice::new(send);
         let mem = MemBus::new(cart_name, save_file_name, palette, ad, renderer);
-    
+
         let cpu = CPU::new(mem);
-    
+
         let audio_recv = if !mute {
             start_audio_handler_thread(recv);
             None
@@ -98,4 +102,42 @@ impl RustBoy {
     pub fn get_mem_at(&self, loc: u16) -> u8 {
         self.cpu.get_mem_at(loc)
     }
+}
+
+#[no_mangle]
+pub extern fn rustBoyCreate(cartridge_path: *const c_char, save_file_path: *const c_char) -> *const c_void {
+
+	if cartridge_path.is_null() {
+		println!("Cartridge path is null");
+		return std::ptr::null()
+	}
+
+	let cart_path_result = unsafe { CStr::from_ptr(cartridge_path) };
+	let cart_path = match cart_path_result.to_str() {
+		Ok(c) => c,
+		Err(_) => {
+			println!("Failed to parse cartridge path");
+			return std::ptr::null()
+		}
+	};
+
+	if save_file_path.is_null() {
+		println!("Save file path is null");
+		return std::ptr::null()
+	}
+
+	let save_path_result = unsafe { CStr::from_ptr(save_file_path) };
+	let save_path = match save_path_result.to_str() {
+		Ok(c) => c,
+		Err(_) => {
+			println!("Failed to parse save file path");
+			return std::ptr::null()
+		}
+	};
+
+	let events_loop = EventsLoop::new();
+	let renderer = VulkanRenderer::new(WindowType::Winit(&events_loop));
+	let instance = RustBoy::new(cart_path, save_path, UserPalette::Default, false, renderer);
+
+	Box::into_raw(instance) as *const c_void
 }

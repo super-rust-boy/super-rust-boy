@@ -3,10 +3,12 @@ name = "rustboy"
 version = "0.3.0"
 authors = ["coopersimon <simon.d.cooper@hotmail.co.uk>"]
 edition = "2018"
+default-run = "rustboy-bin"
 
 [lib]
 name = "rustboy"
 path = "src/lib.rs"
+# crate-type = ["staticlib"]
 
 [[bin]]
 name = "rustboy-bin"

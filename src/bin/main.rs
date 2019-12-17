@@ -48,7 +48,7 @@ fn main() {
     let renderer = VulkanRenderer::new(WindowType::Winit(&events_loop));
 
     let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"), renderer);
-    
+
     if cmd_args.is_present("debug") {
         //#[cfg(feature = "debug")]
         debug::debug_mode(&mut rustboy);
