@@ -4,6 +4,3 @@ test/
 /.DS_Store
 *.txt
 *.sav
-roms/
-headers/
-rustboy.xcodeproj/
