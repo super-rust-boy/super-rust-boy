@@ -3,6 +3,8 @@ use winit::{
     Window
 };
 
+use std::ffi::c_void;
+
 use super::mem::VideoMem;
 
 #[derive(Default, Copy, Clone)]
@@ -22,7 +24,11 @@ pub trait Renderer {
 pub enum WindowType<'a> {
     Winit(&'a EventsLoop),
     IOS {
-        ui_view:    *const std::ffi::c_void,
+        ui_view:    *const c_void,
+        window:     Window
+    },
+    MacOS {
+        ns_view:    *const c_void,
         window:     Window
     }
 }

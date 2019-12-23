@@ -163,7 +163,12 @@ impl VulkanRenderer {
                 instance.clone(),
                 ui_view,
                 window
-            )}.expect("Couldn't create ios surface")
+            )}.expect("Couldn't create iOS surface"),
+            WindowType::MacOS { ns_view, window } => unsafe { Surface::from_macos_moltenvk(
+                instance.clone(),
+                ns_view,
+                window
+            )}.expect("Couldn't create macOS surface")
         };
 
         // Make the sampler for the texture.
