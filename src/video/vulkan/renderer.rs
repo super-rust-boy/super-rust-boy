@@ -158,7 +158,12 @@ impl VulkanRenderer {
                 .with_dimensions((320, 288).into())
                 .with_title("Super Rust Boy")
                 .build_vk_surface(&events_loop, instance.clone())
-                .expect("Couldn't create surface")
+                .expect("Couldn't create surface"),
+            WindowType::IOS { ui_view, window } => unsafe { Surface::from_ios_moltenvk(
+                instance.clone(),
+                ui_view,
+                window
+            )}.expect("Couldn't create ios surface")
         };
 
         // Make the sampler for the texture.

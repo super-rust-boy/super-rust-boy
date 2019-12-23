@@ -1,4 +1,7 @@
-use winit::EventsLoop;
+use winit::{
+    EventsLoop,
+    Window
+};
 
 use super::mem::VideoMem;
 
@@ -17,5 +20,9 @@ pub trait Renderer {
 }
 
 pub enum WindowType<'a> {
-    Winit(&'a EventsLoop)
+    Winit(&'a EventsLoop),
+    IOS {
+        ui_view:    *const std::ffi::c_void,
+        window:     Window
+    }
 }
