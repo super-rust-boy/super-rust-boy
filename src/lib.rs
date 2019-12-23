@@ -18,7 +18,7 @@ pub use video::{
     WindowType
 };
 
-pub use joypad::{
+use joypad::{
     Buttons,
     Directions
 };
@@ -32,6 +32,17 @@ use audio::{
     start_audio_handler_thread
 };
 use mem::MemBus;
+
+pub enum Button {
+    Up,
+    Down,
+    Left,
+    Right,
+    A,
+    B,
+    Start,
+    Select
+}
 
 pub struct RustBoy {
     cpu: CPU,
@@ -72,12 +83,19 @@ impl RustBoy {
         }
     }
 
-    pub fn set_button(&mut self, button: Buttons, val: bool) {
-        self.cpu.set_button(button, val);
-    }
+    pub fn set_button(&mut self, button: Button, val: bool) {
+        use Button::*;
 
-    pub fn set_direction(&mut self, direction: Directions, val: bool) {
-        self.cpu.set_direction(direction, val);
+        match button {
+            Up      => self.cpu.set_direction(Directions::UP, val),
+            Down    => self.cpu.set_direction(Directions::DOWN, val),
+            Left    => self.cpu.set_direction(Directions::LEFT, val),
+            Right   => self.cpu.set_direction(Directions::RIGHT, val),
+            A       => self.cpu.set_button(Buttons::A, val),
+            B       => self.cpu.set_button(Buttons::B, val),
+            Start   => self.cpu.set_button(Buttons::START, val),
+            Select  => self.cpu.set_button(Buttons::SELECT, val),
+        }
     }
 
     pub fn on_resize(&mut self) {
