@@ -492,11 +492,16 @@ impl MemDevice for VideoMem {
 
 #[inline]
 fn get_base_pixel(base: usize) -> usize {
-    // TODO: shift and mask these for a more efficient operation...
-    let tile_x = (base % 0x100) / 0x10;
-    let tile_y = base / 0x100;
+    const PIX_SHIFT: usize = 1;
+    const X_SHIFT: usize = 4;
+    const Y_SHIFT: usize = 8;
 
-    let pixel_row_num = (base / 2) % 8;
+    const PIX_MASK: usize = 0x7;
+    const X_MASK: usize = 0xF;
+
+    let pixel_row_num = (base >> PIX_SHIFT) & PIX_MASK;
+    let tile_x = (base >> X_SHIFT) & X_MASK;
+    let tile_y = base >> Y_SHIFT;
 
     // tile_x * 8 pixels across per tile
     // pixel_row_num * 8 pixels across per tile * 16 tiles per row
