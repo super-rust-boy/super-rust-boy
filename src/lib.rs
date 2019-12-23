@@ -71,12 +71,11 @@ impl RustBoy {
         })
     }
 
-    pub fn step(&mut self) -> bool {
-        self.cpu.step()
-    }
-
+    // Call every 1/60 seconds.
     pub fn frame(&mut self) {
-        self.cpu.frame_update();
+        while self.cpu.step() {}    // Execute up to v-blanking
+
+        self.cpu.frame_update();    // Draw video and read inputs
 
         if let Some(recv) = &mut self.audio_recv {
             while let Ok(_) = recv.try_recv() {}
@@ -100,6 +99,11 @@ impl RustBoy {
 
     pub fn on_resize(&mut self) {
         self.cpu.on_resize();
+    }
+
+    #[cfg(feature = "debug")]
+    pub fn step(&mut self) -> bool {
+        self.cpu.step()
     }
 
     #[cfg(feature = "debug")]

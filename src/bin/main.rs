@@ -56,10 +56,8 @@ fn main() {
         loop {
             let frame = Utc::now();
 
-            while rustboy.step() {}   // Execute up to v-blanking
-
             read_inputs(&mut events_loop, &mut rustboy);
-            rustboy.frame();   // Draw video and read inputs
+            rustboy.frame();
 
             //averager.add((Utc::now() - frame).num_milliseconds());
             //println!("Frame t: {}ms", averager.get_avg());
