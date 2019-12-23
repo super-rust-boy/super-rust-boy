@@ -106,14 +106,14 @@ fn read_inputs(events_loop: &mut EventsLoop, rustboy: &mut RustBoy) {
                         ElementState::Released => false,
                     };
                     match k.virtual_keycode {
-                        Some(VirtualKeyCode::X)         => rustboy.set_button(Buttons::A, pressed),
-                        Some(VirtualKeyCode::Z)         => rustboy.set_button(Buttons::B, pressed),
-                        Some(VirtualKeyCode::Space)     => rustboy.set_button(Buttons::SELECT, pressed),
-                        Some(VirtualKeyCode::Return)    => rustboy.set_button(Buttons::START, pressed),
-                        Some(VirtualKeyCode::Up)        => rustboy.set_direction(Directions::UP, pressed),
-                        Some(VirtualKeyCode::Down)      => rustboy.set_direction(Directions::DOWN, pressed),
-                        Some(VirtualKeyCode::Left)      => rustboy.set_direction(Directions::LEFT, pressed),
-                        Some(VirtualKeyCode::Right)     => rustboy.set_direction(Directions::RIGHT, pressed),
+                        Some(VirtualKeyCode::X)         => rustboy.set_button(Button::A, pressed),
+                        Some(VirtualKeyCode::Z)         => rustboy.set_button(Button::B, pressed),
+                        Some(VirtualKeyCode::Space)     => rustboy.set_button(Button::Select, pressed),
+                        Some(VirtualKeyCode::Return)    => rustboy.set_button(Button::Start, pressed),
+                        Some(VirtualKeyCode::Up)        => rustboy.set_button(Button::Up, pressed),
+                        Some(VirtualKeyCode::Down)      => rustboy.set_button(Button::Down, pressed),
+                        Some(VirtualKeyCode::Left)      => rustboy.set_button(Button::Left, pressed),
+                        Some(VirtualKeyCode::Right)     => rustboy.set_button(Button::Right, pressed),
                         _ => {},
                     }
                 },
