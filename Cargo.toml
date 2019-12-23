@@ -8,7 +8,6 @@ default-run = "rustboy-bin"
 [lib]
 name = "rustboy"
 path = "src/lib.rs"
-# crate-type = ["staticlib"]
 
 [[bin]]
 name = "rustboy-bin"
@@ -23,8 +22,10 @@ vulkano-win = "0.16"
 winit = "0.19"
 cgmath = "0.17"
 bitflags = "1.1"
-clap = "2"
 chrono = "0.4"
+# Bin dependencies
+clap = "2"
+spin_sleep = "0.3"
 
 [features]
 debug = []
