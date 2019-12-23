@@ -377,24 +377,9 @@ impl MemDevice for VideoMem {
                 let base = (loc - 0x8000) as usize + (self.vram_bank as usize * 0x1800);
 
                 if base % 2 == 0 {  // Lower bit
-                    let tile_x = (base % 0x100) / 0x10;
-                    let tile_y = base / 0x100;
-
-                    let pixel_row_num = (base / 2) % 8;
-
-                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
-
-                    self.tile_mem.get_pixel_lower_row(base_pixel * 8)
-                } else {    // Upper bit
-                    let base = base - 1;
-                    let tile_x = (base % 0x100) / 0x10;
-                    let tile_y = base / 0x100;
-
-                    let pixel_row_num = (base / 2) % 8;
-
-                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
-
-                    self.tile_mem.get_pixel_upper_row(base_pixel * 8)
+                    self.tile_mem.get_pixel_lower_row(get_base_pixel(base))
+                } else {            // Upper bit
+                    self.tile_mem.get_pixel_upper_row(get_base_pixel(base - 1))
                 }
             },
             // Background Map A
@@ -452,28 +437,9 @@ impl MemDevice for VideoMem {
                 let base = (loc - 0x8000) as usize + (self.vram_bank as usize * 0x1800);
 
                 if base % 2 == 0 {  // Lower bit
-                    // TODO: shift and mask these for a more efficient operation...
-                    let tile_x = (base % 0x100) / 0x10;
-                    let tile_y = base / 0x100;
-
-                    let pixel_row_num = (base / 2) % 8;
-
-                    // tile_x * 8 pixels across per tile
-                    // pixel_row_num * 8 pixels across per tile * 16 tiles per row
-                    // tile_y * 8x8 pixels per tile * 16 tiles per row
-                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
-
-                    self.tile_mem.set_pixel_lower_row(base_pixel * 8, val);
-                } else {    // Upper bit
-                    let base = base - 1;
-                    let tile_x = (base % 0x100) / 0x10;
-                    let tile_y = base / 0x100;
-
-                    let pixel_row_num = (base / 2) % 8;
-
-                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
-
-                    self.tile_mem.set_pixel_upper_row(base_pixel * 8, val);
+                    self.tile_mem.set_pixel_lower_row(get_base_pixel(base), val);
+                } else {            // Upper bit
+                    self.tile_mem.set_pixel_upper_row(get_base_pixel(base - 1), val);
                 }
             },
             // Background Map A
@@ -524,11 +490,27 @@ impl MemDevice for VideoMem {
     }
 }
 
+#[inline]
+fn get_base_pixel(base: usize) -> usize {
+    // TODO: shift and mask these for a more efficient operation...
+    let tile_x = (base % 0x100) / 0x10;
+    let tile_y = base / 0x100;
+
+    let pixel_row_num = (base / 2) % 8;
+
+    // tile_x * 8 pixels across per tile
+    // pixel_row_num * 8 pixels across per tile * 16 tiles per row
+    // tile_y * 8x8 pixels per tile * 16 tiles per row
+    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
+
+    base_pixel * 8
+}
+
 // Writing raw tile data explained:
 // We have to convert a number in the range (0x8000, 0x9800) to 8 adjacent pixels.
 // We then convert that 1D array of pixels to a 2D image (the texture atlas).
 // The image is 16x24 tiles, and each tile is 8x8 pixels. So the total size is 128x192 pixels.
-// As explained in tilemem.rs (in hex):
+// As explained in patternmem.rs (in hex):
     // the tile x coord is nibble xxXx
     // the tile y coord is nibble xXxx
     // the row is 2 bytes of nibble xxxX
