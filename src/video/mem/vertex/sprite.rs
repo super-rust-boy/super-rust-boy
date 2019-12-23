@@ -107,48 +107,54 @@ impl Sprite {
 
 pub struct ObjectMem {
     objects:        Vec<Sprite>,
-    buffer_pool:    CpuBufferPool<Vertex>
+
+    buffer:         Vec<Vertex>,
+    buffer_pool:    CpuBufferPool<Vertex>,
 }
 
 impl ObjectMem {
     pub fn new(device: &Arc<Device>) -> Self {
         ObjectMem {
-            objects: vec![Sprite::new(); 40],
-            buffer_pool: CpuBufferPool::vertex_buffer(device.clone())
+            objects:        vec![Sprite::new(); 40],
+
+            buffer:         Vec::new(),
+            buffer_pool:    CpuBufferPool::vertex_buffer(device.clone())
         }
     }
 
     // Gets vertices for a line.
     // Only retrieves the vertices that appear below the background.
-    pub fn get_lo_vertex_buffer(&self, y: u8, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
-        let mut objects = Vec::new();
+    pub fn get_lo_vertex_buffer(&mut self, y: u8, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
+        self.buffer.clear();
+
         for o in self.objects.iter().rev() {
             if let Some(v) = o.make_vertices(y, large, true, cgb_mode) {
-                objects.extend(v.iter());
+                self.buffer.extend(v.iter());
             }
         }
 
-        if objects.is_empty() {
+        if self.buffer.is_empty() {
             None
         } else {
-            Some(self.buffer_pool.chunk(objects).unwrap())
+            Some(self.buffer_pool.chunk(self.buffer.drain(..)).unwrap())
         }
     }
 
     // Gets vertices for a line.
     // Only retrieves the vertices that appear above the background.
-    pub fn get_hi_vertex_buffer(&self, y: u8, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
-        let mut objects = Vec::new();
+    pub fn get_hi_vertex_buffer(&mut self, y: u8, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
+        self.buffer.clear();
+
         for o in self.objects.iter().rev() {
             if let Some(v) = o.make_vertices(y, large, false, cgb_mode) {
-                objects.extend(v.iter());
+                self.buffer.extend(v.iter());
             }
         }
 
-        if objects.is_empty() {
+        if self.buffer.is_empty() {
             None
         } else {
-            Some(self.buffer_pool.chunk(objects).unwrap())
+            Some(self.buffer_pool.chunk(self.buffer.drain(..)).unwrap())
         }
     }
 }

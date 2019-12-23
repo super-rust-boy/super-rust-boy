@@ -31,7 +31,6 @@ use palette::{
 pub use patternmem::TileImage;
 pub use palette::PaletteBuffer;
 
-const TILE_SIZE: usize = 8;             // Width / Height of a tile in pixels.
 const TILE_DATA_WIDTH: usize = 16;      // Width of the tile data in tiles.
 const TILE_DATA_HEIGHT_GB: usize = 24;  // Height of the tile data in tiles for GB.
 const TILE_DATA_HEIGHT_CGB: usize = 48; // Height of the tile data in tiles for GB Color.
@@ -105,21 +104,21 @@ impl LCDStatus {
 // Video memory layer
 pub struct VideoMem {
     // Raw tile mem and tile maps
-    tile_mem:   TileAtlas,
-    tile_map_0: VertexGrid,
-    tile_map_1: VertexGrid,
-    object_mem: ObjectMem,
+    tile_mem:           TileAtlas,
+    tile_map_0:         VertexGrid,
+    tile_map_1:         VertexGrid,
+    object_mem:         ObjectMem,
 
     // Flags / registers
-    lcd_control:    LCDControl,
-    pub lcd_status: LCDStatus,
-    scroll_y:       u8,
-    scroll_x:       u8,
-    lcdc_y:         u8,
-    ly_compare:     u8,
+    lcd_control:        LCDControl,
+    pub lcd_status:     LCDStatus,
+    scroll_y:           u8,
+    scroll_x:           u8,
+    lcdc_y:             u8,
+    ly_compare:         u8,
 
-    window_y:       u8,
-    window_x:       u8,
+    window_y:           u8,
+    window_x:           u8,
 
     palettes:           StaticPaletteMem,
 
@@ -129,38 +128,37 @@ pub struct VideoMem {
     vram_bank:          u8,
 
     // Misc
-    clear_colour:   Vector4<f32>,
-    cycle_count:    u32,
+    clear_colour:       Vector4<f32>,
+    cycle_count:        u32,
 }
 
 impl VideoMem {
     pub fn new(device: &Arc<Device>, palette: SGBPalette, cgb_mode: bool) -> Self {
         VideoMem {
-            tile_mem:   TileAtlas::new(
+            tile_mem:           TileAtlas::new(
                 (TILE_DATA_WIDTH, if cgb_mode {TILE_DATA_HEIGHT_CGB} else {TILE_DATA_HEIGHT_GB}),
-                TILE_SIZE
             ),
-            tile_map_0: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
-            tile_map_1: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
-            object_mem: ObjectMem::new(device),
+            tile_map_0:         VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
+            tile_map_1:         VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
+            object_mem:         ObjectMem::new(device),
 
-            lcd_control:    LCDControl::ENABLE,
-            lcd_status:     LCDStatus::new(),
-            scroll_y:       0,
-            scroll_x:       0,
-            lcdc_y:         0,
-            ly_compare:     0,
+            lcd_control:        LCDControl::ENABLE,
+            lcd_status:         LCDStatus::new(),
+            scroll_y:           0,
+            scroll_x:           0,
+            lcdc_y:             0,
+            ly_compare:         0,
 
-            window_y:       0,
-            window_x:       0,
+            window_y:           0,
+            window_x:           0,
 
             palettes:           StaticPaletteMem::new(device, palette),
             cgb_mode:           cgb_mode,
             colour_palettes:    DynamicPaletteMem::new(device),
             vram_bank:          0,
 
-            clear_colour:   palette.get_colour_0(),
-            cycle_count:    0
+            clear_colour:       palette.get_colour_0(),
+            cycle_count:        0
         }
     }
     
@@ -379,24 +377,9 @@ impl MemDevice for VideoMem {
                 let base = (loc - 0x8000) as usize + (self.vram_bank as usize * 0x1800);
 
                 if base % 2 == 0 {  // Lower bit
-                    let tile_x = (base % 0x100) / 0x10;
-                    let tile_y = base / 0x100;
-
-                    let pixel_row_num = (base / 2) % 8;
-
-                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
-
-                    self.tile_mem.get_pixel_lower_row(base_pixel * 8)
-                } else {    // Upper bit
-                    let base = base - 1;
-                    let tile_x = (base % 0x100) / 0x10;
-                    let tile_y = base / 0x100;
-
-                    let pixel_row_num = (base / 2) % 8;
-
-                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
-
-                    self.tile_mem.get_pixel_upper_row(base_pixel * 8)
+                    self.tile_mem.get_pixel_lower_row(get_base_pixel(base))
+                } else {            // Upper bit
+                    self.tile_mem.get_pixel_upper_row(get_base_pixel(base - 1))
                 }
             },
             // Background Map A
@@ -454,28 +437,9 @@ impl MemDevice for VideoMem {
                 let base = (loc - 0x8000) as usize + (self.vram_bank as usize * 0x1800);
 
                 if base % 2 == 0 {  // Lower bit
-                    // TODO: shift and mask these for a more efficient operation...
-                    let tile_x = (base % 0x100) / 0x10;
-                    let tile_y = base / 0x100;
-
-                    let pixel_row_num = (base / 2) % 8;
-
-                    // tile_x * 8 pixels across per tile
-                    // pixel_row_num * 8 pixels across per tile * 16 tiles per row
-                    // tile_y * 8x8 pixels per tile * 16 tiles per row
-                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
-
-                    self.tile_mem.set_pixel_lower_row(base_pixel * 8, val);
-                } else {    // Upper bit
-                    let base = base - 1;
-                    let tile_x = (base % 0x100) / 0x10;
-                    let tile_y = base / 0x100;
-
-                    let pixel_row_num = (base / 2) % 8;
-
-                    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
-
-                    self.tile_mem.set_pixel_upper_row(base_pixel * 8, val);
+                    self.tile_mem.set_pixel_lower_row(get_base_pixel(base), val);
+                } else {            // Upper bit
+                    self.tile_mem.set_pixel_upper_row(get_base_pixel(base - 1), val);
                 }
             },
             // Background Map A
@@ -526,11 +490,32 @@ impl MemDevice for VideoMem {
     }
 }
 
+#[inline]
+fn get_base_pixel(base: usize) -> usize {
+    const PIX_SHIFT: usize = 1;
+    const X_SHIFT: usize = 4;
+    const Y_SHIFT: usize = 8;
+
+    const PIX_MASK: usize = 0x7;
+    const X_MASK: usize = 0xF;
+
+    let pixel_row_num = (base >> PIX_SHIFT) & PIX_MASK;
+    let tile_x = (base >> X_SHIFT) & X_MASK;
+    let tile_y = base >> Y_SHIFT;
+
+    // tile_x * 8 pixels across per tile
+    // pixel_row_num * 8 pixels across per tile * 16 tiles per row
+    // tile_y * 8x8 pixels per tile * 16 tiles per row
+    let base_pixel = tile_x + (pixel_row_num * 16) + (tile_y * 8 * 16);
+
+    base_pixel * 8
+}
+
 // Writing raw tile data explained:
 // We have to convert a number in the range (0x8000, 0x9800) to 8 adjacent pixels.
 // We then convert that 1D array of pixels to a 2D image (the texture atlas).
 // The image is 16x24 tiles, and each tile is 8x8 pixels. So the total size is 128x192 pixels.
-// As explained in tilemem.rs (in hex):
+// As explained in patternmem.rs (in hex):
     // the tile x coord is nibble xxXx
     // the tile y coord is nibble xXxx
     // the row is 2 bytes of nibble xxxX

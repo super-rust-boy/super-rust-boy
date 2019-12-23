@@ -102,21 +102,21 @@ struct RenderData {
 
 pub struct VulkanRenderer {
     // Core
-    device: Arc<Device>,
-    queue: Arc<Queue>,
-    pipeline: Arc<RenderPipeline>,
-    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-    surface: Arc<Surface<Window>>,
+    device:         Arc<Device>,
+    queue:          Arc<Queue>,
+    pipeline:       Arc<RenderPipeline>,
+    render_pass:    Arc<dyn RenderPassAbstract + Send + Sync>,
+    surface:        Arc<Surface<Window>>,
     // Uniforms
-    sampler: Arc<Sampler>,
-    set_pools: Vec<FixedSizeDescriptorSetsPool<Arc<RenderPipeline>>>,
+    sampler:        Arc<Sampler>,
+    set_pools:      Vec<FixedSizeDescriptorSetsPool<Arc<RenderPipeline>>>,
     // Vulkan data
-    swapchain: Arc<Swapchain<Window>>,
-    framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
-    dynamic_state: DynamicState,
+    swapchain:      Arc<Swapchain<Window>>,
+    framebuffers:   Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
+    dynamic_state:  DynamicState,
     // Frame data
-    previous_frame_future: Box<dyn GpuFuture>,
-    render_data: Option<RenderData>
+    previous_frame_future:  Box<dyn GpuFuture>,
+    render_data:            Option<RenderData>
 }
 
 impl VulkanRenderer {
@@ -254,21 +254,21 @@ impl VulkanRenderer {
         ];
 
         Box::new(VulkanRenderer {
-            device: device.clone(),
-            queue: queue,
-            pipeline: pipeline,
-            render_pass: render_pass,
-            surface: surface,
+            device:         device.clone(),
+            queue:          queue,
+            pipeline:       pipeline,
+            render_pass:    render_pass,
+            surface:        surface,
 
-            sampler: sampler,
-            set_pools: set_pools,
+            sampler:        sampler,
+            set_pools:      set_pools,
 
-            swapchain: swapchain,
-            framebuffers: framebuffers,
-            dynamic_state: dynamic_state,
+            swapchain:      swapchain,
+            framebuffers:   framebuffers,
+            dynamic_state:  dynamic_state,
 
-            previous_frame_future: Box::new(now(device.clone())),
-            render_data: None
+            previous_frame_future:  Box::new(now(device.clone())),
+            render_data:            None
         })
     }
 
@@ -316,8 +316,7 @@ impl Renderer for VulkanRenderer {
         let (image_num, acquire_future) = acquire_next_image(self.swapchain.clone(), None)
             .expect("Didn't get next image");
 
-        // Make image with current texture.
-        // TODO: only re-create the image when the data has changed.
+        // Get image with current texture.
         let (image, write_future) = video_mem.get_tile_atlas(&self.device, &self.queue);
 
         // Make descriptor set to bind texture atlas.

@@ -31,25 +31,26 @@ use vulkano::{
 
 use std::sync::Arc;
 
+const TEX_WIDTH: usize = 8;                     // Width of a tile in pixels.
+const TEX_HEIGHT: usize = 8;                    // Height of a tile in pixels.
+const TEX_AREA: usize = TEX_WIDTH * TEX_HEIGHT; // Area of a tile in total number of pixels.
+
 pub type TileImage = Arc<ImmutableImage<R8Uint>>;
 pub type TileFuture = Box<dyn GpuFuture>;
 
 pub struct TileAtlas {
-    atlas:      Vec<u8>,        // formatted atlas of tiles
-    atlas_size: (usize, usize), // width/height of texture in tiles
-    tex_size:   usize,          // width/height of tile in texels
+    atlas:      Vec<u8>,            // formatted atlas of tiles
+    atlas_size: (usize, usize),     // width/height of texture in tiles
     
-    image:      Option<TileImage>
+    image:      Option<TileImage>   // cached images
 }
 
 impl TileAtlas {
-    pub fn new(atlas_size: (usize, usize), tex_size: usize) -> Self {
-        let tex_area = tex_size * tex_size;
-        let atlas_area = (atlas_size.0 * atlas_size.1) * tex_area;
+    pub fn new(atlas_size: (usize, usize)) -> Self {
+        let atlas_area = (atlas_size.0 * atlas_size.1) * TEX_AREA;
         TileAtlas {
             atlas:      vec![0; atlas_area],
             atlas_size: atlas_size,
-            tex_size:   tex_size,
 
             image:      None,
         }
@@ -61,7 +62,7 @@ impl TileAtlas {
     pub fn set_pixel_lower_row(&mut self, loc: usize, row: u8) {
         for i in 0..8 {
             let bit = (row >> (7 - i)) & 1;
-            self.atlas[loc + i] = (self.atlas[loc + i] & 0b10) | bit;
+            self.atlas[loc + i] = (self.atlas[loc + i] & bit!(1)) | bit;
         }
 
         self.image = None;
@@ -72,7 +73,7 @@ impl TileAtlas {
     pub fn set_pixel_upper_row(&mut self, loc: usize, row: u8) {
         for i in 0..8 {
             let bit = (row >> (7 - i)) & 1;
-            self.atlas[loc + i] = (self.atlas[loc + i] & 0b01) | (bit << 1);
+            self.atlas[loc + i] = (self.atlas[loc + i] & bit!(0)) | (bit << 1);
         }
 
         self.image = None;
@@ -81,7 +82,7 @@ impl TileAtlas {
     // Read a pixel row from the atlas.
     pub fn get_pixel_lower_row(&self, loc: usize) -> u8 {
         (0..8).fold(0, |acc, i| {
-            let bit = self.atlas[loc + i] & 0b01;
+            let bit = self.atlas[loc + i] & bit!(0);
             let shift = 7 - i;
             acc | (bit << shift)
         })
@@ -89,7 +90,7 @@ impl TileAtlas {
 
     pub fn get_pixel_upper_row(&self, loc: usize) -> u8 {
         (0..8).fold(0, |acc, i| {
-            let bit = (self.atlas[loc + i] & 0b10) >> 1;
+            let bit = (self.atlas[loc + i] & bit!(1)) >> 1;
             let shift = 7 - i;
             acc | (bit << shift)
         })
@@ -100,8 +101,8 @@ impl TileAtlas {
         if let Some(image) = &self.image {
             (image.clone(), Box::new(now(device.clone())))
         } else {
-            let width = (self.atlas_size.0 * self.tex_size) as u32;
-            let height = (self.atlas_size.1 * self.tex_size) as u32;
+            let width = (self.atlas_size.0 * TEX_WIDTH) as u32;
+            let height = (self.atlas_size.1 * TEX_HEIGHT) as u32;
 
             let (image, future) = ImmutableImage::from_iter(
                 self.atlas.clone().into_iter(),
