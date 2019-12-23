@@ -1,12 +1,10 @@
 extern crate rustboy;
 
 mod debug;
-mod avg;
 
 use rustboy::*;
 
 use clap::{clap_app, crate_version};
-use chrono::Utc;
 use winit::{
     EventsLoop,
     Event,
@@ -15,7 +13,6 @@ use winit::{
     VirtualKeyCode
 };
 
-const FRAME_TIME: i64 = 16_666;
 //const FRAME_TIME: i64 = 16_743; // 59.73 fps
 
 fn main() {
@@ -47,24 +44,28 @@ fn main() {
     let mut events_loop = EventsLoop::new();
     let renderer = VulkanRenderer::new(WindowType::Winit(&events_loop));
     let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"), renderer);
-
-    //let mut averager = avg::Averager::<i64>::new(60);
     
     if cmd_args.is_present("debug") {
         debug::debug_mode(&mut rustboy);
     } else {
+        let mut loop_helper = spin_sleep::LoopHelper::builder()
+            .native_accuracy_ns(1000000)
+            .report_interval_s(1.0)
+            .build_with_target_rate(60.0);
+
         loop {
-            let frame = Utc::now();
+            let _ = loop_helper.loop_start();
 
             while rustboy.step() {}   // Execute up to v-blanking
 
             read_inputs(&mut events_loop, &mut rustboy);
             rustboy.frame();   // Draw video and read inputs
 
-            //averager.add((Utc::now() - frame).num_milliseconds());
-            //println!("Frame t: {}ms", averager.get_avg());
+            /*if let Some(fps) = loop_helper.report_rate() {
+                println!("Current fps: {}", fps.round());
+            }*/
 
-            while (Utc::now() - frame) < chrono::Duration::microseconds(FRAME_TIME) {}  // Wait until next frame.
+            loop_helper.loop_sleep();
         }
     }
 }
