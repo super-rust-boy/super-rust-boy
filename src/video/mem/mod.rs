@@ -104,21 +104,21 @@ impl LCDStatus {
 // Video memory layer
 pub struct VideoMem {
     // Raw tile mem and tile maps
-    tile_mem:   TileAtlas,
-    tile_map_0: VertexGrid,
-    tile_map_1: VertexGrid,
-    object_mem: ObjectMem,
+    tile_mem:           TileAtlas,
+    tile_map_0:         VertexGrid,
+    tile_map_1:         VertexGrid,
+    object_mem:         ObjectMem,
 
     // Flags / registers
-    lcd_control:    LCDControl,
-    pub lcd_status: LCDStatus,
-    scroll_y:       u8,
-    scroll_x:       u8,
-    lcdc_y:         u8,
-    ly_compare:     u8,
+    lcd_control:        LCDControl,
+    pub lcd_status:     LCDStatus,
+    scroll_y:           u8,
+    scroll_x:           u8,
+    lcdc_y:             u8,
+    ly_compare:         u8,
 
-    window_y:       u8,
-    window_x:       u8,
+    window_y:           u8,
+    window_x:           u8,
 
     palettes:           StaticPaletteMem,
 
@@ -128,37 +128,37 @@ pub struct VideoMem {
     vram_bank:          u8,
 
     // Misc
-    clear_colour:   Vector4<f32>,
-    cycle_count:    u32,
+    clear_colour:       Vector4<f32>,
+    cycle_count:        u32,
 }
 
 impl VideoMem {
     pub fn new(device: &Arc<Device>, palette: SGBPalette, cgb_mode: bool) -> Self {
         VideoMem {
-            tile_mem:   TileAtlas::new(
+            tile_mem:           TileAtlas::new(
                 (TILE_DATA_WIDTH, if cgb_mode {TILE_DATA_HEIGHT_CGB} else {TILE_DATA_HEIGHT_GB}),
             ),
-            tile_map_0: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
-            tile_map_1: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
-            object_mem: ObjectMem::new(device),
+            tile_map_0:         VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
+            tile_map_1:         VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
+            object_mem:         ObjectMem::new(device),
 
-            lcd_control:    LCDControl::ENABLE,
-            lcd_status:     LCDStatus::new(),
-            scroll_y:       0,
-            scroll_x:       0,
-            lcdc_y:         0,
-            ly_compare:     0,
+            lcd_control:        LCDControl::ENABLE,
+            lcd_status:         LCDStatus::new(),
+            scroll_y:           0,
+            scroll_x:           0,
+            lcdc_y:             0,
+            ly_compare:         0,
 
-            window_y:       0,
-            window_x:       0,
+            window_y:           0,
+            window_x:           0,
 
             palettes:           StaticPaletteMem::new(device, palette),
             cgb_mode:           cgb_mode,
             colour_palettes:    DynamicPaletteMem::new(device),
             vram_bank:          0,
 
-            clear_colour:   palette.get_colour_0(),
-            cycle_count:    0
+            clear_colour:       palette.get_colour_0(),
+            cycle_count:        0
         }
     }
     

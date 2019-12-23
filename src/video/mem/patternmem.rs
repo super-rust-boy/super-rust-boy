@@ -62,7 +62,7 @@ impl TileAtlas {
     pub fn set_pixel_lower_row(&mut self, loc: usize, row: u8) {
         for i in 0..8 {
             let bit = (row >> (7 - i)) & 1;
-            self.atlas[loc + i] = (self.atlas[loc + i] & 0b10) | bit;
+            self.atlas[loc + i] = (self.atlas[loc + i] & bit!(1)) | bit;
         }
 
         self.image = None;
@@ -73,7 +73,7 @@ impl TileAtlas {
     pub fn set_pixel_upper_row(&mut self, loc: usize, row: u8) {
         for i in 0..8 {
             let bit = (row >> (7 - i)) & 1;
-            self.atlas[loc + i] = (self.atlas[loc + i] & 0b01) | (bit << 1);
+            self.atlas[loc + i] = (self.atlas[loc + i] & bit!(0)) | (bit << 1);
         }
 
         self.image = None;
@@ -82,7 +82,7 @@ impl TileAtlas {
     // Read a pixel row from the atlas.
     pub fn get_pixel_lower_row(&self, loc: usize) -> u8 {
         (0..8).fold(0, |acc, i| {
-            let bit = self.atlas[loc + i] & 0b01;
+            let bit = self.atlas[loc + i] & bit!(0);
             let shift = 7 - i;
             acc | (bit << shift)
         })
@@ -90,7 +90,7 @@ impl TileAtlas {
 
     pub fn get_pixel_upper_row(&self, loc: usize) -> u8 {
         (0..8).fold(0, |acc, i| {
-            let bit = (self.atlas[loc + i] & 0b10) >> 1;
+            let bit = (self.atlas[loc + i] & bit!(1)) >> 1;
             let shift = 7 - i;
             acc | (bit << shift)
         })
