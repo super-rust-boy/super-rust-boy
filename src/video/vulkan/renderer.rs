@@ -316,8 +316,7 @@ impl Renderer for VulkanRenderer {
         let (image_num, acquire_future) = acquire_next_image(self.swapchain.clone(), None)
             .expect("Didn't get next image");
 
-        // Make image with current texture.
-        // TODO: only re-create the image when the data has changed.
+        // Get image with current texture.
         let (image, write_future) = video_mem.get_tile_atlas(&self.device, &self.queue);
 
         // Make descriptor set to bind texture atlas.

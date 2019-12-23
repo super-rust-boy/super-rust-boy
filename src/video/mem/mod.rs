@@ -31,7 +31,6 @@ use palette::{
 pub use patternmem::TileImage;
 pub use palette::PaletteBuffer;
 
-const TILE_SIZE: usize = 8;             // Width / Height of a tile in pixels.
 const TILE_DATA_WIDTH: usize = 16;      // Width of the tile data in tiles.
 const TILE_DATA_HEIGHT_GB: usize = 24;  // Height of the tile data in tiles for GB.
 const TILE_DATA_HEIGHT_CGB: usize = 48; // Height of the tile data in tiles for GB Color.
@@ -138,7 +137,6 @@ impl VideoMem {
         VideoMem {
             tile_mem:   TileAtlas::new(
                 (TILE_DATA_WIDTH, if cgb_mode {TILE_DATA_HEIGHT_CGB} else {TILE_DATA_HEIGHT_GB}),
-                TILE_SIZE
             ),
             tile_map_0: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
             tile_map_1: VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
