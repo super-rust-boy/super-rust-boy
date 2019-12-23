@@ -24,11 +24,20 @@ bitflags! {
 
 const BG_OAM_PRIORITY: u32 = 1 << 19;
 
+#[derive(Clone)]
+enum BufferCache {
+    Buffer(VertexBuffer),   // There exists a buffer that is not dirty.
+    Empty,                  // This data is intentionally empty.
+    Dirty                   // This data is dirty and must be recreated.
+}
+
 // Struct that contains the vertices to be used for rendering, in addition to the buffer pool.
 pub struct VertexGrid {
-    vertices:       Vec<Vertex>,
-    row_len:        usize,
-    buffer_pool:    CpuBufferPool<Vertex>,
+    vertices:           Vec<Vec<Vertex>>,
+
+    buffer_pool:        CpuBufferPool<Vertex>,
+    lo_vertex_buffers:  Vec<BufferCache>,
+    hi_vertex_buffers:  Vec<BufferCache>
 }
 
 impl VertexGrid {
@@ -38,6 +47,7 @@ impl VertexGrid {
         // The vertex position values can be offset in the vertex shader to shift this visible area around.
     pub fn new(device: &Arc<Device>, grid_size: (usize, usize), view_size: (usize, usize)) -> Self {
         let mut vertices = Vec::new();
+        let mut vertex_buffers = Vec::new();
 
         let x_frac = 2.0 / view_size.0 as f32;
         let y_frac = (2.0 / view_size.1 as f32) / 8.0;  // Each y tile is 8 lines high.
@@ -45,58 +55,71 @@ impl VertexGrid {
         let mut hi_y = lo_y + y_frac;
 
         for y in 0..(grid_size.1 * 8) {
+            let mut row_vertices = Vec::new();
+
             let y_coord = ((y % 8) << 9) as u32;
             let mut left_x = -1.0;
             let mut right_x = left_x + x_frac;
+
             for _ in 0..grid_size.0 {
-                vertices.push(Vertex{ position: [left_x, lo_y], data: y_coord | Side::Left as u32 });
-                vertices.push(Vertex{ position: [left_x, hi_y], data: y_coord | Side::Left as u32 });
-                vertices.push(Vertex{ position: [right_x, lo_y], data: y_coord | Side::Right as u32 });
-                vertices.push(Vertex{ position: [left_x, hi_y], data: y_coord | Side::Left as u32 });
-                vertices.push(Vertex{ position: [right_x, lo_y], data: y_coord | Side::Right as u32 });
-                vertices.push(Vertex{ position: [right_x, hi_y], data: y_coord | Side::Right as u32 });
+                row_vertices.push(Vertex{ position: [left_x, lo_y], data: y_coord | Side::Left as u32 });
+                row_vertices.push(Vertex{ position: [left_x, hi_y], data: y_coord | Side::Left as u32 });
+                row_vertices.push(Vertex{ position: [right_x, lo_y], data: y_coord | Side::Right as u32 });
+                row_vertices.push(Vertex{ position: [left_x, hi_y], data: y_coord | Side::Left as u32 });
+                row_vertices.push(Vertex{ position: [right_x, lo_y], data: y_coord | Side::Right as u32 });
+                row_vertices.push(Vertex{ position: [right_x, hi_y], data: y_coord | Side::Right as u32 });
 
                 left_x = right_x;
                 right_x += x_frac;
             }
             lo_y = hi_y;
             hi_y += y_frac;
+
+            vertices.push(row_vertices);
+            vertex_buffers.push(BufferCache::Dirty);
         }
 
         VertexGrid {
-            vertices:       vertices,
-            row_len:        grid_size.0 * 6,
-            buffer_pool:    CpuBufferPool::vertex_buffer(device.clone())
+            vertices:           vertices,
+
+            buffer_pool:        CpuBufferPool::vertex_buffer(device.clone()),
+            lo_vertex_buffers:  vertex_buffers.clone(),
+            hi_vertex_buffers:  vertex_buffers
         }
     }
 
     // Sets the tex number for a tile.
     pub fn set_tile_texture(&mut self, tile_x: usize, tile_y: usize, tex_num: u8) {
-        let y_offset = tile_y * self.row_len * 8;
-        let index = y_offset + (tile_x * 6);
+        let start_row = tile_y * 8;
+        let end_row = start_row + 8;
+        let row_index = tile_x * 6;
 
-        for i in (index..(index + (self.row_len * 8))).step_by(self.row_len) {
-            self.vertices[i].data = (self.vertices[i].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[i + 1].data = (self.vertices[i + 1].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[i + 2].data = (self.vertices[i + 2].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[i + 3].data = (self.vertices[i + 3].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[i + 4].data = (self.vertices[i + 4].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[i + 5].data = (self.vertices[i + 5].data & 0xFFFFFF00) | tex_num as u32;
+        for row in start_row..end_row {
+            self.vertices[row][row_index].data = (self.vertices[row][row_index].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertices[row][row_index + 1].data = (self.vertices[row][row_index + 1].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertices[row][row_index + 2].data = (self.vertices[row][row_index + 2].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertices[row][row_index + 3].data = (self.vertices[row][row_index + 3].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertices[row][row_index + 4].data = (self.vertices[row][row_index + 4].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertices[row][row_index + 5].data = (self.vertices[row][row_index + 5].data & 0xFFFFFF00) | tex_num as u32;
+
+            self.lo_vertex_buffers[row] = BufferCache::Dirty;
+            self.hi_vertex_buffers[row] = BufferCache::Dirty;
         }
     }
 
     // Gets the tex number for a tile.
     pub fn get_tile_texture(&self, tile_x: usize, tile_y: usize) -> u8 {
-        let y_offset = tile_y * self.row_len * 8;
-        let index = y_offset + (tile_x * 6);
+        let row = tile_y * 8;
+        let row_index = tile_x * 6;
 
-        self.vertices[index].data as u8
+        self.vertices[row][row_index].data as u8
     }
 
     // Writing and reading attributes (CGB mode).
     pub fn set_tile_attribute(&mut self, tile_x: usize, tile_y: usize, attributes: u8) {
-        let y_offset = tile_y * self.row_len * 8;
-        let index = y_offset + (tile_x * 6);    // Index of first vertex
+        let start_row = tile_y * 8;
+        let end_row = start_row + 8;
+        let row_index = tile_x * 6;
 
         let flags = Attributes::from_bits_truncate(attributes);
         let data = (attributes as u32) << 12;
@@ -113,57 +136,78 @@ impl VertexGrid {
             (0..8).collect::<Vec<u32>>()
         };
 
-        for (i, y) in (index..(index + (self.row_len * 8))).step_by(self.row_len).zip(&y_coords) {
+        for (row, y) in (start_row..end_row).zip(&y_coords) {
             let y = y << 9;
-            self.vertices[i].data =     (self.vertices[i].data & 0x000000FF) | data | y | left as u32;
-            self.vertices[i + 1].data = (self.vertices[i + 1].data & 0x000000FF) | data | y | left as u32;
-            self.vertices[i + 2].data = (self.vertices[i + 2].data & 0x000000FF) | data | y | right as u32;
-            self.vertices[i + 3].data = (self.vertices[i + 3].data & 0x000000FF) | data | y | left as u32;
-            self.vertices[i + 4].data = (self.vertices[i + 4].data & 0x000000FF) | data | y | right as u32;
-            self.vertices[i + 5].data = (self.vertices[i + 5].data & 0x000000FF) | data | y | right as u32;
+            self.vertices[row][row_index].data =     (self.vertices[row][row_index].data & 0x000000FF) | data | y | left as u32;
+            self.vertices[row][row_index + 1].data = (self.vertices[row][row_index + 1].data & 0x000000FF) | data | y | left as u32;
+            self.vertices[row][row_index + 2].data = (self.vertices[row][row_index + 2].data & 0x000000FF) | data | y | right as u32;
+            self.vertices[row][row_index + 3].data = (self.vertices[row][row_index + 3].data & 0x000000FF) | data | y | left as u32;
+            self.vertices[row][row_index + 4].data = (self.vertices[row][row_index + 4].data & 0x000000FF) | data | y | right as u32;
+            self.vertices[row][row_index + 5].data = (self.vertices[row][row_index + 5].data & 0x000000FF) | data | y | right as u32;
+
+            self.lo_vertex_buffers[row] = BufferCache::Dirty;
+            self.hi_vertex_buffers[row] = BufferCache::Dirty;
         }
     }
 
     pub fn get_tile_attribute(&self, tile_x: usize, tile_y: usize) -> u8 {
-        let y_offset = tile_y * self.row_len * 8;
-        let index = y_offset + (tile_x * 6);
+        let row = tile_y * 8;
+        let row_index = tile_x * 6;
 
-        (self.vertices[index].data >> 12) as u8
+        (self.vertices[row][row_index].data >> 12) as u8
     }
 
     // Get a line of vertices.
     // Only retrieves the vertices that appear below the objects.
     // (This will get the whole background in GB mode).
     pub fn get_lo_vertex_buffer(&mut self, y: u8) -> Option<VertexBuffer> {
-        let start = self.row_len * y as usize;
-        let tile_map = self.vertices.iter()
-                .skip(start)
-                .take(self.row_len)
-                .cloned()
-                .filter(|v| (v.data & BG_OAM_PRIORITY) == 0)
-                .collect::<Vec<_>>();
+        let row = y as usize;
+        let cached_buffer = &mut self.lo_vertex_buffers[row];
 
-        if tile_map.is_empty() {
-            None
-        } else {
-            Some(self.buffer_pool.chunk(tile_map).unwrap())
+        match cached_buffer {
+            BufferCache::Buffer(buffer) =>  Some(buffer.clone()),
+            BufferCache::Empty =>           None,
+            BufferCache::Dirty => {
+                let tile_map = self.vertices[row].iter()
+                    .cloned()
+                    .filter(|v| (v.data & BG_OAM_PRIORITY) == 0)
+                    .collect::<Vec<_>>();
+
+                if tile_map.is_empty() {
+                    *cached_buffer = BufferCache::Empty;
+                    None
+                } else {
+                    let buffer = self.buffer_pool.chunk(tile_map).unwrap();
+                    *cached_buffer = BufferCache::Buffer(buffer.clone());
+                    Some(buffer)
+                }
+            }
         }
     }
 
     // Only retrieves the vertices that appear above the objects.
     pub fn get_hi_vertex_buffer(&mut self, y: u8) -> Option<VertexBuffer> {
-        let start = self.row_len * y as usize;
-        let tile_map = self.vertices.iter()
-                .skip(start)
-                .take(self.row_len)
-                .cloned()
-                .filter(|v| (v.data & BG_OAM_PRIORITY) != 0)
-                .collect::<Vec<_>>();
+        let row = y as usize;
+        let cached_buffer = &mut self.hi_vertex_buffers[row];
 
-        if tile_map.is_empty() {
-            None
-        } else {
-            Some(self.buffer_pool.chunk(tile_map).unwrap())
+        match cached_buffer {
+            BufferCache::Buffer(buffer) =>  Some(buffer.clone()),
+            BufferCache::Empty =>           None,
+            BufferCache::Dirty => {
+                let tile_map = self.vertices[row].iter()
+                    .cloned()
+                    .filter(|v| (v.data & BG_OAM_PRIORITY) != 0)
+                    .collect::<Vec<_>>();
+
+                if tile_map.is_empty() {
+                    *cached_buffer = BufferCache::Empty;
+                    None
+                } else {
+                    let buffer = self.buffer_pool.chunk(tile_map).unwrap();
+                    *cached_buffer = BufferCache::Buffer(buffer.clone());
+                    Some(buffer)
+                }
+            }
         }
     }
 }
