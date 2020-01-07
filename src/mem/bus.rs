@@ -168,29 +168,29 @@ impl MemBus {
 impl MemBus {
     // Direct memory access for object memory.
     fn start_dma(&mut self, val: u8) {
-        self.dma_addr = (val as u16) << 8;
+        self.dma_addr = make_16!(val, 0);
         self.dma_active = true;
     }
 
     fn dma_tick(&mut self) {
-        let dest_addr = 0xFE00 | (self.dma_addr & 0xFF);
+        let dest_addr = make_16!(0xFE, lo_16!(self.dma_addr));
         let byte = self.read(self.dma_addr);
         self.video_device.write(dest_addr, byte);
         self.dma_addr += 1;
 
-        if (self.dma_addr & 0xFF) >= 0xA0 {
+        if lo_16!(self.dma_addr) >= 0xA0 {
             self.dma_active = false;
         }
     }
 
     // Direct memory access for CGB.
     fn start_cgb_dma(&mut self, val: u8) {
-        if self.cgb_dma_hblank_len.is_some() && ((val & 0x80) == 0) {
+        if self.cgb_dma_hblank_len.is_some() && !test_bit!(val, 7) {
             self.cgb_dma_len = 0; // This shouldn't actually set this to zero.
             self.cgb_dma_hblank_len = None;
         } else {
             self.cgb_dma_len = ((val & 0x7F) as u16 + 1) * 0x10;
-            self.cgb_dma_hblank_len = if (val & 0x80) == 0 {None} else {Some(0x10)};
+            self.cgb_dma_hblank_len = if !test_bit!(val, 7) {None} else {Some(0x10)};
         }
     }
 

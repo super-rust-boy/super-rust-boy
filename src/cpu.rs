@@ -358,11 +358,11 @@ impl CPU {
             0xDE => {let imm = self.fetch(); self.sub(true, imm)},
             0xDF => self.call(Cond::AL, 0x18),
 
-            0xE0 => {let imm = (self.fetch() as u16) + 0xFF00;
+            0xE0 => {let imm = make_16!(0xFF, self.fetch());
                      let op = self.a;
                      self.write_mem(imm,op)},
             0xE1 => self.pop(Reg::HL),
-            0xE2 => {let loc = (self.c as u16) + 0xFF00;
+            0xE2 => {let loc = make_16!(0xFF, self.c);
                      let op = self.a;
                      self.write_mem(loc,op)},
             0xE5 => self.push(Reg::HL),
@@ -376,10 +376,10 @@ impl CPU {
             0xEE => {let imm = self.fetch(); self.xor(imm)},
             0xEF => self.call(Cond::AL, 0x28),
 
-            0xF0 => {let imm = (self.fetch() as u16) + 0xFF00;
+            0xF0 => {let imm = make_16!(0xFF, self.fetch());
                      self.a = self.read_mem(imm)},
             0xF1 => self.pop(Reg::AF),
-            0xF2 => {let loc = (self.c as u16) + 0xFF00;
+            0xF2 => {let loc = make_16!(0xFF, self.c);
                      self.a = self.read_mem(loc)},
             0xF3 => self.di(),
             0xF5 => self.push(Reg::AF),
@@ -474,24 +474,24 @@ impl CPU {
     #[inline]
     fn get_16(&self, which: Reg) -> u16 {
         match which {
-            Reg::HL => ((self.h as u16) << 8) | (self.l as u16),
-            Reg::AF => ((self.a as u16) << 8) | (self.get_f() as u16),
-            Reg::BC => ((self.b as u16) << 8) | (self.c as u16),
-            Reg::DE => ((self.d as u16) << 8) | (self.e as u16),
+            Reg::HL => make_16!(self.h, self.l),
+            Reg::AF => make_16!(self.a, self.get_f()),
+            Reg::BC => make_16!(self.b, self.c),
+            Reg::DE => make_16!(self.d, self.e),
         }
     }
 
     #[inline]
     fn set_16(&mut self, which: Reg, val: u16) {
         match which {
-            Reg::HL => {self.h = (val >> 8) as u8;
-                        self.l = val as u8;},
-            Reg::AF => {self.a = (val >> 8) as u8;
-                        self.set_f(val as u8);},
-            Reg::BC => {self.b = (val >> 8) as u8;
-                        self.c = val as u8;},
-            Reg::DE => {self.d = (val >> 8) as u8;
-                        self.e = val as u8;},
+            Reg::HL => {self.h = hi_16!(val);
+                        self.l = lo_16!(val);},
+            Reg::AF => {self.a = hi_16!(val);
+                        self.set_f(lo_16!(val));},
+            Reg::BC => {self.b = hi_16!(val);
+                        self.c = lo_16!(val);},
+            Reg::DE => {self.d = hi_16!(val);
+                        self.e = lo_16!(val);},
         }
     }
 
@@ -534,12 +534,12 @@ impl CPU {
     }
 
     fn fetch_16(&mut self) -> u16 {
-        let lo_byte = self.read_mem(self.pc) as u16;
+        let lo_byte = self.read_mem(self.pc);
         self.pc = ((self.pc as u32) + 1) as u16;
-        let hi_byte = (self.read_mem(self.pc) as u16) << 8;
+        let hi_byte = self.read_mem(self.pc);
         self.pc = ((self.pc as u32) + 1) as u16;
 
-        lo_byte | hi_byte
+        make_16!(hi_byte, lo_byte)
     }
 
     // read and write to/from mem pointed to by hl
@@ -574,8 +574,8 @@ impl CPU {
 
     // writes sp to mem
     fn write_sp(&mut self, imm: u16) {
-        let lo_byte = self.sp as u8;
-        let hi_byte = (self.sp >> 8) as u8;
+        let lo_byte = lo_16!(self.sp);
+        let hi_byte = hi_16!(self.sp);
         self.write_mem(imm, lo_byte);
         self.write_mem(imm + 1, hi_byte);
     }
@@ -751,9 +751,8 @@ impl CPU {
 
     fn rla(&mut self) {
         let carry_bit = if self.flags.contains(CPUFlags::CARRY) {bit!(0)} else {0};
-        let top_bit = (self.a >> 7) & bit!(0);
         self.flags = CPUFlags::default();
-        self.flags.set(CPUFlags::CARRY, top_bit != 0);
+        self.flags.set(CPUFlags::CARRY, test_bit!(self.a, 7));
         self.a = (self.a << 1) | carry_bit;
     }
 
@@ -766,9 +765,8 @@ impl CPU {
 
     fn rra(&mut self) {
         let carry_bit = if self.flags.contains(CPUFlags::CARRY) {bit!(7)} else {0};
-        let bot_bit = (self.a << 7) & bit!(7);
         self.flags = CPUFlags::default();
-        self.flags.set(CPUFlags::CARRY, bot_bit != 0);
+        self.flags.set(CPUFlags::CARRY, test_bit!(self.a, 0));
         self.a = (self.a >> 1) | carry_bit;
     }
 
@@ -783,11 +781,10 @@ impl CPU {
 
     fn rl(&mut self, op: u8) -> Option<u8> {
         let carry_bit = if self.flags.contains(CPUFlags::CARRY) {bit!(0)} else {0};
-        let top_bit = (op >> 7) & bit!(0);
         let result = (op << 1) | carry_bit;
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, result == 0);
-        self.flags.set(CPUFlags::CARRY, top_bit != 0);
+        self.flags.set(CPUFlags::CARRY, test_bit!(op, 7));
         Some(result)
     }
 
@@ -802,11 +799,10 @@ impl CPU {
 
     fn rr(&mut self, op: u8) -> Option<u8> {
         let carry_bit = if self.flags.contains(CPUFlags::CARRY) {bit!(7)} else {0};
-        let bot_bit = (op << 7) & bit!(7);
         let result = (op >> 1) | carry_bit;
         self.flags = CPUFlags::default();
         self.flags.set(CPUFlags::ZERO, result == 0);
-        self.flags.set(CPUFlags::CARRY, bot_bit != 0);
+        self.flags.set(CPUFlags::CARRY, test_bit!(op, 0));
         Some(result)
     }
 
@@ -901,8 +897,8 @@ impl CPU {
     fn call(&mut self, cd: Cond, loc: u16) {
         if cd.check(&self) {
             self.clock_inc();
-            let hi_byte = (self.pc >> 8) as u8;
-            let lo_byte = self.pc as u8;
+            let hi_byte = hi_16!(self.pc);
+            let lo_byte = lo_16!(self.pc);
             self.stack_push(hi_byte);
             self.stack_push(lo_byte);
             self.pc = loc;
@@ -918,7 +914,7 @@ impl CPU {
             }
             let lo_byte = self.stack_pop() as u16;
             let hi_byte = self.stack_pop() as u16;
-            self.pc = (hi_byte << 8) | lo_byte;
+            self.pc = make_16!(hi_byte, lo_byte);
         }
     }
 
@@ -928,7 +924,7 @@ impl CPU {
         self.ime = true;
         let lo_byte = self.stack_pop() as u16;
         let hi_byte = self.stack_pop() as u16;
-        self.pc = (hi_byte << 8) | lo_byte;
+        self.pc = make_16!(hi_byte, lo_byte);
     }
 }
 
