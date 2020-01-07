@@ -9,3 +9,21 @@ macro_rules! test_bit {
         ($val & bit!($bit_num)) != 0
     };
 }
+
+macro_rules! make_16 {
+    ($hi:expr, $lo:expr) => {
+        (($hi as u16) << 8) | ($lo as u16)
+    };
+}
+
+macro_rules! hi_16 {
+    ($val:expr) => {
+        ($val >> 8) as u8
+    };
+}
+
+macro_rules! lo_16 {
+    ($val:expr) => {
+        $val as u8
+    };
+}
