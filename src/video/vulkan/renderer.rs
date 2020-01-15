@@ -9,24 +9,31 @@ use vulkano::{
     framebuffer::{
         Framebuffer, Subpass, FramebufferAbstract, RenderPassAbstract
     },
+    buffer::{
+        BufferUsage,
+        CpuAccessibleBuffer
+    },
     pipeline::{
         GraphicsPipeline,
+        vertex::SingleBufferDefinition,
         viewport::Viewport,
-        vertex::SingleBufferDefinition
     },
     command_buffer::{
         AutoCommandBufferBuilder,
         AutoCommandBuffer,
         DynamicState
     },
+    image::{
+        StorageImage,
+        Dimensions,
+        ImageUsage
+    },
+    format::Format,
     sampler::{
         Filter,
         MipmapMode,
         Sampler,
         SamplerAddressMode
-    },
-    swapchain::{
-        Swapchain, Surface, SurfaceTransform, PresentMode, acquire_next_image
     },
     sync::{
         now, GpuFuture
@@ -41,13 +48,6 @@ use vulkano::{
         },
         pipeline_layout::PipelineLayoutAbstract
     }
-};
-
-use vulkano_win::VkSurfaceBuild;
-
-use winit::{
-    Window,
-    WindowBuilder
 };
 
 use bitflags::bitflags;
@@ -89,15 +89,17 @@ type RenderPipeline = GraphicsPipeline<
     Arc<dyn RenderPassAbstract + Send + Sync>
 >;
 
+//type OutputImage = Arc<CpuBufferPoolChunk<u8, Arc<StdMemoryPool>>>;
+
 // Data for a single render
 struct RenderData {
     command_buffer: Option<AutoCommandBufferBuilder>,
-    acquire_future: Box<dyn GpuFuture>,
-    image_num:      usize,
     image_future:   Box<dyn GpuFuture>,
     pipeline:       Arc<RenderPipeline>,
     set0:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, (((), PersistentDescriptorSetImg<TileImage>), PersistentDescriptorSetSampler)>>,
-    set1:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, ((), PersistentDescriptorSetBuf<PaletteBuffer>)>>
+    set1:           Arc<FixedSizeDescriptorSet<Arc<RenderPipeline>, ((), PersistentDescriptorSetBuf<PaletteBuffer>)>>,
+    render_image:   Arc<StorageImage<Format>>,
+    output_image:   Arc<CpuAccessibleBuffer<[u32]>>
 }
 
 pub struct VulkanRenderer {
@@ -105,15 +107,15 @@ pub struct VulkanRenderer {
     device:         Arc<Device>,
     queue:          Arc<Queue>,
     pipeline:       Arc<RenderPipeline>,
-    render_pass:    Arc<dyn RenderPassAbstract + Send + Sync>,
-    surface:        Arc<Surface<Window>>,
+    // Output
+    render_target:  Arc<StorageImage<Format>>,
+    framebuffer:    Arc<dyn FramebufferAbstract + Send + Sync>,
+    dynamic_state:  DynamicState,
+    //output_pool:    CpuBufferPool<u8>,
+    output_image:   Arc<CpuAccessibleBuffer<[u32]>>,
     // Uniforms
     sampler:        Arc<Sampler>,
     set_pools:      Vec<FixedSizeDescriptorSetsPool<Arc<RenderPipeline>>>,
-    // Vulkan data
-    swapchain:      Arc<Swapchain<Window>>,
-    framebuffers:   Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
-    dynamic_state:  DynamicState,
     // Frame data
     previous_frame_future:  Box<dyn GpuFuture>,
     render_data:            Option<RenderData>
@@ -121,7 +123,7 @@ pub struct VulkanRenderer {
 
 impl VulkanRenderer {
     // Create and initialise renderer.
-    pub fn new(window_type: WindowType) -> Box<Self> {
+    pub fn new(/*window_type: WindowType*/) -> Box<Self> {
         // Make instance with window extensions.
         let instance = {
             let extensions = vulkano_win::required_extensions();
@@ -153,7 +155,7 @@ impl VulkanRenderer {
         let queue = queues.next().unwrap();
 
         // Make a surface.
-        let surface = match window_type {
+        /*let surface = match window_type {
             WindowType::Winit(events_loop) => WindowBuilder::new()
                 .with_dimensions((320, 288).into())
                 .with_title("Super Rust Boy")
@@ -169,7 +171,7 @@ impl VulkanRenderer {
                 ns_view,
                 window
             )}.expect("Couldn't create macOS surface")
-        };
+        };*/
 
         // Make the sampler for the texture.
         let sampler = Sampler::new(
@@ -184,7 +186,7 @@ impl VulkanRenderer {
         ).expect("Couldn't create sampler!");
 
         // Get a swapchain and images for use with the swapchain, as well as the dynamic state.
-        let ((swapchain, images), dynamic_state) = {
+        /*let ((swapchain, images), dynamic_state) = {
 
             let caps = surface.capabilities(physical)
                     .expect("Failed to get surface capabilities");
@@ -205,6 +207,29 @@ impl VulkanRenderer {
                 }]),
                 .. DynamicState::none()
             })
+        };*/
+
+        let image = StorageImage::with_usage(
+            device.clone(),
+            Dimensions::Dim2d{ width: 160, height: 144 },
+            Format::R8G8B8A8Unorm,
+            ImageUsage {
+                transfer_source: true,
+                storage: true,
+                input_attachment: true,
+                color_attachment: true,
+                .. ImageUsage::none()
+            },
+            vec![queue_family].into_iter()
+        ).unwrap();
+
+        let dynamic_state = DynamicState {
+            viewports: Some(vec![Viewport {
+                origin: [0.0, 0.0],
+                dimensions: [160.0, 144.0],
+                depth_range: 0.0 .. 1.0,
+            }]),
+            .. DynamicState::none()
         };
 
         // Make the render pass to insert into the command queue.
@@ -213,7 +238,7 @@ impl VulkanRenderer {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: swapchain.format(),//Format::R8G8B8A8Unorm,
+                    format: Format::R8G8B8A8Unorm,
                     samples: 1,
                 }
             },
@@ -223,13 +248,21 @@ impl VulkanRenderer {
             }
         ).unwrap()) as Arc<dyn RenderPassAbstract + Send + Sync>;
 
-        let framebuffers = images.iter().map(|image| {
+        /*let framebuffers = images.iter().map(|image| {
             Arc::new(
                 Framebuffer::start(render_pass.clone())
                     .add(image.clone()).unwrap()
                     .build().unwrap()
             ) as Arc<dyn FramebufferAbstract + Send + Sync>
-        }).collect::<Vec<_>>();
+        }).collect::<Vec<_>>();*/
+
+        let framebuffer = Arc::new(
+            Framebuffer::start(render_pass.clone())
+                .add(image.clone()).unwrap()
+                .build().unwrap()
+        ) as Arc<dyn FramebufferAbstract + Send + Sync>;
+
+        //let output_buffer = CpuBufferPool::download(device.clone());
 
         // Assemble
         let vs = super::shaders::vs::Shader::load(device.clone()).expect("failed to create vertex shader");
@@ -257,15 +290,19 @@ impl VulkanRenderer {
             device:         device.clone(),
             queue:          queue,
             pipeline:       pipeline,
-            render_pass:    render_pass,
-            surface:        surface,
+
+            render_target:  image,
+            framebuffer:    framebuffer,
+            dynamic_state:  dynamic_state,
+            //output_pool:    output_buffer,
+            output_image:   CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage {
+                transfer_destination: true,
+                storage_texel_buffer: true,
+                .. BufferUsage::none()
+            }, (0..160*144).map(|_| 0)).expect("Unable to make cpu access buffer"),
 
             sampler:        sampler,
             set_pools:      set_pools,
-
-            swapchain:      swapchain,
-            framebuffers:   framebuffers,
-            dynamic_state:  dynamic_state,
 
             previous_frame_future:  Box::new(now(device.clone())),
             render_data:            None
@@ -273,7 +310,7 @@ impl VulkanRenderer {
     }
 
     // Re-create the swapchain and framebuffers.
-    fn create_swapchain(&mut self) {
+    /*fn create_swapchain(&mut self) {
         let window = self.surface.window();
         let dimensions = if let Some(dimensions) = window.get_inner_size() {
             let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
@@ -302,7 +339,7 @@ impl VulkanRenderer {
         }).collect::<Vec<_>>();
 
         self.swapchain = new_swapchain;
-    }
+    }*/
 
     pub fn get_device(&self) -> Arc<Device> {
         self.device.clone()
@@ -312,10 +349,6 @@ impl VulkanRenderer {
 impl Renderer for VulkanRenderer {
     // Start the process of rendering a frame.
     fn frame_start(&mut self, video_mem: &mut VideoMem) {
-        // Get current framebuffer index from the swapchain.
-        let (image_num, acquire_future) = acquire_next_image(self.swapchain.clone(), None)
-            .expect("Didn't get next image");
-
         // Get image with current texture.
         let (image, write_future) = video_mem.get_tile_atlas(&self.device, &self.queue);
 
@@ -331,19 +364,22 @@ impl Renderer for VulkanRenderer {
         
         // Start building command buffer using pipeline and framebuffer, starting with the background vertices.
         let command_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family()).unwrap()
-            .begin_render_pass(self.framebuffers[image_num].clone(), false, vec![video_mem.get_clear_colour().into()]).unwrap();
+            .begin_render_pass(self.framebuffer.clone(), false, vec![video_mem.get_clear_colour().into()]).unwrap();
 
         // DEBUG
         //command_buffer_builder = self.draw_debug(video_mem, command_buffer_builder, image);
 
+        //let output_image = Arc::new(self.output_pool.chunk((0..160*144*4).map(|_| 0_u8)).expect("Couldn't allocate output buffer."));
+        //self.output_image = Some(output_image.clone());
+
         self.render_data = Some(RenderData{
             command_buffer: Some(command_buffer_builder),
-            acquire_future: Box::new(acquire_future),
-            image_num:      image_num,
             image_future:   write_future,
             pipeline:       self.pipeline.clone(),
             set0:           set0,
-            set1:           set1
+            set1:           set1,
+            render_image:   self.render_target.clone(),
+            output_image:   self.output_image.clone()
         });
     }
 
@@ -352,23 +388,20 @@ impl Renderer for VulkanRenderer {
 
         if let Some(render_data) = render_data {
             // Finish command buffer.
-            let (command_buffer, acquire_future, image_future, image_num) = render_data.finish_drawing();
+            let (command_buffer, image_future) = render_data.finish_drawing();
 
             // Wait until previous frame is done.
             let mut now_future = Box::new(now(self.device.clone())) as Box<dyn GpuFuture>;
             std::mem::swap(&mut self.previous_frame_future, &mut now_future);
 
             // Wait until previous frame is done,
-            // _and_ the framebuffer has been acquired,
             // _and_ the texture has been uploaded.
-            let future = now_future.join(acquire_future)
-                .join(image_future)
-                .then_execute(self.queue.clone(), command_buffer).unwrap()                      // Run the commands (pipeline and render)
-                .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), image_num)  // Present newly rendered image.
-                .then_signal_fence_and_flush();                                                 // Signal done and flush the pipeline.
+            let future = now_future.join(image_future)
+                .then_execute(self.queue.clone(), command_buffer).unwrap()  // Run the commands (pipeline and render)
+                .then_signal_fence_and_flush().unwrap().wait(None);         // Signal done and flush the pipeline.
 
             match future {
-                Ok(future) => self.previous_frame_future = Box::new(future) as Box<_>,
+                Ok(_) => self.previous_frame_future = Box::new(now(self.device.clone())) as Box<_>,
                 Err(e) => println!("Err: {:?}", e),
             }
 
@@ -388,7 +421,14 @@ impl Renderer for VulkanRenderer {
     }
 
     fn on_resize(&mut self) {
-        self.create_swapchain();
+    }
+
+    fn transfer_image(&mut self, image_out: &mut [u32]) {
+        let buffer = self.output_image.read().unwrap();
+
+        for (o, i) in image_out.iter_mut().zip(&buffer[..]) {
+            *o = *i;
+        }
     }
 }
 
@@ -725,12 +765,13 @@ impl RenderData {
         self.command_buffer = Some(command_buffer);
     }
 
-    fn finish_drawing(self) -> (AutoCommandBuffer, Box<dyn GpuFuture>, Box<dyn GpuFuture>, usize) {
+    fn finish_drawing(self) -> (AutoCommandBuffer, Box<dyn GpuFuture>) {
         (
-            self.command_buffer.unwrap().end_render_pass().unwrap().build().unwrap(),
-            self.acquire_future,
+            self.command_buffer.unwrap()
+                .end_render_pass().unwrap()
+                .copy_image_to_buffer(self.render_image, self.output_image).unwrap()
+                .build().unwrap(),
             self.image_future,
-            self.image_num
         )
     }
 }

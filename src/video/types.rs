@@ -19,6 +19,8 @@ pub trait Renderer {
     fn draw_line(&mut self, y: u8, video_mem: &mut VideoMem, cgb_mode: bool);
 
     fn on_resize(&mut self);
+
+    fn transfer_image(&mut self, buffer: &mut [u32]);
 }
 
 pub enum WindowType<'a> {

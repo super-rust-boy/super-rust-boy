@@ -164,12 +164,12 @@ impl VideoMem {
     
     pub fn inc_lcdc_y(&mut self) {
         self.lcdc_y += 1;
-        self.lcd_status.flags.set(LCDStatusFlags::COINCEDENCE_FLAG, self.lcdc_y == self.ly_compare);
+        self.lcd_status.flags.set(LCDStatusFlags::COINCEDENCE_FLAG, self.compare_ly_equal());
     }
 
     pub fn set_lcdc_y(&mut self, val: u8) {
         self.lcdc_y = val;
-        self.lcd_status.flags.set(LCDStatusFlags::COINCEDENCE_FLAG, self.lcdc_y == self.ly_compare);
+        self.lcd_status.flags.set(LCDStatusFlags::COINCEDENCE_FLAG, self.compare_ly_equal());
     }
 
     pub fn compare_ly_equal(&self) -> bool {

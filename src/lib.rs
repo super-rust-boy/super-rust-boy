@@ -72,7 +72,7 @@ impl RustBoy {
     }
 
     // Call every 1/60 seconds.
-    pub fn frame(&mut self) {
+    pub fn frame(&mut self, buffer: &mut [u32]) {
         while self.cpu.step() {}    // Execute up to v-blanking
 
         self.cpu.frame_update();    // Draw video and read inputs
@@ -80,6 +80,8 @@ impl RustBoy {
         if let Some(recv) = &mut self.audio_recv {
             while let Ok(_) = recv.try_recv() {}
         }
+
+        self.cpu.transfer_image(buffer);
     }
 
     pub fn set_button(&mut self, button: Button, val: bool) {

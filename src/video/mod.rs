@@ -80,6 +80,10 @@ impl VideoDevice {
         self.renderer.frame_end();
     }
 
+    pub fn transfer_image(&mut self, buffer: &mut [u32]) {
+        self.renderer.transfer_image(buffer);
+    }
+
     // Query to see if the video device is in H-Blank.
     pub fn is_in_hblank(&self) -> bool {
         self.mem.lcd_status.read_mode() == Mode::_0

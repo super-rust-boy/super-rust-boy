@@ -445,6 +445,10 @@ impl CPU {
         self.mem.flush_cart();
     }
 
+    pub fn transfer_image(&mut self, buffer: &mut [u32]) {
+        self.mem.transfer_image(buffer);
+    }
+
     pub fn set_button(&mut self, button: Buttons, val: bool) {
         self.mem.set_button(button, val);
     }

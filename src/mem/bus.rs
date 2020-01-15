@@ -95,6 +95,10 @@ impl MemBus {
             self.interrupt_flag.insert(InterruptFlags::JOYPAD);
         }
     }
+    
+    pub fn transfer_image(&mut self, buffer: &mut [u32]) {
+        self.video_device.transfer_image(buffer);
+    }
 
     // Send new audio update.
     pub fn update_audio(&mut self, cycles: u32) {
