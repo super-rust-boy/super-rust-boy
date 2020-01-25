@@ -209,7 +209,7 @@ impl VulkanRenderer {
             })
         };*/
 
-        let image = StorageImage::with_usage(
+        /*let image = StorageImage::with_usage(
             device.clone(),
             Dimensions::Dim2d{ width: 160, height: 144 },
             Format::R8G8B8A8Unorm,
@@ -220,6 +220,13 @@ impl VulkanRenderer {
                 color_attachment: true,
                 .. ImageUsage::none()
             },
+            vec![queue_family].into_iter()
+        ).unwrap();*/
+
+        let image = StorageImage::new(
+            device.clone(),
+            Dimensions::Dim2d{ width: 160, height: 144 },
+            Format::R8G8B8A8Unorm,
             vec![queue_family].into_iter()
         ).unwrap();
 
@@ -299,7 +306,7 @@ impl VulkanRenderer {
                 transfer_destination: true,
                 storage_texel_buffer: true,
                 .. BufferUsage::none()
-            }, (0..160*144).map(|_| 0)).expect("Unable to make cpu access buffer"),
+            }, (0..160*144).map(|_| 33)).expect("Unable to make cpu access buffer"),
 
             sampler:        sampler,
             set_pools:      set_pools,
