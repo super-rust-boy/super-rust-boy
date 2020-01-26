@@ -45,8 +45,7 @@ fn main() {
     let palette = choose_palette(cmd_args.value_of("palette"));
 
     let mut events_loop = EventsLoop::new();
-    let renderer = VulkanRenderer::new(WindowType::Winit(&events_loop));
-    let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"), renderer);
+    let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"), RendererType::Vulkano(&events_loop));
 
     //let mut averager = avg::Averager::<i64>::new(60);
     

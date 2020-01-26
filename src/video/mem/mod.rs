@@ -1,25 +1,22 @@
 mod patternmem;
 mod vertex;
 mod palette;
-
-use vulkano::device::{
-    Device,
-    Queue
-};
+pub mod consts;
 
 use cgmath::Vector4;
 
 use bitflags::bitflags;
 
-use std::sync::Arc;
-
 use crate::mem::MemDevice;
 
 use super::sgbpalettes::SGBPalette;
+use super::types::{
+    PaletteColours,
+    Vertex
+};
 
 use patternmem::*;
 use vertex::{
-    VertexBuffer,
     tilemap::VertexGrid,
     sprite::ObjectMem
 };
@@ -28,18 +25,7 @@ use palette::{
     dynamic::DynamicPaletteMem
 };
 
-pub use patternmem::TileImage;
-pub use palette::PaletteBuffer;
-
-const TILE_DATA_WIDTH: usize = 16;      // Width of the tile data in tiles.
-const TILE_DATA_HEIGHT_GB: usize = 24;  // Height of the tile data in tiles for GB.
-const TILE_DATA_HEIGHT_CGB: usize = 48; // Height of the tile data in tiles for GB Color.
-const MAP_SIZE: usize = 32;             // Width / Height of bg/window tile maps.
-const VIEW_WIDTH: usize = 20;           // Width of visible area.
-const VIEW_HEIGHT: usize = 18;          // Height of visible area.
-
-const OFFSET_FRAC_X: f32 = (MAP_SIZE as f32 / VIEW_WIDTH as f32) / 128.0;   // Mult with an offset to get the amount to offset by
-const OFFSET_FRAC_Y: f32 = (MAP_SIZE as f32 / VIEW_HEIGHT as f32) / 128.0;  // Mult with an offset to get the amount to offset by
+use consts::*;
 
 bitflags! {
     #[derive(Default)]
@@ -133,14 +119,14 @@ pub struct VideoMem {
 }
 
 impl VideoMem {
-    pub fn new(device: &Arc<Device>, palette: SGBPalette, cgb_mode: bool) -> Self {
+    pub fn new(palette: SGBPalette, cgb_mode: bool) -> Self {
         VideoMem {
             tile_mem:           TileAtlas::new(
                 (TILE_DATA_WIDTH, if cgb_mode {TILE_DATA_HEIGHT_CGB} else {TILE_DATA_HEIGHT_GB}),
             ),
-            tile_map_0:         VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
-            tile_map_1:         VertexGrid::new(device, (MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
-            object_mem:         ObjectMem::new(device),
+            tile_map_0:         VertexGrid::new((MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
+            tile_map_1:         VertexGrid::new((MAP_SIZE, MAP_SIZE), (VIEW_WIDTH, VIEW_HEIGHT)),
+            object_mem:         ObjectMem::new(),
 
             lcd_control:        LCDControl::ENABLE,
             lcd_status:         LCDStatus::new(),
@@ -152,9 +138,9 @@ impl VideoMem {
             window_y:           0,
             window_x:           0,
 
-            palettes:           StaticPaletteMem::new(device, palette),
+            palettes:           StaticPaletteMem::new(palette),
             cgb_mode:           cgb_mode,
-            colour_palettes:    DynamicPaletteMem::new(device),
+            colour_palettes:    DynamicPaletteMem::new(),
             vram_bank:          0,
 
             clear_colour:       palette.get_colour_0(),
@@ -210,34 +196,68 @@ impl VideoMem {
         self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY)
     }
 
-    // Get background vertices for given y line.
-    pub fn get_background(&mut self, y: u8) -> Option<VertexBuffer> {
-        if self.cgb_mode || self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY) {
-            if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
-                self.tile_map_0.get_lo_vertex_buffer(y)
+    // For rendering window.
+    // TODO is this the best name?
+    pub fn get_window_priority(&self) -> bool {
+        self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY | LCDControl::WINDOW_DISPLAY_ENABLE)
+    }
+
+    // Get background vertices for given y line. If None is returned, the data has not changed since last time.
+    pub fn ref_background<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
+        /*if self.tile_mem.is_dirty() {
+            Some(if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
+                self.tile_map_0.ref_data(y)
             } else {
-                self.tile_map_1.get_lo_vertex_buffer(y)
-            }
+                self.tile_map_1.ref_data(y)
+            })
         } else {
             None
+        }*/
+
+        if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
+            if self.tile_map_0.is_dirty(y) {
+                Some(self.tile_map_0.ref_data(y))
+            } else {
+                None
+            }
+        } else {
+            if self.tile_map_1.is_dirty(y) {
+                Some(self.tile_map_1.ref_data(y))
+            } else {
+                None
+            }
         }
     }
 
-    // Get background vertices with priority bit set for given y line.
-    pub fn get_background_hi(&mut self, y: u8) -> Option<VertexBuffer> {
-        if self.cgb_mode {
-            if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
-                self.tile_map_0.get_hi_vertex_buffer(y)
+    // Get window vertices for given y line. If None is returned, the data has not changed since last time.
+    pub fn ref_window<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
+        /*if self.tile_mem.is_dirty() {
+            Some(if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
+                self.tile_map_0.ref_data(y)
             } else {
-                self.tile_map_1.get_hi_vertex_buffer(y)
-            }
+                self.tile_map_1.ref_data(y)
+            })
         } else {
             None
+        }*/
+
+        if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
+            if self.tile_map_0.is_dirty(y) {
+                Some(self.tile_map_0.ref_data(y))
+            } else {
+                None
+            }
+        } else {
+            if self.tile_map_1.is_dirty(y) {
+                Some(self.tile_map_1.ref_data(y))
+            } else {
+                None
+            }
         }
     }
 
     // Get window for given y line.
-    pub fn get_window(&mut self, y: u8) -> Option<VertexBuffer> {
+    /*pub fn get_window(&mut self, y: u8) -> Option<VertexBuffer> {
         if self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY | LCDControl::WINDOW_DISPLAY_ENABLE) {
             if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
                 self.tile_map_0.get_lo_vertex_buffer(y)
@@ -260,41 +280,52 @@ impl VideoMem {
         } else {
             None
         }
-    }
+    }*/
 
     // Get low-priority sprites (below the background) for given y line.
-    pub fn get_sprites_lo(&mut self, y: u8) -> Option<VertexBuffer> {
+    pub fn ref_sprites_lo<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            self.object_mem.get_lo_vertex_buffer(y, large_sprites, self.cgb_mode)
+            //self.object_mem.get_lo_vertex_buffer(y, large_sprites, self.cgb_mode)
+            Some(self.object_mem.get_lo_vertices(y, large_sprites, self.cgb_mode))
         } else {
             None
         }
     }
 
     // Get high-priority sprites (above the background) for given y line.
-    pub fn get_sprites_hi(&mut self, y: u8) -> Option<VertexBuffer> {
+    pub fn ref_sprites_hi<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            self.object_mem.get_hi_vertex_buffer(y, large_sprites, self.cgb_mode)
+            Some(self.object_mem.get_hi_vertices(y, large_sprites, self.cgb_mode))
         } else {
             None
         }
     }
 
-    // Get tile atlas
-    pub fn get_tile_atlas(&mut self, device: &Arc<Device>, queue: &Arc<Queue>) -> (TileImage, TileFuture) {
-        self.tile_mem.get_image(device, queue)
-    }
-
     // Get palettes
-    pub fn get_palette_buffer(&mut self) -> PaletteBuffer {
+    pub fn make_palettes(&mut self) -> Option<Vec<PaletteColours>> {
+        if self.cgb_mode {
+            if self.colour_palettes.is_dirty() {
+                Some(self.colour_palettes.make_data())
+            } else {
+                None
+            }
+        } else {
+            if self.palettes.is_dirty() {
+                Some(self.palettes.make_data())
+            } else {
+                None
+            }
+        }
+    }
+    /*pub fn get_palette_buffer(&mut self) -> PaletteBuffer {
         if self.cgb_mode {
             self.colour_palettes.get_buffer()
         } else {
             self.palettes.get_buffer()
         }
-    }
+    }*/
 
     // Get push constants
     pub fn get_bg_scroll(&self) -> [f32; 2] {
@@ -334,6 +365,22 @@ impl VideoMem {
 
     pub fn get_window_y(&self) -> u8 {
         self.window_y
+    }
+}
+
+// Accessed from Adapters
+impl VideoMem {
+    // Returns the raw tile atlas data (pattern memory). If None is returned, the data has not changed since last time.
+    pub fn ref_tile_atlas<'a>(&'a mut self) -> Option<&'a [u8]> {
+        if self.tile_mem.is_dirty() {
+            Some(self.tile_mem.ref_data())
+        } else {
+            None
+        }
+    }
+
+    pub fn is_cgb_mode(&self) -> bool {
+        self.cgb_mode
     }
 }
 

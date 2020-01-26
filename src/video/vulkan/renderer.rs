@@ -46,6 +46,7 @@ use vulkano::{
 use vulkano_win::VkSurfaceBuild;
 
 use winit::{
+    EventsLoop,
     Window,
     WindowBuilder
 };
@@ -56,11 +57,13 @@ use std::sync::Arc;
 
 use super::super::{
     types::*,
-    mem::{
-        PaletteBuffer,
-        TileImage,
-        VideoMem
-    }
+    mem::VideoMem
+};
+
+use super::memadapter::{
+    MemAdapter,
+    TileImage,
+    PaletteBuffer
 };
 
 #[derive(Clone, Debug)]
@@ -91,6 +94,7 @@ type RenderPipeline = GraphicsPipeline<
 
 // Data for a single render
 struct RenderData {
+    adapter:        MemAdapter,
     command_buffer: Option<AutoCommandBufferBuilder>,
     acquire_future: Box<dyn GpuFuture>,
     image_num:      usize,
@@ -101,6 +105,8 @@ struct RenderData {
 }
 
 pub struct VulkanRenderer {
+    // Memory adapter
+    adapter:        Option<MemAdapter>,
     // Core
     device:         Arc<Device>,
     queue:          Arc<Queue>,
@@ -121,7 +127,7 @@ pub struct VulkanRenderer {
 
 impl VulkanRenderer {
     // Create and initialise renderer.
-    pub fn new(window_type: WindowType) -> Box<Self> {
+    pub fn new(events_loop: &EventsLoop, mem: &VideoMem) -> Box<Self> {
         // Make instance with window extensions.
         let instance = {
             let extensions = vulkano_win::required_extensions();
@@ -153,23 +159,11 @@ impl VulkanRenderer {
         let queue = queues.next().unwrap();
 
         // Make a surface.
-        let surface = match window_type {
-            WindowType::Winit(events_loop) => WindowBuilder::new()
-                .with_dimensions((320, 288).into())
-                .with_title("Super Rust Boy")
-                .build_vk_surface(&events_loop, instance.clone())
-                .expect("Couldn't create surface"),
-            WindowType::IOS { ui_view, window } => unsafe { Surface::from_ios_moltenvk(
-                instance.clone(),
-                ui_view,
-                window
-            )}.expect("Couldn't create iOS surface"),
-            WindowType::MacOS { ns_view, window } => unsafe { Surface::from_macos_moltenvk(
-                instance.clone(),
-                ns_view,
-                window
-            )}.expect("Couldn't create macOS surface")
-        };
+        let surface = WindowBuilder::new()
+            .with_dimensions((320, 288).into())
+            .with_title("Super Rust Boy")
+            .build_vk_surface(&events_loop, instance.clone())
+            .expect("Couldn't create surface");
 
         // Make the sampler for the texture.
         let sampler = Sampler::new(
@@ -254,6 +248,8 @@ impl VulkanRenderer {
         ];
 
         Box::new(VulkanRenderer {
+            adapter:        Some(MemAdapter::new(mem, &device)),
+
             device:         device.clone(),
             queue:          queue,
             pipeline:       pipeline,
@@ -312,12 +308,15 @@ impl VulkanRenderer {
 impl Renderer for VulkanRenderer {
     // Start the process of rendering a frame.
     fn frame_start(&mut self, video_mem: &mut VideoMem) {
+        // Get adapter for interpreting data.
+        let mut adapter = std::mem::replace(&mut self.adapter, None).expect("No memory adapter found!");
+
         // Get current framebuffer index from the swapchain.
         let (image_num, acquire_future) = acquire_next_image(self.swapchain.clone(), None)
             .expect("Didn't get next image");
 
         // Get image with current texture.
-        let (image, write_future) = video_mem.get_tile_atlas(&self.device, &self.queue);
+        let (image, write_future) = adapter.get_image(video_mem, &self.device, &self.queue);//video_mem.get_tile_atlas(&self.device, &self.queue);
 
         // Make descriptor set to bind texture atlas.
         let set0 = Arc::new(self.set_pools[0].next()
@@ -326,7 +325,7 @@ impl Renderer for VulkanRenderer {
 
         // Make descriptor set for palette.
         let set1 = Arc::new(self.set_pools[1].next()
-            .add_buffer(video_mem.get_palette_buffer().clone()).unwrap()
+            .add_buffer(adapter.get_palette_buffer(video_mem)).unwrap()
             .build().unwrap());
         
         // Start building command buffer using pipeline and framebuffer, starting with the background vertices.
@@ -337,6 +336,7 @@ impl Renderer for VulkanRenderer {
         //command_buffer_builder = self.draw_debug(video_mem, command_buffer_builder, image);
 
         self.render_data = Some(RenderData{
+            adapter:        adapter,
             command_buffer: Some(command_buffer_builder),
             acquire_future: Box::new(acquire_future),
             image_num:      image_num,
@@ -352,7 +352,7 @@ impl Renderer for VulkanRenderer {
 
         if let Some(render_data) = render_data {
             // Finish command buffer.
-            let (command_buffer, acquire_future, image_future, image_num) = render_data.finish_drawing();
+            let (adapter, command_buffer, acquire_future, image_future, image_num) = render_data.finish_drawing();
 
             // Wait until previous frame is done.
             let mut now_future = Box::new(now(self.device.clone())) as Box<dyn GpuFuture>;
@@ -373,6 +373,8 @@ impl Renderer for VulkanRenderer {
             }
 
             self.previous_frame_future.cleanup_finished();
+
+            self.adapter = Some(adapter);
         }
     }
 
@@ -414,9 +416,9 @@ impl RenderData {
             };
 
             let bg_y = (y as u16 + video_mem.get_scroll_y() as u16) as u8;
-            if let Some(bg_vertices) = video_mem.get_background(bg_y) {
+            if let Some(bg_vertices) = self.adapter.get_background(video_mem, bg_y) {
                 // Add sprites below background.
-                if let Some(sprite_vertices) = video_mem.get_sprites_lo(y) {
+                if let Some(sprite_vertices) = self.adapter.get_sprites_lo(video_mem, y) {
                     command_buffer = command_buffer.draw(
                         self.pipeline.clone(),
                         dynamic_state,
@@ -450,7 +452,7 @@ impl RenderData {
                     val if val >= 0 => val as u8,
                     _               => 0,
                 };
-                if let Some(window_vertices) = video_mem.get_window(window_y) {
+                if let Some(window_vertices) = self.adapter.get_window(video_mem, window_y) {
                     let window_push_constants = PushConstants {
                         tex_size: video_mem.get_tile_size(),
                         atlas_size: video_mem.get_atlas_size(),
@@ -470,7 +472,7 @@ impl RenderData {
                 }
 
                 // Add sprites above background.
-                if let Some(sprite_vertices) = video_mem.get_sprites_hi(y) {
+                if let Some(sprite_vertices) = self.adapter.get_sprites_hi(video_mem, y) {
                     command_buffer = command_buffer.draw(
                         self.pipeline.clone(),
                         dynamic_state,
@@ -481,7 +483,7 @@ impl RenderData {
                 }
             } else {
                 // Add just sprites.
-                if let Some(sprite_vertices) = video_mem.get_sprites_lo(y) {
+                if let Some(sprite_vertices) = self.adapter.get_sprites_lo(video_mem, y) {
                     command_buffer = command_buffer.draw(
                         self.pipeline.clone(),
                         dynamic_state,
@@ -490,7 +492,7 @@ impl RenderData {
                         sprite_push_constants.clone()
                     ).unwrap();
                 }
-                if let Some(sprite_vertices) = video_mem.get_sprites_hi(y) {
+                if let Some(sprite_vertices) = self.adapter.get_sprites_hi(video_mem, y) {
                     command_buffer = command_buffer.draw(
                         self.pipeline.clone(),
                         dynamic_state,
@@ -531,7 +533,7 @@ impl RenderData {
                 _               => 0,
             };
 
-            if let Some(background) = video_mem.get_background(bg_y) {
+            if let Some(background) = self.adapter.get_background(video_mem, bg_y) {
                 // Make push constants for background.
                 let background_push_constants = PushConstants {
                     tex_size: video_mem.get_tile_size(),
@@ -552,7 +554,7 @@ impl RenderData {
             }
 
             // Draw sprites below background.
-            if let Some(sprite_vertices) = video_mem.get_sprites_lo(y) {
+            if let Some(sprite_vertices) = self.adapter.get_sprites_lo(video_mem, y) {
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
                     dynamic_state,
@@ -563,7 +565,7 @@ impl RenderData {
             }
 
             // Add background.
-            if let Some(background) = video_mem.get_background(bg_y) {
+            if let Some(background) = self.adapter.get_background(video_mem, bg_y) {
                 // Make push constants for background.
                 let background_push_constants = PushConstants {
                     tex_size: video_mem.get_tile_size(),
@@ -584,7 +586,7 @@ impl RenderData {
             }
 
             // Add the window if it is enabled.
-            if let Some(window_vertices) = video_mem.get_window(window_y) {
+            if let Some(window_vertices) = self.adapter.get_window(video_mem, window_y) {
                 let window_push_constants = PushConstants {
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
@@ -604,7 +606,7 @@ impl RenderData {
             }
 
             // Add sprites above background.
-            if let Some(sprite_vertices) = video_mem.get_sprites_hi(y) {
+            if let Some(sprite_vertices) = self.adapter.get_sprites_hi(video_mem, y) {
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
                     dynamic_state,
@@ -615,7 +617,7 @@ impl RenderData {
             }
 
             // Add high priority background and window.
-            if let Some(background) = video_mem.get_background_hi(bg_y) {
+            if let Some(background) = self.adapter.get_background_hi(video_mem, bg_y) {
                 // Make push constants for background.
                 let background_push_constants = PushConstants {
                     tex_size: video_mem.get_tile_size(),
@@ -636,7 +638,7 @@ impl RenderData {
             }
 
             // Add high priority window.
-            if let Some(window_vertices) = video_mem.get_window_hi(window_y) {
+            if let Some(window_vertices) = self.adapter.get_window_hi(video_mem, window_y) {
                 let window_push_constants = PushConstants {
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
@@ -672,7 +674,7 @@ impl RenderData {
             command_buffer = command_buffer.draw(
                 self.pipeline.clone(),
                 dynamic_state,
-                video_mem.get_background(bg_y).unwrap(),
+                self.adapter.get_background(video_mem, bg_y).unwrap(),
                 (self.set0.clone(), self.set1.clone()),
                 background_push_constants
             ).unwrap();
@@ -682,7 +684,7 @@ impl RenderData {
                 val if val >= 0 => val as u8,
                 _               => 0,
             };
-            if let Some(window_vertices) = video_mem.get_window(window_y) {
+            if let Some(window_vertices) = self.adapter.get_window(video_mem, window_y) {
                 let window_push_constants = PushConstants {
                     tex_size: video_mem.get_tile_size(),
                     atlas_size: video_mem.get_atlas_size(),
@@ -702,7 +704,7 @@ impl RenderData {
             }
 
             // Add all sprites.
-            if let Some(sprite_vertices) = video_mem.get_sprites_lo(y) {
+            if let Some(sprite_vertices) = self.adapter.get_sprites_lo(video_mem, y) {
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
                     dynamic_state,
@@ -711,7 +713,7 @@ impl RenderData {
                     sprite_push_constants.clone()
                 ).unwrap();
             }
-            if let Some(sprite_vertices) = video_mem.get_sprites_hi(y) {
+            if let Some(sprite_vertices) = self.adapter.get_sprites_hi(video_mem, y) {
                 command_buffer = command_buffer.draw(
                     self.pipeline.clone(),
                     dynamic_state,
@@ -725,8 +727,9 @@ impl RenderData {
         self.command_buffer = Some(command_buffer);
     }
 
-    fn finish_drawing(self) -> (AutoCommandBuffer, Box<dyn GpuFuture>, Box<dyn GpuFuture>, usize) {
+    fn finish_drawing(self) -> (MemAdapter, AutoCommandBuffer, Box<dyn GpuFuture>, Box<dyn GpuFuture>, usize) {
         (
+            self.adapter,
             self.command_buffer.unwrap().end_render_pass().unwrap().build().unwrap(),
             self.acquire_future,
             self.image_future,

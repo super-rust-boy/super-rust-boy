@@ -1,9 +1,4 @@
-use winit::{
-    EventsLoop,
-    Window
-};
-
-use std::ffi::c_void;
+use winit::EventsLoop;
 
 use super::mem::VideoMem;
 
@@ -13,6 +8,8 @@ pub struct Vertex {
     pub data: u32
 }
 
+pub type PaletteColours = cgmath::Matrix4<f32>;
+
 pub trait Renderer {
     fn frame_start(&mut self, video_mem: &mut VideoMem);
     fn frame_end(&mut self);
@@ -21,14 +18,6 @@ pub trait Renderer {
     fn on_resize(&mut self);
 }
 
-pub enum WindowType<'a> {
-    Winit(&'a EventsLoop),
-    IOS {
-        ui_view:    *const c_void,
-        window:     Window
-    },
-    MacOS {
-        ns_view:    *const c_void,
-        window:     Window
-    }
+pub enum RendererType<'a> {
+    Vulkano(&'a EventsLoop)
 }
