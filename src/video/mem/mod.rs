@@ -52,6 +52,11 @@ bitflags! {
     }
 }
 
+pub enum TileMap {
+    _0,
+    _1
+}
+
 pub struct LCDStatus {
     flags: LCDStatusFlags,
     video_mode: super::Mode,
@@ -248,6 +253,24 @@ impl VideoMem {
         self.cgb_mode
     }
 
+    // Which tile map the background is using.
+    pub fn background_tile_map(&self) -> TileMap {
+        if self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
+            TileMap::_1
+        } else {
+            TileMap::_0
+        }
+    }
+
+    // Which tile map the window is using.
+    pub fn window_tile_map(&self) -> TileMap {
+        if self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
+            TileMap::_1
+        } else {
+            TileMap::_0
+        }
+    }
+
     // Returns the raw tile atlas data (pattern memory). If None is returned, the data has not changed since last time.
     pub fn ref_tile_atlas<'a>(&'a mut self) -> Option<&'a [u8]> {
         if self.tile_mem.is_dirty() {
@@ -257,37 +280,21 @@ impl VideoMem {
         }
     }
 
-    // Get background vertices for given y line. If None is returned, the data has not changed since last time.
-    pub fn ref_background<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
-        if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
-            if self.tile_map_0.is_dirty(y) {
-                Some(self.tile_map_0.ref_data(y))
-            } else {
-                None
-            }
+    // Get tile map 0 vertices for given y line. If None is returned, the data has not changed since last time.
+    pub fn ref_tile_map_0<'a>(&'a mut self, y: usize) -> Option<&'a [Vertex]> {
+        if self.tile_map_0.is_dirty(y) {
+            Some(self.tile_map_0.ref_data(y))
         } else {
-            if self.tile_map_1.is_dirty(y) {
-                Some(self.tile_map_1.ref_data(y))
-            } else {
-                None
-            }
+            None
         }
     }
 
-    // Get window vertices for given y line. If None is returned, the data has not changed since last time.
-    pub fn ref_window<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
-        if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
-            if self.tile_map_0.is_dirty(y) {
-                Some(self.tile_map_0.ref_data(y))
-            } else {
-                None
-            }
+    // Get tile map 1 vertices for given y line. If None is returned, the data has not changed since last time.
+    pub fn ref_tile_map_1<'a>(&'a mut self, y: usize) -> Option<&'a [Vertex]> {
+        if self.tile_map_1.is_dirty(y) {
+            Some(self.tile_map_1.ref_data(y))
         } else {
-            if self.tile_map_1.is_dirty(y) {
-                Some(self.tile_map_1.ref_data(y))
-            } else {
-                None
-            }
+            None
         }
     }
 

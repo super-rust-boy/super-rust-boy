@@ -135,14 +135,12 @@ impl VertexGrid {
     }
 
     // Get a line of vertices.
-    pub fn ref_data<'a>(&'a mut self, y: u8) -> &'a [Vertex] {
-        let row = y as usize;
-
-        self.dirty_lines[row] = false;
-        &self.vertices[row]
+    pub fn ref_data<'a>(&'a mut self, y: usize) -> &'a [Vertex] {
+        self.dirty_lines[y] = false;
+        &self.vertices[y]
     }
 
-    pub fn is_dirty(&self, y: u8) -> bool {
-        self.dirty_lines[y as usize]
+    pub fn is_dirty(&self, y: usize) -> bool {
+        self.dirty_lines[y]
     }
 }

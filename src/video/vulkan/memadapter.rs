@@ -28,6 +28,7 @@ use crate::video::{
     PaletteColours,
     types::Vertex,
     mem::{
+        TileMap,
         VideoMem,
         consts::{TEX_WIDTH, TEX_HEIGHT, MAP_SIZE}
     }
@@ -43,17 +44,19 @@ pub type PaletteBuffer = CpuBufferPoolChunk<PaletteColours, Arc<StdMemoryPool>>;
 
 pub struct MemAdapter {
     // Image for tile pattern memory
-    image:                  Option<TileImage>,
-    atlas_size:             (u32, u32),
+    image:                      Option<TileImage>,
+    atlas_size:                 (u32, u32),
 
-    // Vertex buffers for tile map & sprites
-    vertex_buffer_pool:     CpuBufferPool<Vertex>,
-    lo_vertex_buffers:      Vec<Option<VertexBuffer>>,
-    hi_vertex_buffers:      Vec<Option<VertexBuffer>>,
+    // Vertex buffers for background and window.
+    vertex_buffer_pool:         CpuBufferPool<Vertex>,      // Vertex buffer pool used by tile maps and sprites.
+    lo_bg_vertex_buffers:       Vec<Option<VertexBuffer>>,
+    hi_bg_vertex_buffers:       Vec<Option<VertexBuffer>>,
+    lo_window_vertex_buffers:   Vec<Option<VertexBuffer>>,
+    hi_window_vertex_buffers:   Vec<Option<VertexBuffer>>,
 
     // Buffers for palettes
-    palette_buffer_pool:    CpuBufferPool<PaletteColours>,
-    current_palette_buffer: Option<PaletteBuffer>
+    palette_buffer_pool:        CpuBufferPool<PaletteColours>,
+    current_palette_buffer:     Option<PaletteBuffer>
 }
 
 impl MemAdapter {
@@ -65,15 +68,17 @@ impl MemAdapter {
         let vertex_buffers = vec![None; MAP_SIZE * TEX_HEIGHT];
 
         MemAdapter {
-            image:                  None,
-            atlas_size:             (atlas_size_x, atlas_size_y),
+            image:                      None,
+            atlas_size:                 (atlas_size_x, atlas_size_y),
 
-            vertex_buffer_pool:     CpuBufferPool::vertex_buffer(device.clone()),
-            lo_vertex_buffers:      vertex_buffers.clone(),
-            hi_vertex_buffers:      vertex_buffers,
+            vertex_buffer_pool:         CpuBufferPool::vertex_buffer(device.clone()),
+            lo_bg_vertex_buffers:       vertex_buffers.clone(),
+            hi_bg_vertex_buffers:       vertex_buffers.clone(),
+            lo_window_vertex_buffers:   vertex_buffers.clone(),
+            hi_window_vertex_buffers:   vertex_buffers,
 
-            palette_buffer_pool:    CpuBufferPool::uniform_buffer(device.clone()),
-            current_palette_buffer: None
+            palette_buffer_pool:        CpuBufferPool::uniform_buffer(device.clone()),
+            current_palette_buffer:     None
         }
     }
 
@@ -101,7 +106,12 @@ impl MemAdapter {
     // Get background vertices for given y line.
     pub fn get_background(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.is_cgb_mode() || mem.get_background_priority() {
-            self.get_lo_vertex_buffer(mem.ref_background(y), y)
+            let row = y as usize;
+            let vertices = match mem.background_tile_map() {
+                TileMap::_0 => mem.ref_tile_map_0(row),
+                TileMap::_1 => mem.ref_tile_map_1(row)
+            };
+            Self::make_lo_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.lo_bg_vertex_buffers[row])
         } else {
             None
         }
@@ -110,7 +120,12 @@ impl MemAdapter {
     // Get background vertices with priority bit set for given y line.
     pub fn get_background_hi(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.is_cgb_mode() {
-            self.get_hi_vertex_buffer(mem.ref_background(y), y)
+            let row = y as usize;
+            let vertices = match mem.background_tile_map() {
+                TileMap::_0 => mem.ref_tile_map_0(row),
+                TileMap::_1 => mem.ref_tile_map_1(row)
+            };
+            Self::make_hi_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.hi_bg_vertex_buffers[row])
         } else {
             None
         }
@@ -119,7 +134,12 @@ impl MemAdapter {
     // Get window vertices for given y line.
     pub fn get_window(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.get_window_enable() {
-            self.get_lo_vertex_buffer(mem.ref_window(y), y)
+            let row = y as usize;
+            let vertices = match mem.window_tile_map() {
+                TileMap::_0 => mem.ref_tile_map_0(row),
+                TileMap::_1 => mem.ref_tile_map_1(row)
+            };
+            Self::make_lo_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.lo_window_vertex_buffers[row])
         } else {
             None
         }
@@ -128,7 +148,12 @@ impl MemAdapter {
     // Get window vertices with priority bit set for given y line.
     pub fn get_window_hi(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.is_cgb_mode() {
-            self.get_hi_vertex_buffer(mem.ref_window(y), y)
+            let row = y as usize;
+            let vertices = match mem.window_tile_map() {
+                TileMap::_0 => mem.ref_tile_map_0(row),
+                TileMap::_1 => mem.ref_tile_map_1(row)
+            };
+            Self::make_hi_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.hi_window_vertex_buffers[row])
         } else {
             None
         }
@@ -164,12 +189,9 @@ impl MemAdapter {
 impl MemAdapter {
     // Get a line of vertices.
     // Only retrieves the vertices that appear below the objects.
-    // (This will get the whole background in GB mode).
-    fn get_lo_vertex_buffer(&mut self, buffer: Option<&[Vertex]>, y: u8) -> Option<VertexBuffer> {
-        let row = y as usize;
-        let cached_buffer = &mut self.lo_vertex_buffers[row];
-
-        if let Some(data) = buffer {
+    // (This will get the whole background / window in GB mode).
+    fn make_lo_vertex_buffer(raw_buffer: Option<&[Vertex]>, pool: &mut CpuBufferPool<Vertex>, cached_buffer: &mut Option<VertexBuffer>) -> Option<VertexBuffer> {
+        if let Some(data) = raw_buffer {
             let tile_map = data.iter()
                 .cloned()
                 .filter(|v| (v.data & BG_OAM_PRIORITY) == 0)
@@ -179,7 +201,7 @@ impl MemAdapter {
                 *cached_buffer = None;
                 None
             } else {
-                let buffer = Some(self.vertex_buffer_pool.chunk(tile_map).unwrap());
+                let buffer = Some(pool.chunk(tile_map).unwrap());
                 *cached_buffer = buffer.clone();
                 buffer
             }
@@ -189,11 +211,8 @@ impl MemAdapter {
     }
 
     // Only retrieves the vertices that appear above the objects.
-    fn get_hi_vertex_buffer(&mut self, buffer: Option<&[Vertex]>, y: u8) -> Option<VertexBuffer> {
-        let row = y as usize;
-        let cached_buffer = &mut self.hi_vertex_buffers[row];
-
-        if let Some(data) = buffer {
+    fn make_hi_vertex_buffer(raw_buffer: Option<&[Vertex]>, pool: &mut CpuBufferPool<Vertex>, cached_buffer: &mut Option<VertexBuffer>) -> Option<VertexBuffer> {
+        if let Some(data) = raw_buffer {
             let tile_map = data.iter()
                 .cloned()
                 .filter(|v| (v.data & BG_OAM_PRIORITY) != 0)
@@ -203,7 +222,7 @@ impl MemAdapter {
                 *cached_buffer = None;
                 None
             } else {
-                let buffer = Some(self.vertex_buffer_pool.chunk(tile_map).unwrap());
+                let buffer = Some(pool.chunk(tile_map).unwrap());
                 *cached_buffer = buffer.clone();
                 buffer
             }
