@@ -292,7 +292,7 @@ impl VideoMem {
     }
 
     // Get low-priority sprites (below the background) for given y line.
-    pub fn ref_sprites_lo<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
+    pub fn ref_sprites_lo<'a>(&'a mut self, y: u8) -> Option<&'a mut Vec<Vertex>> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
             Some(self.object_mem.get_lo_vertices(y, large_sprites, self.cgb_mode))
@@ -302,7 +302,7 @@ impl VideoMem {
     }
 
     // Get high-priority sprites (above the background) for given y line.
-    pub fn ref_sprites_hi<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
+    pub fn ref_sprites_hi<'a>(&'a mut self, y: u8) -> Option<&'a mut Vec<Vertex>> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
             Some(self.object_mem.get_hi_vertices(y, large_sprites, self.cgb_mode))

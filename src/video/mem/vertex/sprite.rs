@@ -116,7 +116,7 @@ impl ObjectMem {
 
     // Gets vertices for a line.
     // Only retrieves the vertices that appear below the background.
-    pub fn get_lo_vertices<'a>(&'a mut self, y: u8, large: bool, cgb_mode: bool) -> &'a [Vertex] {
+    pub fn get_lo_vertices<'a>(&'a mut self, y: u8, large: bool, cgb_mode: bool) -> &'a mut Vec<Vertex> {
         self.buffer.clear();
 
         for o in self.objects.iter().rev() {
@@ -125,12 +125,12 @@ impl ObjectMem {
             }
         }
 
-        &self.buffer
+        &mut self.buffer
     }
 
     // Gets vertices for a line.
     // Only retrieves the vertices that appear above the background.
-    pub fn get_hi_vertices<'a>(&'a mut self, y: u8, large: bool, cgb_mode: bool) -> &'a [Vertex] {  // TODO: return mut vector?
+    pub fn get_hi_vertices<'a>(&'a mut self, y: u8, large: bool, cgb_mode: bool) -> &'a mut Vec<Vertex> {  // TODO: return mut vector?
         self.buffer.clear();
 
         for o in self.objects.iter().rev() {
@@ -139,7 +139,7 @@ impl ObjectMem {
             }
         }
 
-        &self.buffer
+        &mut self.buffer
     }
 }
 

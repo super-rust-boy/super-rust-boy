@@ -136,12 +136,12 @@ impl MemAdapter {
 
     // Get low-priority sprites (below the background) for given y line.
     pub fn get_sprites_lo(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
-        mem.ref_sprites_lo(y).and_then(|vertices| Some(self.vertex_buffer_pool.chunk(vertices.iter().cloned()).unwrap()))
+        mem.ref_sprites_lo(y).and_then(|vertices| Some(self.vertex_buffer_pool.chunk(vertices.drain(..)).unwrap()))
     }
 
     // Get high-priority sprites (above the background) for given y line.
     pub fn get_sprites_hi(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
-        mem.ref_sprites_hi(y).and_then(|vertices| Some(self.vertex_buffer_pool.chunk(vertices.iter().cloned()).unwrap()))
+        mem.ref_sprites_hi(y).and_then(|vertices| Some(self.vertex_buffer_pool.chunk(vertices.drain(..)).unwrap()))
     }
 
     // Get palettes
