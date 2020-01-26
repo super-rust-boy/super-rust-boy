@@ -44,7 +44,7 @@ pub type PaletteBuffer = CpuBufferPoolChunk<PaletteColours, Arc<StdMemoryPool>>;
 pub struct MemAdapter {
     // Image for tile pattern memory
     image:                  Option<TileImage>,
-    atlas_size:             (usize, usize),
+    atlas_size:             (u32, u32),
 
     // Vertex buffers for tile map & sprites
     vertex_buffer_pool:     CpuBufferPool<Vertex>,
@@ -58,13 +58,15 @@ pub struct MemAdapter {
 
 impl MemAdapter {
     pub fn new(mem: &VideoMem, device: &Arc<Device>) -> Self {
-        let atlas_size = mem.get_atlas_size();
+        let atlas_size_tiles = mem.get_atlas_size();
+        let atlas_size_x = (atlas_size_tiles[0] as usize * TEX_WIDTH) as u32;
+        let atlas_size_y = (atlas_size_tiles[1] as usize * TEX_HEIGHT) as u32;
 
-        let vertex_buffers = vec![None; MAP_SIZE * TEX_HEIGHT];   // TODO: deal with this const.
+        let vertex_buffers = vec![None; MAP_SIZE * TEX_HEIGHT];
 
         MemAdapter {
             image:                  None,
-            atlas_size:             (atlas_size[0] as usize, atlas_size[1] as usize),
+            atlas_size:             (atlas_size_x, atlas_size_y),
 
             vertex_buffer_pool:     CpuBufferPool::vertex_buffer(device.clone()),
             lo_vertex_buffers:      vertex_buffers.clone(),
@@ -78,12 +80,9 @@ impl MemAdapter {
     // Make an image from the pattern memory.
     pub fn get_image(&mut self, mem: &mut VideoMem, device: &Arc<Device>, queue: &Arc<Queue>) -> (TileImage, TileFuture) {
         if let Some(data) = mem.ref_tile_atlas() {
-            let width = (self.atlas_size.0 * TEX_WIDTH) as u32;
-            let height = (self.atlas_size.1 * TEX_HEIGHT) as u32;
-
             let (image, future) = ImmutableImage::from_iter(
                 data.iter().cloned(),
-                Dimensions::Dim2d { width: width, height: height },
+                Dimensions::Dim2d { width: self.atlas_size.0, height: self.atlas_size.1 },
                 R8Uint,
                 queue.clone()
             ).expect("Couldn't create image.");
@@ -119,7 +118,7 @@ impl MemAdapter {
 
     // Get window vertices for given y line.
     pub fn get_window(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
-        if mem.get_window_priority() {
+        if mem.get_window_enable() {
             self.get_lo_vertex_buffer(mem.ref_window(y), y)
         } else {
             None
@@ -163,6 +162,9 @@ impl MemAdapter {
 
 // Internal
 impl MemAdapter {
+    // Get a line of vertices.
+    // Only retrieves the vertices that appear below the objects.
+    // (This will get the whole background in GB mode).
     fn get_lo_vertex_buffer(&mut self, buffer: Option<&[Vertex]>, y: u8) -> Option<VertexBuffer> {
         let row = y as usize;
         let cached_buffer = &mut self.lo_vertex_buffers[row];
@@ -186,6 +188,7 @@ impl MemAdapter {
         }
     }
 
+    // Only retrieves the vertices that appear above the objects.
     fn get_hi_vertex_buffer(&mut self, buffer: Option<&[Vertex]>, y: u8) -> Option<VertexBuffer> {
         let row = y as usize;
         let cached_buffer = &mut self.hi_vertex_buffers[row];

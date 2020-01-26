@@ -191,142 +191,6 @@ impl VideoMem {
         }.into()
     }
 
-    // For rendering background.
-    pub fn get_background_priority(&self) -> bool {
-        self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY)
-    }
-
-    // For rendering window.
-    // TODO is this the best name?
-    pub fn get_window_priority(&self) -> bool {
-        self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY | LCDControl::WINDOW_DISPLAY_ENABLE)
-    }
-
-    // Get background vertices for given y line. If None is returned, the data has not changed since last time.
-    pub fn ref_background<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
-        /*if self.tile_mem.is_dirty() {
-            Some(if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
-                self.tile_map_0.ref_data(y)
-            } else {
-                self.tile_map_1.ref_data(y)
-            })
-        } else {
-            None
-        }*/
-
-        if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
-            if self.tile_map_0.is_dirty(y) {
-                Some(self.tile_map_0.ref_data(y))
-            } else {
-                None
-            }
-        } else {
-            if self.tile_map_1.is_dirty(y) {
-                Some(self.tile_map_1.ref_data(y))
-            } else {
-                None
-            }
-        }
-    }
-
-    // Get window vertices for given y line. If None is returned, the data has not changed since last time.
-    pub fn ref_window<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
-        /*if self.tile_mem.is_dirty() {
-            Some(if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
-                self.tile_map_0.ref_data(y)
-            } else {
-                self.tile_map_1.ref_data(y)
-            })
-        } else {
-            None
-        }*/
-
-        if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
-            if self.tile_map_0.is_dirty(y) {
-                Some(self.tile_map_0.ref_data(y))
-            } else {
-                None
-            }
-        } else {
-            if self.tile_map_1.is_dirty(y) {
-                Some(self.tile_map_1.ref_data(y))
-            } else {
-                None
-            }
-        }
-    }
-
-    // Get window for given y line.
-    /*pub fn get_window(&mut self, y: u8) -> Option<VertexBuffer> {
-        if self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY | LCDControl::WINDOW_DISPLAY_ENABLE) {
-            if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
-                self.tile_map_0.get_lo_vertex_buffer(y)
-            } else {
-                self.tile_map_1.get_lo_vertex_buffer(y)
-            }
-        } else {
-            None
-        }
-    }
-
-    // Get window vertices with priority bit set for given y line.
-    pub fn get_window_hi(&mut self, y: u8) -> Option<VertexBuffer> {
-        if self.cgb_mode {
-            if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
-                self.tile_map_0.get_hi_vertex_buffer(y)
-            } else {
-                self.tile_map_1.get_hi_vertex_buffer(y)
-            }
-        } else {
-            None
-        }
-    }*/
-
-    // Get low-priority sprites (below the background) for given y line.
-    pub fn ref_sprites_lo<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
-        if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
-            let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            //self.object_mem.get_lo_vertex_buffer(y, large_sprites, self.cgb_mode)
-            Some(self.object_mem.get_lo_vertices(y, large_sprites, self.cgb_mode))
-        } else {
-            None
-        }
-    }
-
-    // Get high-priority sprites (above the background) for given y line.
-    pub fn ref_sprites_hi<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
-        if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
-            let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            Some(self.object_mem.get_hi_vertices(y, large_sprites, self.cgb_mode))
-        } else {
-            None
-        }
-    }
-
-    // Get palettes
-    pub fn make_palettes(&mut self) -> Option<Vec<PaletteColours>> {
-        if self.cgb_mode {
-            if self.colour_palettes.is_dirty() {
-                Some(self.colour_palettes.make_data())
-            } else {
-                None
-            }
-        } else {
-            if self.palettes.is_dirty() {
-                Some(self.palettes.make_data())
-            } else {
-                None
-            }
-        }
-    }
-    /*pub fn get_palette_buffer(&mut self) -> PaletteBuffer {
-        if self.cgb_mode {
-            self.colour_palettes.get_buffer()
-        } else {
-            self.palettes.get_buffer()
-        }
-    }*/
-
     // Get push constants
     pub fn get_bg_scroll(&self) -> [f32; 2] {
         [self.scroll_x as f32 * -OFFSET_FRAC_X, self.scroll_y as f32 * -OFFSET_FRAC_Y]
@@ -370,6 +234,20 @@ impl VideoMem {
 
 // Accessed from Adapters
 impl VideoMem {
+    // For rendering background.
+    pub fn get_background_priority(&self) -> bool {
+        self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY)
+    }
+
+    // For rendering window.
+    pub fn get_window_enable(&self) -> bool {
+        self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY | LCDControl::WINDOW_DISPLAY_ENABLE)
+    }
+
+    pub fn is_cgb_mode(&self) -> bool {
+        self.cgb_mode
+    }
+
     // Returns the raw tile atlas data (pattern memory). If None is returned, the data has not changed since last time.
     pub fn ref_tile_atlas<'a>(&'a mut self) -> Option<&'a [u8]> {
         if self.tile_mem.is_dirty() {
@@ -379,8 +257,75 @@ impl VideoMem {
         }
     }
 
-    pub fn is_cgb_mode(&self) -> bool {
-        self.cgb_mode
+    // Get background vertices for given y line. If None is returned, the data has not changed since last time.
+    pub fn ref_background<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
+        if !self.lcd_control.contains(LCDControl::BG_TILE_MAP_SELECT) {
+            if self.tile_map_0.is_dirty(y) {
+                Some(self.tile_map_0.ref_data(y))
+            } else {
+                None
+            }
+        } else {
+            if self.tile_map_1.is_dirty(y) {
+                Some(self.tile_map_1.ref_data(y))
+            } else {
+                None
+            }
+        }
+    }
+
+    // Get window vertices for given y line. If None is returned, the data has not changed since last time.
+    pub fn ref_window<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
+        if !self.lcd_control.contains(LCDControl::WINDOW_TILE_MAP_SELECT) {
+            if self.tile_map_0.is_dirty(y) {
+                Some(self.tile_map_0.ref_data(y))
+            } else {
+                None
+            }
+        } else {
+            if self.tile_map_1.is_dirty(y) {
+                Some(self.tile_map_1.ref_data(y))
+            } else {
+                None
+            }
+        }
+    }
+
+    // Get low-priority sprites (below the background) for given y line.
+    pub fn ref_sprites_lo<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
+        if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
+            let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
+            Some(self.object_mem.get_lo_vertices(y, large_sprites, self.cgb_mode))
+        } else {
+            None
+        }
+    }
+
+    // Get high-priority sprites (above the background) for given y line.
+    pub fn ref_sprites_hi<'a>(&'a mut self, y: u8) -> Option<&'a [Vertex]> {
+        if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
+            let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
+            Some(self.object_mem.get_hi_vertices(y, large_sprites, self.cgb_mode))
+        } else {
+            None
+        }
+    }
+
+    // Get palettes
+    pub fn make_palettes(&mut self) -> Option<Vec<PaletteColours>> {
+        if self.cgb_mode {
+            if self.colour_palettes.is_dirty() {
+                Some(self.colour_palettes.make_data())
+            } else {
+                None
+            }
+        } else {
+            if self.palettes.is_dirty() {
+                Some(self.palettes.make_data())
+            } else {
+                None
+            }
+        }
     }
 }
 

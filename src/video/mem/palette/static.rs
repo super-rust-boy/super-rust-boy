@@ -77,21 +77,6 @@ impl StaticPaletteMem {
         }
     }
 
-    /*pub fn get_buffer(&mut self) -> PaletteBuffer {
-        if let Some(buf) = &self.current_buffer {
-            buf.clone()
-        } else {
-            let buf = self.buffer_pool.chunk([
-                self.palettes[0].get_palette(true),     // BG
-                self.palettes[0].get_palette(false),    // Window
-                self.palettes[1].get_palette(true),     // Sprite 0
-                self.palettes[2].get_palette(true)      // Sprite 1
-            ].iter().cloned()).unwrap();
-            self.current_buffer = Some(buf.clone());
-            buf
-        }
-    }*/
-
     pub fn make_data(&mut self) -> Vec<PaletteColours> {
         self.dirty = false;
         vec![

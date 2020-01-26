@@ -94,7 +94,7 @@ type RenderPipeline = GraphicsPipeline<
 
 // Data for a single render
 struct RenderData {
-    adapter:        MemAdapter,
+    adapter:        Box<MemAdapter>,
     command_buffer: Option<AutoCommandBufferBuilder>,
     acquire_future: Box<dyn GpuFuture>,
     image_num:      usize,
@@ -106,7 +106,7 @@ struct RenderData {
 
 pub struct VulkanRenderer {
     // Memory adapter
-    adapter:        Option<MemAdapter>,
+    adapter:        Option<Box<MemAdapter>>,
     // Core
     device:         Arc<Device>,
     queue:          Arc<Queue>,
@@ -248,7 +248,7 @@ impl VulkanRenderer {
         ];
 
         Box::new(VulkanRenderer {
-            adapter:        Some(MemAdapter::new(mem, &device)),
+            adapter:        Some(Box::new(MemAdapter::new(mem, &device))),
 
             device:         device.clone(),
             queue:          queue,
@@ -316,7 +316,7 @@ impl Renderer for VulkanRenderer {
             .expect("Didn't get next image");
 
         // Get image with current texture.
-        let (image, write_future) = adapter.get_image(video_mem, &self.device, &self.queue);//video_mem.get_tile_atlas(&self.device, &self.queue);
+        let (image, write_future) = adapter.get_image(video_mem, &self.device, &self.queue);
 
         // Make descriptor set to bind texture atlas.
         let set0 = Arc::new(self.set_pools[0].next()
@@ -526,13 +526,13 @@ impl RenderData {
         };
 
         if video_mem.get_background_priority() {
-            // Draw background tile clear colours
             let bg_y = (y as u16 + video_mem.get_scroll_y() as u16) as u8;
             let window_y = match y as i16 - video_mem.get_window_y() as i16 {
                 val if val >= 0 => val as u8,
                 _               => 0,
             };
 
+            // Draw background tile clear colours
             if let Some(background) = self.adapter.get_background(video_mem, bg_y) {
                 // Make push constants for background.
                 let background_push_constants = PushConstants {
@@ -727,7 +727,7 @@ impl RenderData {
         self.command_buffer = Some(command_buffer);
     }
 
-    fn finish_drawing(self) -> (MemAdapter, AutoCommandBuffer, Box<dyn GpuFuture>, Box<dyn GpuFuture>, usize) {
+    fn finish_drawing(self) -> (Box<MemAdapter>, AutoCommandBuffer, Box<dyn GpuFuture>, Box<dyn GpuFuture>, usize) {
         (
             self.adapter,
             self.command_buffer.unwrap().end_render_pass().unwrap().build().unwrap(),

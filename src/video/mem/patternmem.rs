@@ -71,27 +71,7 @@ impl TileAtlas {
         })
     }
 
-    // Make an image from the atlas.
-    /*pub fn get_image(&mut self, device: &Arc<Device>, queue: &Arc<Queue>) -> (TileImage, TileFuture) {
-        if let Some(image) = &self.image {
-            (image.clone(), Box::new(now(device.clone())))
-        } else {
-            let width = (self.atlas_size.0 * TEX_WIDTH) as u32;
-            let height = (self.atlas_size.1 * TEX_HEIGHT) as u32;
-
-            let (image, future) = ImmutableImage::from_iter(
-                self.atlas.clone().into_iter(),
-                Dimensions::Dim2d { width: width, height: height },
-                R8Uint,
-                queue.clone()
-            ).expect("Couldn't create image.");
-
-            self.image = Some(image.clone());
-
-            (image, Box::new(future))
-        }
-    }*/
-
+    // Get the raw data and unset the dirty flag.
     pub fn ref_data<'a>(&'a mut self) -> &'a [u8] {
         self.dirty = false;
         &self.atlas
@@ -107,7 +87,7 @@ impl TileAtlas {
         [self.atlas_size.0 as f32, self.atlas_size.1 as f32]
     }
 
-    // Check if memory is dirty, and unset if it is.
+    // Check if memory is dirty.
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }

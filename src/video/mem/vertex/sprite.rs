@@ -125,11 +125,6 @@ impl ObjectMem {
             }
         }
 
-        /*if self.buffer.is_empty() {
-            None
-        } else {
-            Some(self.buffer_pool.chunk(self.buffer.drain(..)).unwrap())
-        }*/
         &self.buffer
     }
 
@@ -144,11 +139,6 @@ impl ObjectMem {
             }
         }
 
-        /*if self.buffer.is_empty() {
-            None
-        } else {
-            Some(self.buffer_pool.chunk(self.buffer.drain(..)).unwrap())
-        }*/
         &self.buffer
     }
 }

@@ -15,22 +15,11 @@ bitflags! {
     }
 }
 
-#[derive(Clone)]
-enum BufferCache {
-    Buffer,                 // There exists a buffer that is not dirty.
-    Empty,                  // This data is intentionally empty.
-    Dirty                   // This data is dirty and must be recreated.
-}
-
 // Struct that contains the vertices to be used for rendering, in addition to the buffer pool.
 pub struct VertexGrid {
     vertices:           Vec<Vec<Vertex>>,
 
     dirty_lines:        Vec<bool>           // Indicates that a row is dirty (true) or unchanged (false).
-
-    //buffer_pool:        CpuBufferPool<Vertex>,
-    //lo_vertex_buffers:  Vec<BufferCache>,
-    //hi_vertex_buffers:  Vec<BufferCache>
 }
 
 impl VertexGrid {
@@ -75,10 +64,6 @@ impl VertexGrid {
         VertexGrid {
             vertices:       vertices,
             dirty_lines:    dirty_lines,
-
-            //buffer_pool:        CpuBufferPool::vertex_buffer(device.clone()),
-            //lo_vertex_buffers:  vertex_buffers.clone(),
-            //hi_vertex_buffers:  vertex_buffers
         }
     }
 
@@ -150,62 +135,14 @@ impl VertexGrid {
     }
 
     // Get a line of vertices.
-    // Only retrieves the vertices that appear below the objects.
-    // (This will get the whole background in GB mode).
     pub fn ref_data<'a>(&'a mut self, y: u8) -> &'a [Vertex] {
-        //let row = y as usize;
-        //let cached_buffer = &mut self.lo_vertex_buffers[row];
-        self.dirty_lines[y as usize] = false;
-        &self.vertices[y as usize]
+        let row = y as usize;
 
-        /*match cached_buffer {
-            BufferCache::Buffer(buffer) =>  Some(buffer.clone()),
-            BufferCache::Empty =>           None,
-            BufferCache::Dirty => {
-                let tile_map = self.vertices[row].iter()
-                    .cloned()
-                    .filter(|v| (v.data & BG_OAM_PRIORITY) == 0)
-                    .collect::<Vec<_>>();
-
-                if tile_map.is_empty() {
-                    *cached_buffer = BufferCache::Empty;
-                    None
-                } else {
-                    let buffer = self.buffer_pool.chunk(tile_map).unwrap();
-                    *cached_buffer = BufferCache::Buffer(buffer.clone());
-                    Some(buffer)
-                }
-            }
-        }*/
+        self.dirty_lines[row] = false;
+        &self.vertices[row]
     }
 
     pub fn is_dirty(&self, y: u8) -> bool {
         self.dirty_lines[y as usize]
     }
-
-    // Only retrieves the vertices that appear above the objects.
-    /*pub fn get_hi_vertex_buffer(&mut self, y: u8) -> Option<VertexBuffer> {
-        let row = y as usize;
-        let cached_buffer = &mut self.hi_vertex_buffers[row];
-
-        match cached_buffer {
-            BufferCache::Buffer(buffer) =>  Some(buffer.clone()),
-            BufferCache::Empty =>           None,
-            BufferCache::Dirty => {
-                let tile_map = self.vertices[row].iter()
-                    .cloned()
-                    .filter(|v| (v.data & BG_OAM_PRIORITY) != 0)
-                    .collect::<Vec<_>>();
-
-                if tile_map.is_empty() {
-                    *cached_buffer = BufferCache::Empty;
-                    None
-                } else {
-                    let buffer = self.buffer_pool.chunk(tile_map).unwrap();
-                    *cached_buffer = BufferCache::Buffer(buffer.clone());
-                    Some(buffer)
-                }
-            }
-        }
-    }*/
 }

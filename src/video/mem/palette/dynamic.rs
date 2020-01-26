@@ -120,9 +120,6 @@ pub struct DynamicPaletteMem {
     obj_auto_inc:       PaletteIndex,
 
     dirty:              bool
-
-    //buffer_pool:        CpuBufferPool<PaletteColours>,
-    //current_buffer:     Option<PaletteBuffer>
 }
 
 impl DynamicPaletteMem {
@@ -137,29 +134,8 @@ impl DynamicPaletteMem {
             obj_auto_inc:       PaletteIndex::default(),
 
             dirty:              true
-
-            //buffer_pool:        CpuBufferPool::uniform_buffer(device.clone()),
-            //current_buffer:     None
         }
     }
-
-    /*pub fn get_buffer(&mut self) -> PaletteBuffer {
-        if let Some(buf) = &self.current_buffer {
-            buf.clone()
-        } else {
-            let buf = self.buffer_pool.chunk(
-                self.bg_palettes.iter()
-                    .map(|p| p.get_palette(true))
-                    .chain(self.bg_palettes.iter().map(|p| p.get_palette(false)))
-                    .chain(self.obj_palettes.iter().map(|p| p.get_palette(true)))
-                    .collect::<Vec<_>>()
-                    .iter()
-                    .cloned()
-            ).unwrap();
-            self.current_buffer = Some(buf.clone());
-            buf
-        }
-    }*/
 
     pub fn make_data(&mut self) -> Vec<PaletteColours> {
         self.dirty = false;
