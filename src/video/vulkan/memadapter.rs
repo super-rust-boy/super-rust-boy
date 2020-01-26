@@ -106,19 +106,22 @@ impl MemAdapter {
     pub fn get_background(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.is_cgb_mode() || mem.get_background_priority() {
             let row = y as usize;
+            let is_cgb_mode = mem.is_cgb_mode();
             let vertices = mem.ref_background(row);
-            Self::make_lo_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.lo_bg_vertex_buffers[row])
+            self.cache_bg_vertex_buffers(is_cgb_mode, vertices, row);
+            self.lo_bg_vertex_buffers[row].clone()
         } else {
             None
         }
     }
 
-    // Get background vertices with priority bit set for given y line.
+    // Get background vertices with priority bit set for given y line. (CGB mode only)
     pub fn get_background_hi(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.is_cgb_mode() {
             let row = y as usize;
             let vertices = mem.ref_background(row);
-            Self::make_hi_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.hi_bg_vertex_buffers[row])
+            self.cache_bg_vertex_buffers(true, vertices, row);
+            self.hi_bg_vertex_buffers[row].clone()
         } else {
             None
         }
@@ -128,19 +131,22 @@ impl MemAdapter {
     pub fn get_window(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.get_window_enable() {
             let row = y as usize;
+            let is_cgb_mode = mem.is_cgb_mode();
             let vertices = mem.ref_window(row);
-            Self::make_lo_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.lo_window_vertex_buffers[row])
+            self.cache_window_vertex_buffers(is_cgb_mode, vertices, row);
+            self.lo_window_vertex_buffers[row].clone()
         } else {
             None
         }
     }
 
-    // Get window vertices with priority bit set for given y line.
+    // Get window vertices with priority bit set for given y line. (CGB mode only)
     pub fn get_window_hi(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.is_cgb_mode() {
             let row = y as usize;
             let vertices = mem.ref_window(row);
-            Self::make_hi_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.hi_window_vertex_buffers[row])
+            self.cache_window_vertex_buffers(true, vertices, row);
+            self.hi_window_vertex_buffers[row].clone()
         } else {
             None
         }
@@ -174,47 +180,44 @@ impl MemAdapter {
 
 // Internal
 impl MemAdapter {
-    // Get a line of vertices.
-    // Only retrieves the vertices that appear below the objects.
-    // (This will get the whole background / window in GB mode).
-    fn make_lo_vertex_buffer(raw_buffer: Option<&[Vertex]>, pool: &mut CpuBufferPool<Vertex>, cached_buffer: &mut Option<VertexBuffer>) -> Option<VertexBuffer> {
-        if let Some(data) = raw_buffer {
-            let tile_map = data.iter()
-                .cloned()
-                .filter(|v| (v.data & BG_OAM_PRIORITY) == 0)
-                .collect::<Vec<_>>();
 
-            if tile_map.is_empty() {
-                *cached_buffer = None;
-                None
-            } else {
-                let buffer = Some(pool.chunk(tile_map).unwrap());
-                *cached_buffer = buffer.clone();
-                buffer
+    // If data is provided, new hi and lo buffers are made.
+    fn cache_bg_vertex_buffers(&mut self, is_cgb_mode: bool, raw_buffer: Option<&[Vertex]>, row: usize) {
+        if let Some(data) = raw_buffer {
+            let pool = &mut self.vertex_buffer_pool;
+            self.lo_bg_vertex_buffers[row] = Self::make_vertex_buffer(data, pool, 0); // Vertices below sprites (all in GB mode)
+            if is_cgb_mode {
+                self.hi_bg_vertex_buffers[row] = Self::make_vertex_buffer(data, pool, BG_OAM_PRIORITY);  // Vertices above sprites
             }
-        } else {
-            cached_buffer.clone()
         }
     }
 
-    // Only retrieves the vertices that appear above the objects.
-    fn make_hi_vertex_buffer(raw_buffer: Option<&[Vertex]>, pool: &mut CpuBufferPool<Vertex>, cached_buffer: &mut Option<VertexBuffer>) -> Option<VertexBuffer> {
+    // If data is provided, new hi and lo buffers are made.
+    fn cache_window_vertex_buffers(&mut self, is_cgb_mode: bool, raw_buffer: Option<&[Vertex]>, row: usize) {
         if let Some(data) = raw_buffer {
-            let tile_map = data.iter()
-                .cloned()
-                .filter(|v| (v.data & BG_OAM_PRIORITY) != 0)
-                .collect::<Vec<_>>();
-
-            if tile_map.is_empty() {
-                *cached_buffer = None;
-                None
-            } else {
-                let buffer = Some(pool.chunk(tile_map).unwrap());
-                *cached_buffer = buffer.clone();
-                buffer
+            let pool = &mut self.vertex_buffer_pool;
+            self.lo_window_vertex_buffers[row] = Self::make_vertex_buffer(data, pool, 0); // Vertices below sprites (all in GB mode)
+            if is_cgb_mode {
+                self.hi_window_vertex_buffers[row] = Self::make_vertex_buffer(data, pool, BG_OAM_PRIORITY);  // Vertices above sprites
             }
+        }
+    }
+
+    // Make hi or lo vertex buffers.
+    fn make_vertex_buffer(
+        raw_buffer:     &[Vertex],
+        pool:           &mut CpuBufferPool<Vertex>,
+        compare:        u32 // 0 for lo vertices or GB mode, BG_OAM_PRIORITY for hi vertices
+    ) -> Option<VertexBuffer> {
+        let tile_map = raw_buffer.iter()
+            .cloned()
+            .filter(|v| (v.data & BG_OAM_PRIORITY) == compare)
+            .collect::<Vec<_>>();
+
+        if tile_map.is_empty() {
+            None
         } else {
-            cached_buffer.clone()
+            Some(pool.chunk(tile_map).unwrap())
         }
     }
 }
