@@ -1,18 +1,12 @@
 // Dealing with sprites.
-use vulkano::{
-    buffer::CpuBufferPool,
-    device::Device
-};
-
 use bitflags::bitflags;
 
-use crate::mem::MemDevice;
-
-use super::{
-    Side, Vertex, VertexBuffer
+use crate::{
+    mem::MemDevice,
+    video::types::Vertex
 };
 
-use std::sync::Arc;
+use super::Side;
 
 const SPRITE_SMALL_HEIGHT: u8 = 8;
 const SPRITE_LARGE_HEIGHT: u8 = 16;
@@ -106,25 +100,23 @@ impl Sprite {
 }
 
 pub struct ObjectMem {
-    objects:        Vec<Sprite>,
+    objects:    Vec<Sprite>,
 
-    buffer:         Vec<Vertex>,
-    buffer_pool:    CpuBufferPool<Vertex>,
+    buffer:     Vec<Vertex>,
 }
 
 impl ObjectMem {
-    pub fn new(device: &Arc<Device>) -> Self {
+    pub fn new() -> Self {
         ObjectMem {
-            objects:        vec![Sprite::new(); 40],
+            objects:    vec![Sprite::new(); 40],
 
-            buffer:         Vec::new(),
-            buffer_pool:    CpuBufferPool::vertex_buffer(device.clone())
+            buffer:     Vec::new()
         }
     }
 
     // Gets vertices for a line.
     // Only retrieves the vertices that appear below the background.
-    pub fn get_lo_vertex_buffer(&mut self, y: u8, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
+    pub fn ref_lo_vertices<'a>(&'a mut self, y: u8, large: bool, cgb_mode: bool) -> &'a mut Vec<Vertex> {
         self.buffer.clear();
 
         for o in self.objects.iter().rev() {
@@ -133,16 +125,12 @@ impl ObjectMem {
             }
         }
 
-        if self.buffer.is_empty() {
-            None
-        } else {
-            Some(self.buffer_pool.chunk(self.buffer.drain(..)).unwrap())
-        }
+        &mut self.buffer
     }
 
     // Gets vertices for a line.
     // Only retrieves the vertices that appear above the background.
-    pub fn get_hi_vertex_buffer(&mut self, y: u8, large: bool, cgb_mode: bool) -> Option<VertexBuffer> {
+    pub fn ref_hi_vertices<'a>(&'a mut self, y: u8, large: bool, cgb_mode: bool) -> &'a mut Vec<Vertex> {  // TODO: return mut vector?
         self.buffer.clear();
 
         for o in self.objects.iter().rev() {
@@ -151,11 +139,7 @@ impl ObjectMem {
             }
         }
 
-        if self.buffer.is_empty() {
-            None
-        } else {
-            Some(self.buffer_pool.chunk(self.buffer.drain(..)).unwrap())
-        }
+        &mut self.buffer
     }
 }
 

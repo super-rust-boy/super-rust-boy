@@ -1,18 +1,8 @@
 // Game Boy and Super Game Boy 2-bit palettes.
-
-use vulkano::{
-    buffer::CpuBufferPool,
-    device::Device
-};
-
 use cgmath::{
     Matrix4,
     Vector4
 };
-
-use std::sync::Arc;
-
-use super::PaletteBuffer;
 
 use crate::video::{
     PaletteColours,
@@ -69,37 +59,32 @@ impl StaticPalette {
 
 // A group of palettes
 pub struct StaticPaletteMem {
-    palettes: Vec<StaticPalette>,
-    buffer_pool: CpuBufferPool<PaletteColours>,
-    current_buffer: Option<PaletteBuffer>
+    palettes:   Vec<StaticPalette>,
+
+    dirty:      bool
 }
 
 impl StaticPaletteMem {
-    pub fn new(device: &Arc<Device>, colours: SGBPalette) -> Self {
+    pub fn new(colours: SGBPalette) -> Self {
         StaticPaletteMem {
             palettes: vec![
                 StaticPalette::new(colours.bg),
                 StaticPalette::new(colours.obj0),
                 StaticPalette::new(colours.obj1)
             ],
-            buffer_pool: CpuBufferPool::uniform_buffer(device.clone()),
-            current_buffer: None
+
+            dirty:  true
         }
     }
 
-    pub fn get_buffer(&mut self) -> PaletteBuffer {
-        if let Some(buf) = &self.current_buffer {
-            buf.clone()
-        } else {
-            let buf = self.buffer_pool.chunk([
-                self.palettes[0].get_palette(true),     // BG
-                self.palettes[0].get_palette(false),    // Window
-                self.palettes[1].get_palette(true),     // Sprite 0
-                self.palettes[2].get_palette(true)      // Sprite 1
-            ].iter().cloned()).unwrap();
-            self.current_buffer = Some(buf.clone());
-            buf
-        }
+    pub fn make_data(&mut self) -> Vec<PaletteColours> {
+        self.dirty = false;
+        vec![
+            self.palettes[0].get_palette(true),       // BG
+            self.palettes[0].get_palette(false),    // Window
+            self.palettes[1].get_palette(true),     // Sprite 0
+            self.palettes[2].get_palette(true)      // Sprite 1
+        ]
     }
 
     pub fn get_colour_0(&self) -> Vector4<f32> {
@@ -113,6 +98,10 @@ impl StaticPaletteMem {
     pub fn write(&mut self, which: usize, val: u8) {
         self.palettes[which].write(val);
 
-        self.current_buffer = None;
+        self.dirty = true;
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
     }
 }

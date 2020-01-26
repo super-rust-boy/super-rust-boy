@@ -1,10 +1,4 @@
 // Game Boy Color 15-bit palettes.
-
-use vulkano::{
-    buffer::CpuBufferPool,
-    device::Device
-};
-
 use cgmath::{
     Vector4,
     Matrix4
@@ -12,12 +6,9 @@ use cgmath::{
 
 use bitflags::bitflags;
 
-use std::sync::Arc;
-
-use crate::mem::MemDevice;
-use super::{
-    PaletteColours,
-    PaletteBuffer
+use crate::{
+    mem::MemDevice,
+    video::PaletteColours
 };
 
 const MAX_COLOUR: f32 = 0x1F as f32;
@@ -128,12 +119,11 @@ pub struct DynamicPaletteMem {
     obj_palette_index:  usize,
     obj_auto_inc:       PaletteIndex,
 
-    buffer_pool:        CpuBufferPool<PaletteColours>,
-    current_buffer:     Option<PaletteBuffer>
+    dirty:              bool
 }
 
 impl DynamicPaletteMem {
-    pub fn new(device: &Arc<Device>) -> Self {
+    pub fn new() -> Self {
         DynamicPaletteMem {
             bg_palettes:        vec![DynamicPalette::new(); 8],
             bg_palette_index:   0,
@@ -143,27 +133,17 @@ impl DynamicPaletteMem {
             obj_palette_index:  0,
             obj_auto_inc:       PaletteIndex::default(),
 
-            buffer_pool:        CpuBufferPool::uniform_buffer(device.clone()),
-            current_buffer:     None
+            dirty:              true
         }
     }
 
-    pub fn get_buffer(&mut self) -> PaletteBuffer {
-        if let Some(buf) = &self.current_buffer {
-            buf.clone()
-        } else {
-            let buf = self.buffer_pool.chunk(
-                self.bg_palettes.iter()
-                    .map(|p| p.get_palette(true))
-                    .chain(self.bg_palettes.iter().map(|p| p.get_palette(false)))
-                    .chain(self.obj_palettes.iter().map(|p| p.get_palette(true)))
-                    .collect::<Vec<_>>()
-                    .iter()
-                    .cloned()
-            ).unwrap();
-            self.current_buffer = Some(buf.clone());
-            buf
-        }
+    pub fn make_data(&mut self) -> Vec<PaletteColours> {
+        self.dirty = false;
+        self.bg_palettes.iter()
+            .map(|p| p.get_palette(true))
+            .chain(self.bg_palettes.iter().map(|p| p.get_palette(false)))
+            .chain(self.obj_palettes.iter().map(|p| p.get_palette(true)))
+            .collect::<Vec<_>>()
     }
 
     pub fn read_bg_index(&self) -> u8 {
@@ -198,7 +178,7 @@ impl DynamicPaletteMem {
             self.bg_palette_index = (self.bg_palette_index + 1) % 0x40;
         }
 
-        self.current_buffer = None;
+        self.dirty = true;
     }
 
     pub fn read_obj(&self) -> u8 {
@@ -215,6 +195,10 @@ impl DynamicPaletteMem {
             self.obj_palette_index = (self.obj_palette_index + 1) % 0x40;
         }
 
-        self.current_buffer = None;
+        self.dirty = true;
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
     }
 }

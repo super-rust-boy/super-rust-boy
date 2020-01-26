@@ -1,15 +1,6 @@
 pub mod sprite;
 pub mod tilemap;
 
-pub use super::super::types::Vertex;
-
-use vulkano::{
-    buffer::cpu_pool::CpuBufferPoolChunk,
-    memory::pool::StdMemoryPool
-};
-
-use std::sync::Arc;
-
 // Vertex data:
 // 0-7: Tile number
 // 8: Side
@@ -24,5 +15,3 @@ pub enum Side {
     Left     = 0 << 8,
     Right    = 1 << 8,
 }
-
-pub type VertexBuffer = CpuBufferPoolChunk<Vertex, Arc<StdMemoryPool>>;

@@ -1,16 +1,9 @@
 // Background and Window tile maps.
-use vulkano::{
-    buffer::CpuBufferPool,
-    device::Device
-};
-
 use bitflags::bitflags;
 
-use std::sync::Arc;
+use super::Side;
 
-use super::{
-    Side, Vertex, VertexBuffer
-};
+use crate::video::types::Vertex;
 
 bitflags! {
     #[derive(Default)]
@@ -22,22 +15,32 @@ bitflags! {
     }
 }
 
-const BG_OAM_PRIORITY: u32 = 1 << 19;
+struct VertexLine {
+    vertices:       Vec<Vertex>,
 
-#[derive(Clone)]
-enum BufferCache {
-    Buffer(VertexBuffer),   // There exists a buffer that is not dirty.
-    Empty,                  // This data is intentionally empty.
-    Dirty                   // This data is dirty and must be recreated.
+    bg_dirty:       bool,   // Has changed since last time BG read this data
+    window_dirty:   bool,   // Has changed since last time window read this data
+}
+
+impl VertexLine {
+    pub fn new(vertices: Vec<Vertex>) -> Self {
+        VertexLine {
+            vertices:       vertices,
+            bg_dirty:       true,
+            window_dirty:   true,
+        }
+    }
+
+    #[inline]
+    pub fn set_dirty(&mut self) {
+        self.bg_dirty = true;
+        self.window_dirty = true;
+    }
 }
 
 // Struct that contains the vertices to be used for rendering, in addition to the buffer pool.
 pub struct VertexGrid {
-    vertices:           Vec<Vec<Vertex>>,
-
-    buffer_pool:        CpuBufferPool<Vertex>,
-    lo_vertex_buffers:  Vec<BufferCache>,
-    hi_vertex_buffers:  Vec<BufferCache>
+    vertex_lines:   Vec<VertexLine>
 }
 
 impl VertexGrid {
@@ -45,9 +48,8 @@ impl VertexGrid {
         // Note that this creates a background of total size grid_size scaled to fit in the view_size.
         // All parameters should be given in number of tiles.
         // The vertex position values can be offset in the vertex shader to shift this visible area around.
-    pub fn new(device: &Arc<Device>, grid_size: (usize, usize), view_size: (usize, usize)) -> Self {
-        let mut vertices = Vec::new();
-        let mut vertex_buffers = Vec::new();
+    pub fn new(grid_size: (usize, usize), view_size: (usize, usize)) -> Self {
+        let mut vertex_lines = Vec::new();
 
         let x_frac = 2.0 / view_size.0 as f32;
         let y_frac = (2.0 / view_size.1 as f32) / 8.0;  // Each y tile is 8 lines high.
@@ -75,16 +77,11 @@ impl VertexGrid {
             lo_y = hi_y;
             hi_y += y_frac;
 
-            vertices.push(row_vertices);
-            vertex_buffers.push(BufferCache::Dirty);
+            vertex_lines.push(VertexLine::new(row_vertices));
         }
 
         VertexGrid {
-            vertices:           vertices,
-
-            buffer_pool:        CpuBufferPool::vertex_buffer(device.clone()),
-            lo_vertex_buffers:  vertex_buffers.clone(),
-            hi_vertex_buffers:  vertex_buffers
+            vertex_lines:   vertex_lines
         }
     }
 
@@ -95,15 +92,14 @@ impl VertexGrid {
         let row_index = tile_x * 6;
 
         for row in start_row..end_row {
-            self.vertices[row][row_index].data = (self.vertices[row][row_index].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[row][row_index + 1].data = (self.vertices[row][row_index + 1].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[row][row_index + 2].data = (self.vertices[row][row_index + 2].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[row][row_index + 3].data = (self.vertices[row][row_index + 3].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[row][row_index + 4].data = (self.vertices[row][row_index + 4].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[row][row_index + 5].data = (self.vertices[row][row_index + 5].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index].data =       (self.vertex_lines[row].vertices[row_index].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index + 1].data =   (self.vertex_lines[row].vertices[row_index + 1].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index + 2].data =   (self.vertex_lines[row].vertices[row_index + 2].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index + 3].data =   (self.vertex_lines[row].vertices[row_index + 3].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index + 4].data =   (self.vertex_lines[row].vertices[row_index + 4].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index + 5].data =   (self.vertex_lines[row].vertices[row_index + 5].data & 0xFFFFFF00) | tex_num as u32;
 
-            self.lo_vertex_buffers[row] = BufferCache::Dirty;
-            self.hi_vertex_buffers[row] = BufferCache::Dirty;
+            self.vertex_lines[row].set_dirty();
         }
     }
 
@@ -112,7 +108,7 @@ impl VertexGrid {
         let row = tile_y * 8;
         let row_index = tile_x * 6;
 
-        self.vertices[row][row_index].data as u8
+        self.vertex_lines[row].vertices[row_index].data as u8
     }
 
     // Writing and reading attributes (CGB mode).
@@ -138,15 +134,14 @@ impl VertexGrid {
 
         for (row, y) in (start_row..end_row).zip(&y_coords) {
             let y = y << 9;
-            self.vertices[row][row_index].data =     (self.vertices[row][row_index].data & 0x000000FF) | data | y | left as u32;
-            self.vertices[row][row_index + 1].data = (self.vertices[row][row_index + 1].data & 0x000000FF) | data | y | left as u32;
-            self.vertices[row][row_index + 2].data = (self.vertices[row][row_index + 2].data & 0x000000FF) | data | y | right as u32;
-            self.vertices[row][row_index + 3].data = (self.vertices[row][row_index + 3].data & 0x000000FF) | data | y | left as u32;
-            self.vertices[row][row_index + 4].data = (self.vertices[row][row_index + 4].data & 0x000000FF) | data | y | right as u32;
-            self.vertices[row][row_index + 5].data = (self.vertices[row][row_index + 5].data & 0x000000FF) | data | y | right as u32;
+            self.vertex_lines[row].vertices[row_index].data =     (self.vertex_lines[row].vertices[row_index].data & 0x000000FF) | data | y | left as u32;
+            self.vertex_lines[row].vertices[row_index + 1].data = (self.vertex_lines[row].vertices[row_index + 1].data & 0x000000FF) | data | y | left as u32;
+            self.vertex_lines[row].vertices[row_index + 2].data = (self.vertex_lines[row].vertices[row_index + 2].data & 0x000000FF) | data | y | right as u32;
+            self.vertex_lines[row].vertices[row_index + 3].data = (self.vertex_lines[row].vertices[row_index + 3].data & 0x000000FF) | data | y | left as u32;
+            self.vertex_lines[row].vertices[row_index + 4].data = (self.vertex_lines[row].vertices[row_index + 4].data & 0x000000FF) | data | y | right as u32;
+            self.vertex_lines[row].vertices[row_index + 5].data = (self.vertex_lines[row].vertices[row_index + 5].data & 0x000000FF) | data | y | right as u32;
 
-            self.lo_vertex_buffers[row] = BufferCache::Dirty;
-            self.hi_vertex_buffers[row] = BufferCache::Dirty;
+            self.vertex_lines[row].set_dirty();
         }
     }
 
@@ -154,60 +149,28 @@ impl VertexGrid {
         let row = tile_y * 8;
         let row_index = tile_x * 6;
 
-        (self.vertices[row][row_index].data >> 12) as u8
+        (self.vertex_lines[row].vertices[row_index].data >> 12) as u8
     }
 
-    // Get a line of vertices.
-    // Only retrieves the vertices that appear below the objects.
-    // (This will get the whole background in GB mode).
-    pub fn get_lo_vertex_buffer(&mut self, y: u8) -> Option<VertexBuffer> {
-        let row = y as usize;
-        let cached_buffer = &mut self.lo_vertex_buffers[row];
-
-        match cached_buffer {
-            BufferCache::Buffer(buffer) =>  Some(buffer.clone()),
-            BufferCache::Empty =>           None,
-            BufferCache::Dirty => {
-                let tile_map = self.vertices[row].iter()
-                    .cloned()
-                    .filter(|v| (v.data & BG_OAM_PRIORITY) == 0)
-                    .collect::<Vec<_>>();
-
-                if tile_map.is_empty() {
-                    *cached_buffer = BufferCache::Empty;
-                    None
-                } else {
-                    let buffer = self.buffer_pool.chunk(tile_map).unwrap();
-                    *cached_buffer = BufferCache::Buffer(buffer.clone());
-                    Some(buffer)
-                }
-            }
-        }
+    // Get a row of vertices, for the background.
+    pub fn ref_data_bg<'a>(&'a mut self, y: usize) -> &'a [Vertex] {
+        self.vertex_lines[y].bg_dirty = false;
+        &self.vertex_lines[y].vertices
     }
 
-    // Only retrieves the vertices that appear above the objects.
-    pub fn get_hi_vertex_buffer(&mut self, y: u8) -> Option<VertexBuffer> {
-        let row = y as usize;
-        let cached_buffer = &mut self.hi_vertex_buffers[row];
+    // Check if the data has changed since the last time the background read it for the given row.
+    pub fn is_dirty_bg(&self, y: usize) -> bool {
+        self.vertex_lines[y].bg_dirty
+    }
 
-        match cached_buffer {
-            BufferCache::Buffer(buffer) =>  Some(buffer.clone()),
-            BufferCache::Empty =>           None,
-            BufferCache::Dirty => {
-                let tile_map = self.vertices[row].iter()
-                    .cloned()
-                    .filter(|v| (v.data & BG_OAM_PRIORITY) != 0)
-                    .collect::<Vec<_>>();
+    // Get a row of vertices, for the background.
+    pub fn ref_data_window<'a>(&'a mut self, y: usize) -> &'a [Vertex] {
+        self.vertex_lines[y].window_dirty = false;
+        &self.vertex_lines[y].vertices
+    }
 
-                if tile_map.is_empty() {
-                    *cached_buffer = BufferCache::Empty;
-                    None
-                } else {
-                    let buffer = self.buffer_pool.chunk(tile_map).unwrap();
-                    *cached_buffer = BufferCache::Buffer(buffer.clone());
-                    Some(buffer)
-                }
-            }
-        }
+    // Check if the data has changed since the last time the background read it for the given row.
+    pub fn is_dirty_window(&self, y: usize) -> bool {
+        self.vertex_lines[y].window_dirty
     }
 }

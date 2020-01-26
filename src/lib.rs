@@ -15,7 +15,7 @@ pub mod debug;
 pub use video::{
     UserPalette,
     VulkanRenderer,
-    WindowType
+    RendererType
 };
 
 use joypad::{
@@ -50,7 +50,7 @@ pub struct RustBoy {
 }
 
 impl RustBoy {
-    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool, renderer: Box<VulkanRenderer>) -> Box<Self> {
+    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool, renderer: RendererType) -> Box<Self> {
         let (send, recv) = channel();
 
         let ad = AudioDevice::new(send);

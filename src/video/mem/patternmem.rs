@@ -11,38 +11,13 @@
     // Each pixel is in reality, a 2-bit value mapped appropriately.
     // The fragment shader assigns the colour based on the value for the pixel.
 
-
-use vulkano::{
-    device::{
-        Device,
-        Queue
-    },
-    image::{
-        Dimensions,
-        immutable::ImmutableImage
-    },
-    format::{
-        R8Uint
-    },
-    sync::{
-        now, GpuFuture
-    }
-};
-
-use std::sync::Arc;
-
-const TEX_WIDTH: usize = 8;                     // Width of a tile in pixels.
-const TEX_HEIGHT: usize = 8;                    // Height of a tile in pixels.
-const TEX_AREA: usize = TEX_WIDTH * TEX_HEIGHT; // Area of a tile in total number of pixels.
-
-pub type TileImage = Arc<ImmutableImage<R8Uint>>;
-pub type TileFuture = Box<dyn GpuFuture>;
+use super::consts::TEX_AREA;
 
 pub struct TileAtlas {
     atlas:      Vec<u8>,            // formatted atlas of tiles
     atlas_size: (usize, usize),     // width/height of texture in tiles
-    
-    image:      Option<TileImage>   // cached images
+
+    dirty:      bool                // true if the data changes
 }
 
 impl TileAtlas {
@@ -52,7 +27,7 @@ impl TileAtlas {
             atlas:      vec![0; atlas_area],
             atlas_size: atlas_size,
 
-            image:      None,
+            dirty:      true,
         }
     }
 
@@ -65,7 +40,7 @@ impl TileAtlas {
             self.atlas[loc + i] = (self.atlas[loc + i] & bit!(1)) | bit;
         }
 
-        self.image = None;
+        self.dirty = true;
     }
 
     // The most significant bit.
@@ -76,7 +51,7 @@ impl TileAtlas {
             self.atlas[loc + i] = (self.atlas[loc + i] & bit!(0)) | (bit << 1);
         }
 
-        self.image = None;
+        self.dirty = true;
     }
 
     // Read a pixel row from the atlas.
@@ -96,25 +71,10 @@ impl TileAtlas {
         })
     }
 
-    // Make an image from the atlas.
-    pub fn get_image(&mut self, device: &Arc<Device>, queue: &Arc<Queue>) -> (TileImage, TileFuture) {
-        if let Some(image) = &self.image {
-            (image.clone(), Box::new(now(device.clone())))
-        } else {
-            let width = (self.atlas_size.0 * TEX_WIDTH) as u32;
-            let height = (self.atlas_size.1 * TEX_HEIGHT) as u32;
-
-            let (image, future) = ImmutableImage::from_iter(
-                self.atlas.clone().into_iter(),
-                Dimensions::Dim2d { width: width, height: height },
-                R8Uint,
-                queue.clone()
-            ).expect("Couldn't create image.");
-
-            self.image = Some(image.clone());
-
-            (image, Box::new(future))
-        }
+    // Get the raw data and unset the dirty flag.
+    pub fn ref_data<'a>(&'a mut self) -> &'a [u8] {
+        self.dirty = false;
+        &self.atlas
     }
 
     // Get the size of a tile in the atlas.
@@ -125,5 +85,10 @@ impl TileAtlas {
     // Get the size of the atlas (in tiles).
     pub fn get_atlas_size(&self) -> [f32; 2] {
         [self.atlas_size.0 as f32, self.atlas_size.1 as f32]
+    }
+
+    // Check if memory is dirty.
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
     }
 }
