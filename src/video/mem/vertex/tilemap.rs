@@ -15,11 +15,32 @@ bitflags! {
     }
 }
 
+struct VertexLine {
+    vertices:       Vec<Vertex>,
+
+    bg_dirty:       bool,   // Has changed since last time BG read this data
+    window_dirty:   bool,   // Has changed since last time window read this data
+}
+
+impl VertexLine {
+    pub fn new(vertices: Vec<Vertex>) -> Self {
+        VertexLine {
+            vertices:       vertices,
+            bg_dirty:       true,
+            window_dirty:   true,
+        }
+    }
+
+    #[inline]
+    pub fn set_dirty(&mut self) {
+        self.bg_dirty = true;
+        self.window_dirty = true;
+    }
+}
+
 // Struct that contains the vertices to be used for rendering, in addition to the buffer pool.
 pub struct VertexGrid {
-    vertices:           Vec<Vec<Vertex>>,
-
-    dirty_lines:        Vec<bool>           // Indicates that a row is dirty (true) or unchanged (false).
+    vertex_lines:   Vec<VertexLine>
 }
 
 impl VertexGrid {
@@ -28,8 +49,7 @@ impl VertexGrid {
         // All parameters should be given in number of tiles.
         // The vertex position values can be offset in the vertex shader to shift this visible area around.
     pub fn new(grid_size: (usize, usize), view_size: (usize, usize)) -> Self {
-        let mut vertices = Vec::new();
-        let mut dirty_lines = Vec::new();
+        let mut vertex_lines = Vec::new();
 
         let x_frac = 2.0 / view_size.0 as f32;
         let y_frac = (2.0 / view_size.1 as f32) / 8.0;  // Each y tile is 8 lines high.
@@ -57,13 +77,11 @@ impl VertexGrid {
             lo_y = hi_y;
             hi_y += y_frac;
 
-            vertices.push(row_vertices);
-            dirty_lines.push(true);
+            vertex_lines.push(VertexLine::new(row_vertices));
         }
 
         VertexGrid {
-            vertices:       vertices,
-            dirty_lines:    dirty_lines,
+            vertex_lines:   vertex_lines
         }
     }
 
@@ -74,14 +92,14 @@ impl VertexGrid {
         let row_index = tile_x * 6;
 
         for row in start_row..end_row {
-            self.vertices[row][row_index].data = (self.vertices[row][row_index].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[row][row_index + 1].data = (self.vertices[row][row_index + 1].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[row][row_index + 2].data = (self.vertices[row][row_index + 2].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[row][row_index + 3].data = (self.vertices[row][row_index + 3].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[row][row_index + 4].data = (self.vertices[row][row_index + 4].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertices[row][row_index + 5].data = (self.vertices[row][row_index + 5].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index].data =       (self.vertex_lines[row].vertices[row_index].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index + 1].data =   (self.vertex_lines[row].vertices[row_index + 1].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index + 2].data =   (self.vertex_lines[row].vertices[row_index + 2].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index + 3].data =   (self.vertex_lines[row].vertices[row_index + 3].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index + 4].data =   (self.vertex_lines[row].vertices[row_index + 4].data & 0xFFFFFF00) | tex_num as u32;
+            self.vertex_lines[row].vertices[row_index + 5].data =   (self.vertex_lines[row].vertices[row_index + 5].data & 0xFFFFFF00) | tex_num as u32;
 
-            self.dirty_lines[row] = true;
+            self.vertex_lines[row].set_dirty();
         }
     }
 
@@ -90,7 +108,7 @@ impl VertexGrid {
         let row = tile_y * 8;
         let row_index = tile_x * 6;
 
-        self.vertices[row][row_index].data as u8
+        self.vertex_lines[row].vertices[row_index].data as u8
     }
 
     // Writing and reading attributes (CGB mode).
@@ -116,14 +134,14 @@ impl VertexGrid {
 
         for (row, y) in (start_row..end_row).zip(&y_coords) {
             let y = y << 9;
-            self.vertices[row][row_index].data =     (self.vertices[row][row_index].data & 0x000000FF) | data | y | left as u32;
-            self.vertices[row][row_index + 1].data = (self.vertices[row][row_index + 1].data & 0x000000FF) | data | y | left as u32;
-            self.vertices[row][row_index + 2].data = (self.vertices[row][row_index + 2].data & 0x000000FF) | data | y | right as u32;
-            self.vertices[row][row_index + 3].data = (self.vertices[row][row_index + 3].data & 0x000000FF) | data | y | left as u32;
-            self.vertices[row][row_index + 4].data = (self.vertices[row][row_index + 4].data & 0x000000FF) | data | y | right as u32;
-            self.vertices[row][row_index + 5].data = (self.vertices[row][row_index + 5].data & 0x000000FF) | data | y | right as u32;
+            self.vertex_lines[row].vertices[row_index].data =     (self.vertex_lines[row].vertices[row_index].data & 0x000000FF) | data | y | left as u32;
+            self.vertex_lines[row].vertices[row_index + 1].data = (self.vertex_lines[row].vertices[row_index + 1].data & 0x000000FF) | data | y | left as u32;
+            self.vertex_lines[row].vertices[row_index + 2].data = (self.vertex_lines[row].vertices[row_index + 2].data & 0x000000FF) | data | y | right as u32;
+            self.vertex_lines[row].vertices[row_index + 3].data = (self.vertex_lines[row].vertices[row_index + 3].data & 0x000000FF) | data | y | left as u32;
+            self.vertex_lines[row].vertices[row_index + 4].data = (self.vertex_lines[row].vertices[row_index + 4].data & 0x000000FF) | data | y | right as u32;
+            self.vertex_lines[row].vertices[row_index + 5].data = (self.vertex_lines[row].vertices[row_index + 5].data & 0x000000FF) | data | y | right as u32;
 
-            self.dirty_lines[row] = true;
+            self.vertex_lines[row].set_dirty();
         }
     }
 
@@ -131,16 +149,28 @@ impl VertexGrid {
         let row = tile_y * 8;
         let row_index = tile_x * 6;
 
-        (self.vertices[row][row_index].data >> 12) as u8
+        (self.vertex_lines[row].vertices[row_index].data >> 12) as u8
     }
 
-    // Get a line of vertices.
-    pub fn ref_data<'a>(&'a mut self, y: usize) -> &'a [Vertex] {
-        self.dirty_lines[y] = false;
-        &self.vertices[y]
+    // Get a row of vertices, for the background.
+    pub fn ref_data_bg<'a>(&'a mut self, y: usize) -> &'a [Vertex] {
+        self.vertex_lines[y].bg_dirty = false;
+        &self.vertex_lines[y].vertices
     }
 
-    pub fn is_dirty(&self, y: usize) -> bool {
-        self.dirty_lines[y]
+    // Check if the data has changed since the last time the background read it for the given row.
+    pub fn is_dirty_bg(&self, y: usize) -> bool {
+        self.vertex_lines[y].bg_dirty
+    }
+
+    // Get a row of vertices, for the background.
+    pub fn ref_data_window<'a>(&'a mut self, y: usize) -> &'a [Vertex] {
+        self.vertex_lines[y].window_dirty = false;
+        &self.vertex_lines[y].vertices
+    }
+
+    // Check if the data has changed since the last time the background read it for the given row.
+    pub fn is_dirty_window(&self, y: usize) -> bool {
+        self.vertex_lines[y].window_dirty
     }
 }

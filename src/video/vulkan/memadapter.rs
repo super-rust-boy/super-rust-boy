@@ -28,7 +28,6 @@ use crate::video::{
     PaletteColours,
     types::Vertex,
     mem::{
-        TileMap,
         VideoMem,
         consts::{TEX_WIDTH, TEX_HEIGHT, MAP_SIZE}
     }
@@ -107,10 +106,7 @@ impl MemAdapter {
     pub fn get_background(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.is_cgb_mode() || mem.get_background_priority() {
             let row = y as usize;
-            let vertices = match mem.background_tile_map() {
-                TileMap::_0 => mem.ref_tile_map_0(row),
-                TileMap::_1 => mem.ref_tile_map_1(row)
-            };
+            let vertices = mem.ref_background(row);
             Self::make_lo_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.lo_bg_vertex_buffers[row])
         } else {
             None
@@ -121,10 +117,7 @@ impl MemAdapter {
     pub fn get_background_hi(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.is_cgb_mode() {
             let row = y as usize;
-            let vertices = match mem.background_tile_map() {
-                TileMap::_0 => mem.ref_tile_map_0(row),
-                TileMap::_1 => mem.ref_tile_map_1(row)
-            };
+            let vertices = mem.ref_background(row);
             Self::make_hi_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.hi_bg_vertex_buffers[row])
         } else {
             None
@@ -135,10 +128,7 @@ impl MemAdapter {
     pub fn get_window(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.get_window_enable() {
             let row = y as usize;
-            let vertices = match mem.window_tile_map() {
-                TileMap::_0 => mem.ref_tile_map_0(row),
-                TileMap::_1 => mem.ref_tile_map_1(row)
-            };
+            let vertices = mem.ref_window(row);
             Self::make_lo_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.lo_window_vertex_buffers[row])
         } else {
             None
@@ -149,10 +139,7 @@ impl MemAdapter {
     pub fn get_window_hi(&mut self, mem: &mut VideoMem, y: u8) -> Option<VertexBuffer> {
         if mem.is_cgb_mode() {
             let row = y as usize;
-            let vertices = match mem.window_tile_map() {
-                TileMap::_0 => mem.ref_tile_map_0(row),
-                TileMap::_1 => mem.ref_tile_map_1(row)
-            };
+            let vertices = mem.ref_window(row);
             Self::make_hi_vertex_buffer(vertices, &mut self.vertex_buffer_pool, &mut self.hi_window_vertex_buffers[row])
         } else {
             None
