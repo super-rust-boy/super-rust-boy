@@ -43,7 +43,7 @@ fn main() {
 
     let mut events_loop = EventsLoop::new();
     let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"), RendererType::Vulkano(&events_loop));
-    
+
     if cmd_args.is_present("debug") {
         debug::debug_mode(&mut rustboy);
     } else {
