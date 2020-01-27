@@ -13,7 +13,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "rustboy-bin"
 path = "src/bin/main.rs"
-required-features = ["debug"]
+required-features = ["debug", "vulkano-render"]
 
 [dependencies]
 cpal = "0.11"
@@ -28,6 +28,7 @@ chrono = "0.4"
 
 [features]
 debug = []
+vulkano-render = []
 
 #[profile.release]
 #debug = true
