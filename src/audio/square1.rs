@@ -223,7 +223,7 @@ impl AudioChannelGen<Square1Regs> for Square1Gen {
             self.freq_counter = 0;
             self.freq_sweep_dir = if self.freq_sweep_step == 0 {
                 Direction::None
-            } else if test_bit!(regs.vol_envelope_reg, 3) {//(regs.vol_envelope_reg & 0x8) != 0 {
+            } else if test_bit!(regs.vol_envelope_reg, 3) {
                 Direction::Decrease
             } else {
                 Direction::Increase
