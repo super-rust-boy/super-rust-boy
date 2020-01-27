@@ -66,7 +66,7 @@ impl Timer {
                 _ => false,
             };
             if inc {
-                self.timer_counter = (self.timer_counter as u16 + 1) as u8;
+                self.timer_counter = self.timer_counter.wrapping_add(1);
                 if self.timer_counter == 0 {
                     self.trigger = true;
                 }

@@ -62,7 +62,11 @@ impl VideoDevice {
         let mut mem = VideoMem::new(palette, cgb_mode);
 
         let mut renderer = match renderer_type {
-            RendererType::Vulkano(e) => VulkanRenderer::new(e, &mem)
+            RendererType::Vulkano(e) => if cfg!(feature = "vulkano-render") {
+                VulkanRenderer::new(e, &mem)
+            } else {
+                panic!("'vulkano-render' feature is not enabled. Please enable it to use the Vulkan renderers.")
+            },
         };
 
         renderer.frame_start(&mut mem);

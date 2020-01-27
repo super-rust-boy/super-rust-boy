@@ -165,7 +165,7 @@ impl AudioChannelGen<NoiseRegs> for NoiseGen {
 
             self.freq_step = self.sample_rate.checked_div(FREQ_CONST / divisor).unwrap_or(1); // number of samples between counter switches
             self.freq_counter = 0;
-            self.counter_width = (regs.poly_counter_reg & 8) == 8;
+            self.counter_width = test_bit!(regs.poly_counter_reg, 3);
 
             self.rand_counter = 0xFFFF;
 

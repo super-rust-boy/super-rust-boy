@@ -19,5 +19,5 @@ pub trait Renderer {
 }
 
 pub enum RendererType<'a> {
-    Vulkano(&'a EventsLoop)
+    Vulkano(&'a EventsLoop) // Requires vulkano-render feature
 }

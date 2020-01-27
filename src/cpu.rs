@@ -49,10 +49,10 @@ pub struct CPU {
     mem: MemBus,
 
     // Internals
-    step_cycles: u32,
-    v_blank_latch: bool,
+    step_cycles:        u32,
+    v_blank_latch:      bool,
     double_speed_latch: bool,
-    cgb_dma_active: bool
+    cgb_dma_active:     bool
 }
 
 
@@ -98,14 +98,8 @@ impl With {
     fn resolve(self, hl: u16, cpu: &mut CPU) {
         use self::With::*;
         match self {
-            Inc => {
-                let inc = (hl as u32) + 1;
-                cpu.set_16(Reg::HL, inc as u16);
-            },
-            Dec => {
-                let dec = (hl as u32) - 1;
-                cpu.set_16(Reg::HL, dec as u16);
-            },
+            Inc => cpu.set_16(Reg::HL, hl.wrapping_add(1)),
+            Dec => cpu.set_16(Reg::HL, hl.wrapping_sub(1)),
             None => {}
         }
     }
@@ -130,10 +124,10 @@ impl CPU {
             sp:     0xFFFE,
             pc:     0x100,
             mem:    mem,
-            step_cycles: GB_STEP,
-            v_blank_latch: false,
+            step_cycles:        GB_STEP,
+            v_blank_latch:      false,
             double_speed_latch: false,
-            cgb_dma_active: false
+            cgb_dma_active:     false
         }
     }
 
@@ -160,6 +154,26 @@ impl CPU {
         return true;
     }
 
+    pub fn frame_update(&mut self) {
+        self.mem.render_frame();
+        self.mem.flush_cart();
+    }
+
+    pub fn set_button(&mut self, button: Buttons, val: bool) {
+        self.mem.set_button(button, val);
+    }
+
+    pub fn set_direction(&mut self, direction: Directions, val: bool) {
+        self.mem.set_direction(direction, val);
+    }
+
+    pub fn on_resize(&mut self) {
+        self.mem.on_resize();
+    }
+}
+
+// Top level internals
+impl CPU {
     // Increment cycle count and update timer.
     #[inline]
     fn clock_inc(&mut self) {
@@ -205,7 +219,7 @@ impl CPU {
             }
         }
 
-        return false;
+        false
     }
 
     // Run a single instruction.
@@ -439,26 +453,9 @@ impl CPU {
             _ => {},
         }
     }
-
-    pub fn frame_update(&mut self) {
-        self.mem.render_frame();
-        self.mem.flush_cart();
-    }
-
-    pub fn set_button(&mut self, button: Buttons, val: bool) {
-        self.mem.set_button(button, val);
-    }
-
-    pub fn set_direction(&mut self, direction: Directions, val: bool) {
-        self.mem.set_direction(direction, val);
-    }
-
-    pub fn on_resize(&mut self) {
-        self.mem.on_resize();
-    }
 }
 
-// Internal
+// Internal helpers.
 impl CPU {
     // Special access registers
     #[inline]
@@ -528,16 +525,14 @@ impl CPU {
     // read mem pointed to by pc (and inc pc)
     fn fetch(&mut self) -> u8 {
         let result = self.read_mem(self.pc);
-        self.pc = ((self.pc as u32) + 1) as u16;
+        self.pc = self.pc.wrapping_add(1);
 
         result
     }
 
     fn fetch_16(&mut self) -> u16 {
-        let lo_byte = self.read_mem(self.pc);
-        self.pc = ((self.pc as u32) + 1) as u16;
-        let hi_byte = self.read_mem(self.pc);
-        self.pc = ((self.pc as u32) + 1) as u16;
+        let lo_byte = self.fetch();
+        let hi_byte = self.fetch();
 
         make_16!(hi_byte, lo_byte)
     }
@@ -577,19 +572,19 @@ impl CPU {
         let lo_byte = lo_16!(self.sp);
         let hi_byte = hi_16!(self.sp);
         self.write_mem(imm, lo_byte);
-        self.write_mem(imm + 1, hi_byte);
+        self.write_mem(imm.wrapping_add(1), hi_byte);
     }
 
     #[inline]
     fn stack_push(&mut self, val: u8) {
-        self.sp = ((self.sp as i32) - 1) as u16;
+        self.sp = self.sp.wrapping_sub(1);
         self.write_mem(self.sp, val);
     }
 
     #[inline]
     fn stack_pop(&mut self) -> u8 {
         let ret = self.read_mem(self.sp);
-        self.sp = ((self.sp as u32) + 1) as u16;
+        self.sp = self.sp.wrapping_add(1);
         ret
     }
 }
@@ -658,31 +653,29 @@ impl CPU {
 
     // inc/dec
     fn inc(&mut self, op: u8) -> u8 {
-        let result = (op as u16) + 1;
+        let result = op.wrapping_add(1);
         self.flags.remove(CPUFlags::NEG);
-        self.flags.set(CPUFlags::ZERO, (result & 0xFF) == 0);
+        self.flags.set(CPUFlags::ZERO, result == 0);
         self.flags.set(CPUFlags::HC, ((op & 0xF) + 1) > 0xF);
-        result as u8
+        result
     }
 
     fn dec(&mut self, op: u8) -> u8 {
-        let result = ((op as i16) - 1) as i8;
+        let result = op.wrapping_sub(1);
         self.flags.insert(CPUFlags::NEG);
-        self.flags.set(CPUFlags::ZERO, (result as u8) == 0);
-        self.flags.set(CPUFlags::HC, (op & 0xF) < (result as u8 & 0xF));
-        result as u8
+        self.flags.set(CPUFlags::ZERO, result == 0);
+        self.flags.set(CPUFlags::HC, (op & 0xF) < (result & 0xF));
+        result
     }
 
     fn inc_16(&mut self, op: u16) -> u16 {
         self.clock_inc();
-        let result = (op as u32) + 1;
-        result as u16
+        op.wrapping_add(1)
     }
 
     fn dec_16(&mut self, op: u16) -> u16 {
         self.clock_inc();
-        let result = (op as i32) - 1;
-        result as u16
+        op.wrapping_sub(1)
     }
 
     fn daa(&mut self) {
