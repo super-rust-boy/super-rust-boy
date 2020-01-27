@@ -3,7 +3,13 @@ use bitflags::bitflags;
 
 use super::Side;
 
-use crate::video::types::Vertex;
+use crate::video::{
+    mem::consts::TEX_HEIGHT,
+    types::Vertex
+};
+
+// Each 1x8 line is represented by 6 vertices.
+const LINE_VERTICES: usize = 6;
 
 bitflags! {
     #[derive(Default)]
@@ -52,14 +58,14 @@ impl VertexGrid {
         let mut vertex_lines = Vec::new();
 
         let x_frac = 2.0 / view_size.0 as f32;
-        let y_frac = (2.0 / view_size.1 as f32) / 8.0;  // Each y tile is 8 lines high.
+        let y_frac = (2.0 / view_size.1 as f32) / (TEX_HEIGHT as f32);  // Each y tile is 8 lines high.
         let mut lo_y = -1.0;
         let mut hi_y = lo_y + y_frac;
 
-        for y in 0..(grid_size.1 * 8) {
+        for y in 0..(grid_size.1 * TEX_HEIGHT) {
             let mut row_vertices = Vec::new();
 
-            let y_coord = ((y % 8) << 9) as u32;
+            let y_coord = ((y % TEX_HEIGHT) << 9) as u32;
             let mut left_x = -1.0;
             let mut right_x = left_x + x_frac;
 
@@ -87,35 +93,33 @@ impl VertexGrid {
 
     // Sets the tex number for a tile.
     pub fn set_tile_texture(&mut self, tile_x: usize, tile_y: usize, tex_num: u8) {
-        let start_row = tile_y * 8;
-        let end_row = start_row + 8;
-        let row_index = tile_x * 6;
+        let start_row = tile_y * TEX_HEIGHT;
+        let end_row = start_row + TEX_HEIGHT;
+        let row_index = tile_x * LINE_VERTICES;
 
         for row in start_row..end_row {
-            self.vertex_lines[row].vertices[row_index].data =       (self.vertex_lines[row].vertices[row_index].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertex_lines[row].vertices[row_index + 1].data =   (self.vertex_lines[row].vertices[row_index + 1].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertex_lines[row].vertices[row_index + 2].data =   (self.vertex_lines[row].vertices[row_index + 2].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertex_lines[row].vertices[row_index + 3].data =   (self.vertex_lines[row].vertices[row_index + 3].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertex_lines[row].vertices[row_index + 4].data =   (self.vertex_lines[row].vertices[row_index + 4].data & 0xFFFFFF00) | tex_num as u32;
-            self.vertex_lines[row].vertices[row_index + 5].data =   (self.vertex_lines[row].vertices[row_index + 5].data & 0xFFFFFF00) | tex_num as u32;
+            let line = &mut self.vertex_lines[row];
+            for vertex in 0..LINE_VERTICES {
+                line.vertices[row_index + vertex].data = (line.vertices[row_index + vertex].data & 0xFFFFFF00) | tex_num as u32;
+            }
 
-            self.vertex_lines[row].set_dirty();
+            line.set_dirty();
         }
     }
 
     // Gets the tex number for a tile.
     pub fn get_tile_texture(&self, tile_x: usize, tile_y: usize) -> u8 {
-        let row = tile_y * 8;
-        let row_index = tile_x * 6;
+        let row = tile_y * TEX_HEIGHT;
+        let row_index = tile_x * LINE_VERTICES;
 
         self.vertex_lines[row].vertices[row_index].data as u8
     }
 
     // Writing and reading attributes (CGB mode).
     pub fn set_tile_attribute(&mut self, tile_x: usize, tile_y: usize, attributes: u8) {
-        let start_row = tile_y * 8;
-        let end_row = start_row + 8;
-        let row_index = tile_x * 6;
+        let start_row = tile_y * TEX_HEIGHT;
+        let end_row = start_row + TEX_HEIGHT;
+        let row_index = tile_x * LINE_VERTICES;
 
         let flags = Attributes::from_bits_truncate(attributes);
         let data = (attributes as u32) << 12;
@@ -127,27 +131,29 @@ impl VertexGrid {
         };
 
         let y_coords = if flags.contains(Attributes::Y_FLIP) {
-            (0..8).rev().collect::<Vec<u32>>()
+            (0..(TEX_HEIGHT as u32)).rev().collect::<Vec<_>>()
         } else {
-            (0..8).collect::<Vec<u32>>()
+            (0..(TEX_HEIGHT as u32)).collect::<Vec<_>>()
         };
 
         for (row, y) in (start_row..end_row).zip(&y_coords) {
+            let line = &mut self.vertex_lines[row];
             let y = y << 9;
-            self.vertex_lines[row].vertices[row_index].data =     (self.vertex_lines[row].vertices[row_index].data & 0x000000FF) | data | y | left as u32;
-            self.vertex_lines[row].vertices[row_index + 1].data = (self.vertex_lines[row].vertices[row_index + 1].data & 0x000000FF) | data | y | left as u32;
-            self.vertex_lines[row].vertices[row_index + 2].data = (self.vertex_lines[row].vertices[row_index + 2].data & 0x000000FF) | data | y | right as u32;
-            self.vertex_lines[row].vertices[row_index + 3].data = (self.vertex_lines[row].vertices[row_index + 3].data & 0x000000FF) | data | y | left as u32;
-            self.vertex_lines[row].vertices[row_index + 4].data = (self.vertex_lines[row].vertices[row_index + 4].data & 0x000000FF) | data | y | right as u32;
-            self.vertex_lines[row].vertices[row_index + 5].data = (self.vertex_lines[row].vertices[row_index + 5].data & 0x000000FF) | data | y | right as u32;
 
-            self.vertex_lines[row].set_dirty();
+            line.vertices[row_index].data =     (line.vertices[row_index].data & 0x000000FF) | data | y | left as u32;
+            line.vertices[row_index + 1].data = (line.vertices[row_index + 1].data & 0x000000FF) | data | y | left as u32;
+            line.vertices[row_index + 2].data = (line.vertices[row_index + 2].data & 0x000000FF) | data | y | right as u32;
+            line.vertices[row_index + 3].data = (line.vertices[row_index + 3].data & 0x000000FF) | data | y | left as u32;
+            line.vertices[row_index + 4].data = (line.vertices[row_index + 4].data & 0x000000FF) | data | y | right as u32;
+            line.vertices[row_index + 5].data = (line.vertices[row_index + 5].data & 0x000000FF) | data | y | right as u32;
+
+            line.set_dirty();
         }
     }
 
     pub fn get_tile_attribute(&self, tile_x: usize, tile_y: usize) -> u8 {
-        let row = tile_y * 8;
-        let row_index = tile_x * 6;
+        let row = tile_y * TEX_HEIGHT;
+        let row_index = tile_x * LINE_VERTICES;
 
         (self.vertex_lines[row].vertices[row_index].data >> 12) as u8
     }
