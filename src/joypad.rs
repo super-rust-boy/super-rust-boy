@@ -26,8 +26,8 @@ enum Select {
     None
 }
 
-const SELECT_DIRECTION: u8  = bit!(4);
-const SELECT_BUTTONS: u8    = bit!(5);
+const SELECT_DIRECTION: u8  = 4;
+const SELECT_BUTTONS: u8    = 5;
 
 pub struct Joypad {
     buttons:    Buttons,
@@ -57,9 +57,9 @@ impl Joypad {
     }
 
     pub fn write(&mut self, val: u8) {
-        self.selector = if (val & SELECT_BUTTONS) == 0 {
+        self.selector = if !test_bit!(val, SELECT_BUTTONS) {
             Select::Button
-        } else if (val & SELECT_DIRECTION) == 0 {
+        } else if !test_bit!(val, SELECT_DIRECTION) {
             Select::Direction
         } else {
             Select::None
