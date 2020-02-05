@@ -15,20 +15,21 @@ name = "rustboy-bin"
 path = "src/bin/main.rs"
 required-features = ["debug", "vulkano-render"]
 
+[features]
+debug = []
+vulkano-render = ["vulkano", "vulkano-shaders", "vulkano-win", "winit"]
+
 [dependencies]
 cpal = "0.11"
-vulkano = "0.16"
-vulkano-shaders = "0.16"
-vulkano-win = "0.16"
-winit = "0.19"
 cgmath = "0.17"
 bitflags = "1.1"
 clap = "2"
 chrono = "0.4"
 
-[features]
-debug = []
-vulkano-render = []
+vulkano = { version = "0.16", optional = true }
+vulkano-shaders = { version = "0.16", optional = true }
+vulkano-win = { version = "0.16", optional = true }
+winit = { version = "0.19", optional = true }
 
 #[profile.release]
 #debug = true

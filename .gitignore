@@ -5,3 +5,4 @@ test/
 *.txt
 *.sav
 roms/
+*.xcodeproj
