@@ -39,10 +39,10 @@ impl SGBPalette {
 
 // GB greyscale palette
 const BW_COLOURS: PaletteColours = Matrix4::from_cols(
-    Vector4::new(1.0, 1.0, 1.0, 1.0),
-    Vector4::new(0.65, 0.65, 0.65, 1.0),
-    Vector4::new(0.33, 0.33, 0.33, 1.0),
-    Vector4::new(0.0, 0.0, 0.0, 1.0)
+    make_colour!(0xFF, 0xFF, 0xFF),
+    make_colour!(0xA6, 0xA6, 0xA6),
+    make_colour!(0x54, 0x54, 0x54),
+    make_colour!(0x00, 0x00, 0x00)
 );
 
 pub const BW_PALETTE: SGBPalette = SGBPalette {
@@ -53,10 +53,10 @@ pub const BW_PALETTE: SGBPalette = SGBPalette {
 
 // GB classic (green) palette
 const CLASSIC_COLOURS: PaletteColours = Matrix4::from_cols(
-    Vector4::new(0.647, 0.765, 0.086, 1.0),
-    Vector4::new(0.596, 0.702, 0.165, 1.0),
-    Vector4::new(0.184, 0.388, 0.145, 1.0),
-    Vector4::new(0.055, 0.208, 0.059, 1.0)
+    make_colour!(0xA5, 0xC3, 0x16),
+    make_colour!(0x98, 0xB3, 0x2A),
+    make_colour!(0x2F, 0x63, 0x25),
+    make_colour!(0x0E, 0x35, 0x0F)
 );
 
 pub const CLASSIC_PALETTE: SGBPalette = SGBPalette {
