@@ -8,7 +8,10 @@ use bitflags::bitflags;
 
 use crate::{
     mem::MemDevice,
-    video::PaletteColours
+    video::{
+        PaletteColours,
+        Colour
+    }
 };
 
 const MAX_COLOUR: f32 = 0x1F as f32;
@@ -20,15 +23,7 @@ bitflags! {
     }
 }
 
-// 15-bit colour, stored in 2 bytes.
-#[derive(Clone, Copy)]
-struct Colour {
-    r: u8,
-    g: u8,
-    b: u8
-}
-
-impl Colour {
+/*impl Colour15 {
     fn new() -> Self {
         Colour {
             r: 0x1F,
@@ -57,25 +52,25 @@ impl Colour {
         }
     }
 
-    fn get_vector(&self) -> Vector4<f32> {
+    fn get_vector(&self) -> Vector4<u8> {
         Vector4::new(
-            self.r as f32 / MAX_COLOUR,
-            self.g as f32 / MAX_COLOUR,
-            self.b as f32 / MAX_COLOUR,
+            self.r,
+            self.g,
+            self.b,
             1.0
         )
     }
-}
+}*/
 
 #[derive(Clone)]
 struct DynamicPalette {
-    colours: Vec<Colour>
+    colours: PaletteColours
 }
 
 impl DynamicPalette {
     fn new() -> Self {
         DynamicPalette {
-            colours: vec![Colour::new(); 4]
+            colours: [Colour::new(); 3]
         }
     }
 
@@ -118,8 +113,6 @@ pub struct DynamicPaletteMem {
     obj_palettes:       Vec<DynamicPalette>,
     obj_palette_index:  usize,
     obj_auto_inc:       PaletteIndex,
-
-    dirty:              bool
 }
 
 impl DynamicPaletteMem {
@@ -132,13 +125,10 @@ impl DynamicPaletteMem {
             obj_palettes:       vec![DynamicPalette::new(); 8],
             obj_palette_index:  0,
             obj_auto_inc:       PaletteIndex::default(),
-
-            dirty:              true
         }
     }
 
     pub fn make_data(&mut self) -> Vec<PaletteColours> {
-        self.dirty = false;
         self.bg_palettes.iter()
             .map(|p| p.get_palette(true))
             .chain(self.bg_palettes.iter().map(|p| p.get_palette(false)))
@@ -177,8 +167,6 @@ impl DynamicPaletteMem {
         if self.bg_auto_inc.contains(PaletteIndex::AUTO_INCREMENT) {
             self.bg_palette_index = (self.bg_palette_index + 1) % 0x40;
         }
-
-        self.dirty = true;
     }
 
     pub fn read_obj(&self) -> u8 {
@@ -194,11 +182,5 @@ impl DynamicPaletteMem {
         if self.obj_auto_inc.contains(PaletteIndex::AUTO_INCREMENT) {
             self.obj_palette_index = (self.obj_palette_index + 1) % 0x40;
         }
-
-        self.dirty = true;
-    }
-
-    pub fn is_dirty(&self) -> bool {
-        self.dirty
     }
 }

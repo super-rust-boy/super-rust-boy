@@ -11,66 +11,90 @@
     // Each pixel is in reality, a 2-bit value mapped appropriately.
     // The fragment shader assigns the colour based on the value for the pixel.
 
-use super::consts::TEX_AREA;
+const TILE_WIDTH: usize = 8;
+const TILE_HEIGHT: usize = 8;
 
-pub struct TileAtlas {
-    atlas:      Vec<u8>,            // formatted atlas of tiles
-    atlas_size: (usize, usize),     // width/height of texture in tiles
-
-    dirty:      bool                // true if the data changes
+#[derive(Clone)]
+pub struct Tile {
+    texels: Vec<Vec<u8>>    // Y by X, 2 bits per pixel
 }
 
-impl TileAtlas {
-    pub fn new(atlas_size: (usize, usize)) -> Self {
-        let atlas_area = (atlas_size.0 * atlas_size.1) * TEX_AREA;
-        TileAtlas {
-            atlas:      vec![0; atlas_area],
-            atlas_size: atlas_size,
+impl Tile {
+    pub fn new() -> Self {
+        Tile {
+            texels: vec![vec![0; TILE_WIDTH]; TILE_HEIGHT]
+        }
+    }
 
-            dirty:      true,
+    #[inline]
+    pub fn get_texel(&self, x: usize, y: usize) -> u8 {
+        self.texels[y][x]
+    }
+}
+
+pub struct TileMem {
+    tiles:  Vec<Tile>
+}
+
+impl TileMem {
+    pub fn new(num_tiles: usize) -> Self {
+        TileMem {
+            tiles:  vec![Tile::new(); num_tiles]
         }
     }
 
     // Write a pixel to the atlas.
     // The least significant bit.
     #[inline]
-    pub fn set_pixel_lower_row(&mut self, loc: usize, row: u8) {
-        for i in 0..8 {
-            let bit = (row >> (7 - i)) & 1;
-            self.atlas[loc + i] = (self.atlas[loc + i] & bit!(1)) | bit;
-        }
+    pub fn set_pixel_lower_row(&mut self, loc: usize, row_vals: u8) {
+        let (tile_num, y) = get_tile_and_row(loc);
+        let row = &mut self.tiles[tile_num].texels[y];
 
-        self.dirty = true;
+        for (i, texel) in row.iter_mut().enumerate() {
+            let bit = (row_vals >> (7 - i)) & 1;
+            *texel = (*texel & bit!(1)) | bit;
+        }
     }
 
     // The most significant bit.
     #[inline]
-    pub fn set_pixel_upper_row(&mut self, loc: usize, row: u8) {
-        for i in 0..8 {
-            let bit = (row >> (7 - i)) & 1;
-            self.atlas[loc + i] = (self.atlas[loc + i] & bit!(0)) | (bit << 1);
-        }
+    pub fn set_pixel_upper_row(&mut self, loc: usize, row_vals: u8) {
+        let (tile_num, y) = get_tile_and_row(loc);
+        let row = &mut self.tiles[tile_num].texels[y];
 
-        self.dirty = true;
+        for (i, texel) in row.iter_mut().enumerate() {
+            let bit = (row_vals >> (7 - i)) & 1;
+            *texel = (*texel & bit!(0)) | (bit << 1);
+        }
     }
 
     // Read a pixel row from the atlas.
     pub fn get_pixel_lower_row(&self, loc: usize) -> u8 {
+        let (tile_num, y) = get_tile_and_row(loc);
+        let row = &self.tiles[tile_num].texels[y];
+
         (0..8).fold(0, |acc, i| {
-            let bit = self.atlas[loc + i] & bit!(0);
+            let bit = row[i] & bit!(0);
             let shift = 7 - i;
             acc | (bit << shift)
         })
     }
 
     pub fn get_pixel_upper_row(&self, loc: usize) -> u8 {
+        let (tile_num, y) = get_tile_and_row(loc);
+        let row = &self.tiles[tile_num].texels[y];
+
         (0..8).fold(0, |acc, i| {
-            let bit = (self.atlas[loc + i] & bit!(1)) >> 1;
+            let bit = (row[i] & bit!(1)) >> 1;
             let shift = 7 - i;
             acc | (bit << shift)
         })
     }
 
+    pub fn ref_tile<'a>(&'a self, tile_num: usize) -> &'a Tile {
+        &self.tiles[tile_num]
+    }
+/*
     // Get the raw data and unset the dirty flag.
     pub fn ref_data<'a>(&'a mut self) -> &'a [u8] {
         self.dirty = false;
@@ -90,5 +114,12 @@ impl TileAtlas {
     // Check if memory is dirty.
     pub fn is_dirty(&self) -> bool {
         self.dirty
-    }
+    }*/
+}
+
+#[inline]
+fn get_tile_and_row(loc: usize) -> (usize, usize) {
+    let row = (loc >> 1) & 0x7;
+    let tile = loc >> 4;
+    (tile, row)
 }

@@ -45,9 +45,10 @@ fn main() {
     let palette = choose_palette(cmd_args.value_of("palette"));
 
     let mut events_loop = EventsLoop::new();
-    let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"), RendererType::Vulkano(&events_loop));
+    let mut rustboy = RustBoy::new(&cart, &save_file, palette, cmd_args.is_present("mute"));
 
     //let mut averager = avg::Averager::<i64>::new(60);
+    let frame_tex = [0; 160 * 144 * 4];
     
     if cmd_args.is_present("debug") {
         debug::debug_mode(&mut rustboy);
@@ -56,7 +57,7 @@ fn main() {
             let frame = Utc::now();
 
             read_inputs(&mut events_loop, &mut rustboy);
-            rustboy.frame();
+            rustboy.frame(frame_tex);
 
             //averager.add((Utc::now() - frame).num_milliseconds());
             //println!("Frame t: {}ms", averager.get_avg());
@@ -114,7 +115,7 @@ fn read_inputs(events_loop: &mut EventsLoop, rustboy: &mut RustBoy) {
                         _ => {},
                     }
                 },
-                WindowEvent::Resized(_) => rustboy.on_resize(),
+                //WindowEvent::Resized(_) => rustboy.on_resize(),
                 _ => {}
             },
             _ => {},

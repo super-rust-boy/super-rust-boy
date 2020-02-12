@@ -13,9 +13,7 @@ mod joypad;
 pub mod debug;
 
 pub use video::{
-    UserPalette,
-    VulkanRenderer,
-    RendererType
+    UserPalette
 };
 
 use joypad::{
@@ -50,11 +48,11 @@ pub struct RustBoy {
 }
 
 impl RustBoy {
-    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool, renderer: RendererType) -> Box<Self> {
+    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool) -> Box<Self> {
         let (send, recv) = channel();
 
         let ad = AudioDevice::new(send);
-        let mem = MemBus::new(cart_name, save_file_name, palette, ad, renderer);
+        let mem = MemBus::new(cart_name, save_file_name, palette, ad);
 
         let cpu = CPU::new(mem);
 
@@ -72,11 +70,11 @@ impl RustBoy {
     }
 
     // Call every 1/60 seconds.
-    pub fn frame(&mut self) {
+    pub fn frame(&mut self, frame: [u8; 160 * 144 * 4]) {
+        self.cpu.frame_update(std::sync::Arc::new(std::sync::Mutex::new(frame)));    // Draw video and read inputs
+
         while self.cpu.step() {}    // Execute up to v-blanking
-
-        self.cpu.frame_update();    // Draw video and read inputs
-
+        
         if let Some(recv) = &mut self.audio_recv {
             while let Ok(_) = recv.try_recv() {}
         }
@@ -97,9 +95,9 @@ impl RustBoy {
         }
     }
 
-    pub fn on_resize(&mut self) {
+    /*pub fn on_resize(&mut self) {
         self.cpu.on_resize();
-    }
+    }*/
 
     #[cfg(feature = "debug")]
     pub fn step(&mut self) -> bool {
