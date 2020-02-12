@@ -197,55 +197,6 @@ impl VideoMem {
     pub fn display_enabled(&self) -> bool {
         self.lcd_control.contains(LCDControl::ENABLE)
     }
-
-    // Get clear colour.
-    /*pub fn get_clear_colour(&self) -> [f32; 4] {
-        if self.display_enabled() && !self.cgb_mode {
-            self.palettes.get_colour_0()
-        } else {
-            self.clear_colour
-        }.into()
-    }*/
-
-    // Get push constants
-    pub fn get_bg_scroll(&self) -> [f32; 2] {
-        [self.scroll_x as f32 * -OFFSET_FRAC_X, self.scroll_y as f32 * -OFFSET_FRAC_Y]
-    }
-
-    pub fn get_window_position(&self) -> [f32; 2] {
-        [(self.window_x as f32 - 7.0) * OFFSET_FRAC_X, self.window_y as f32 * OFFSET_FRAC_Y]
-    }
-
-    pub fn get_tile_data_offset(&self) -> u32 {
-        if self.lcd_control.contains(LCDControl::TILE_DATA_SELECT) {
-            0
-        } else {
-            256
-        }
-    }
-
-    // Get the size of a single tile in the atlas.
-    /*pub fn get_tile_size(&self) -> [f32; 2] {
-        self.tile_mem.get_tile_size()
-    }
-
-    // Get the size of the atlas (in tiles).
-    pub fn get_atlas_size(&self) -> [f32; 2] {
-        self.tile_mem.get_atlas_size()
-    }*/
-
-    // Y lines
-    pub fn get_lcd_y(&self) -> u8 {
-        self.lcdc_y
-    }
-
-    pub fn get_scroll_y(&self) -> u8 {
-        self.scroll_y
-    }
-
-    pub fn get_window_y(&self) -> u8 {
-        self.window_y
-    }
 }
 
 // Accessed from Adapters
@@ -264,19 +215,6 @@ impl VideoMem {
     pub fn is_large_sprites(&self) -> bool {
         self.lcd_control.contains(LCDControl::OBJ_SIZE)
     }
-
-    pub fn is_cgb_mode(&self) -> bool {
-        self.cgb_mode
-    }
-
-    // Returns the raw tile atlas data (pattern memory). If None is returned, the data has not changed since last time.
-    /*pub fn ref_tile_atlas<'a>(&'a mut self) -> Option<&'a [u8]> {
-        if self.tile_mem.is_dirty() {
-            Some(self.tile_mem.ref_data())
-        } else {
-            None
-        }
-    }*/
 
     pub fn ref_tile<'a>(&'a self, tile_num: usize) -> &'a Tile {
         self.tile_mem.ref_tile(tile_num)
@@ -318,35 +256,6 @@ impl VideoMem {
         }
     }
 
-    // Get low-priority sprites (below the background) for given y line.
-    /*pub fn ref_sprites_lo<'a>(&'a mut self, y: u8) -> Option<&'a mut Vec<Vertex>> {
-        if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
-            let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            let vertices = self.object_mem.ref_lo_vertices(y, large_sprites, self.cgb_mode);
-            if !vertices.is_empty() {
-                Some(vertices)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-
-    // Get high-priority sprites (above the background) for given y line.
-    pub fn ref_sprites_hi<'a>(&'a mut self, y: u8) -> Option<&'a mut Vec<Vertex>> {
-        if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
-            let large_sprites = self.lcd_control.contains(LCDControl::OBJ_SIZE);
-            let vertices = self.object_mem.ref_hi_vertices(y, large_sprites, self.cgb_mode);
-            if !vertices.is_empty() {
-                Some(vertices)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }*/
     pub fn ref_objects_for_line<'a>(&'a self, y: u8) -> Option<Vec<&'a Sprite>> {
         if self.lcd_control.contains(LCDControl::OBJ_DISPLAY_ENABLE) {
             let large_sprites = self.is_large_sprites();
@@ -360,23 +269,6 @@ impl VideoMem {
             None
         }
     }
-
-    // Get palettes
-    /*pub fn make_palettes(&mut self) -> Option<Vec<PaletteColours>> {
-        if self.cgb_mode {
-            if self.colour_palettes.is_dirty() {
-                Some(self.colour_palettes.make_data())
-            } else {
-                None
-            }
-        } else {
-            if self.palettes.is_dirty() {
-                Some(self.palettes.make_data())
-            } else {
-                None
-            }
-        }
-    }*/
 
     #[inline]
     pub fn get_bg_colour(&self, texel: u8) -> Colour {

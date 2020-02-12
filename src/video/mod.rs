@@ -64,7 +64,7 @@ pub struct VideoDevice {
 
 impl VideoDevice {
     pub fn new(palette: SGBPalette, cgb_mode: bool) -> Self {
-        let mut mem = Arc::new(Mutex::new(VideoMem::new(palette, cgb_mode)));
+        let mem = Arc::new(Mutex::new(VideoMem::new(palette, cgb_mode)));
 
         // Spin off video thread.
         let renderer = Renderer::new(mem.clone());
