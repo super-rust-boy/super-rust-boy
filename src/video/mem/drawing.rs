@@ -8,6 +8,7 @@ const SCREEN_WIDTH: usize = 160;
 impl VideoMem {
     pub fn draw_line_gb(&mut self, target: &mut [u8]) {    // TODO: use external type here.
         let target_start = (self.lcdc_y as usize) * SCREEN_WIDTH;
+        //println!("Draw line {}", self.lcdc_y);
 
         // Rebuild caches
         if self.map_cache_0_dirty {
@@ -64,18 +65,21 @@ impl VideoMem {
                 let x_offset = hi_x.wrapping_sub(o.x);
                 if x_offset < 8 {
                     let y_offset = hi_y.wrapping_sub(o.y);
-                    let tile = self.ref_tile(o.tile_num as usize);  // TODO adjust tile num based on y val
-                    let texel = tile.get_texel(x_offset as usize, y_offset as usize);
-                    return if texel == 0 {
-                        SpritePixel::None
-                    } else {
-                        let pixel = if o.palette_0() {self.get_obj_0_colour(texel)} else {self.get_obj_1_colour(texel)};
-                        if o.is_above_bg() {
-                            SpritePixel::Hi(pixel)
+                    if y_offset < 8 {   // TODO: check this
+                        let tile = self.ref_tile(o.tile_num as usize);  // TODO adjust tile num based on y val
+                        let texel = tile.get_texel(x_offset as usize, y_offset as usize);
+                        return if texel == 0 {
+                            SpritePixel::None
                         } else {
-                            SpritePixel::Lo(pixel)
+                            let pixel = if o.palette_0() {self.get_obj_0_colour(texel)} else {self.get_obj_1_colour(texel)};
+                            if o.is_above_bg() {
+                                SpritePixel::Hi(pixel)
+                            } else {
+                                SpritePixel::Lo(pixel)
+                            }
                         }
                     }
+                    
                 }
             }
             SpritePixel::None
@@ -121,29 +125,35 @@ impl VideoMem {
     fn construct_map_cache_0(&mut self) {
         for (i, tile_num) in self.tile_map_0.iter().enumerate() {
             // TODO: iterate over tile
-            let base_y = i / 32;
-            let base_x = i % 32;
+            let base_y = (i / 32) << 3;
+            let base_x = (i % 32) << 3;
             for y in 0..8 {
                 for x in 0..8 {
                     // TODO: attrs
-                    self.map_cache_0[base_y][base_x] = self.tile_mem.ref_tile(*tile_num as usize).get_texel(x, y);
+                    let tex = self.tile_mem.ref_tile(*tile_num as usize).get_texel(x, y);
+                    self.map_cache_0[base_y + y][base_x + x] = tex;
+                    //println!("{}, {}: {}", base_x + x, base_y + y, tex)
                 }
             }
         }
+
+        self.map_cache_0_dirty = false;
     }
 
     fn construct_map_cache_1(&mut self) {
         for (i, tile_num) in self.tile_map_1.iter().enumerate() {
             // TODO: iterate over tile
-            let base_y = i / 32;
-            let base_x = i % 32;
+            let base_y = (i / 32) << 3;
+            let base_x = (i % 32) << 3;
             for y in 0..8 {
                 for x in 0..8 {
                     // TODO: attrs
-                    self.map_cache_1[base_y][base_x] = self.tile_mem.ref_tile(*tile_num as usize).get_texel(x, y);
+                    self.map_cache_1[base_y + y][base_x + x] = self.tile_mem.ref_tile(*tile_num as usize).get_texel(x, y);
                 }
             }
         }
+
+        self.map_cache_1_dirty = false;
     }
 }
 

@@ -114,6 +114,7 @@ impl VideoDevice {
                 },
                 Mode::_1 => if self.mem.lock().unwrap().get_cycle_count() >= MODE_1 {
                     //self.renderer.frame_start(&mut self.mem);
+                    self.renderer.end_frame();
                     self.mem.lock().unwrap().set_lcdc_y(0);
                     self.mem.lock().unwrap().frame_cycle_reset();
                     self.update_mode(Mode::_2)
