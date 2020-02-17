@@ -1,5 +1,6 @@
 // Pixel renderer. Makes a texture of format R8G8B8A8Unorm
-use super::mem::VideoMem;
+use super::vram::VRAM;
+use super::regs::VideoRegs;
 
 use std::sync::{
     Arc,
@@ -17,7 +18,7 @@ pub type RenderTarget = Arc<Mutex<[u8]>>;
 enum RendererMessage {
     StartFrame(RenderTarget),   // Begin frame, and target the provided byte array.
     EndFrame,                   // End frame.
-    DrawLine
+    DrawLine(VideoRegs)
 }
 
 // Messages to receive from the render thread.
@@ -35,7 +36,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(mem: Arc<Mutex<VideoMem>>) -> Self {
+    pub fn new(mem: Arc<Mutex<VRAM>>) -> Self {
         let (send_msg, recv_msg) = channel::<RendererMessage>();
         let (send_reply, recv_reply) = channel::<RendererReply>();
 
@@ -49,11 +50,11 @@ impl Renderer {
                         target = Some(data);
                         //send_reply.send(RendererReply::StartedFrame).unwrap();
                     },
-                    DrawLine => {
+                    DrawLine(regs) => {
                         let mut mem = mem.lock().unwrap();
                         let mut t = target.as_ref().unwrap().lock().unwrap();
                         //send_reply.send(RendererReply::DrawingLine).unwrap();
-                        mem.draw_line_gb(&mut t);
+                        mem.draw_line_gb(&mut t, &regs);
                     },
                     EndFrame => {
                         target = None;
@@ -80,9 +81,9 @@ impl Renderer {
         }*/
     }
 
-    pub fn draw_line(&mut self) {
+    pub fn draw_line(&mut self, regs: VideoRegs) {
         self.sender
-            .send(RendererMessage::DrawLine)
+            .send(RendererMessage::DrawLine(regs))
             .expect("Couldn't send draw line message!");
 
         /*let msg = self.receiver.recv().unwrap();
@@ -92,9 +93,9 @@ impl Renderer {
     }
 
     pub fn end_frame(&mut self) {
-        self.sender
+        /*self.sender
             .send(RendererMessage::EndFrame)
-            .expect("Couldn't send end frame message!");
+            .expect("Couldn't send end frame message!");*/
 
         /*let msg = self.receiver.recv().unwrap();
         if msg != RendererReply::FinishedFrame {

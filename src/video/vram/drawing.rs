@@ -1,14 +1,18 @@
-use super::VideoMem;
-use super::sprite::Sprite;
-use super::super::types::Colour;
+use super::{
+    VRAM,
+    sprite::Sprite,
+    super::types::Colour,
+    super::regs::VideoRegs
+};
 
 const TILE_MAP_WIDTH: usize = 32;
 const SCREEN_WIDTH: usize = 160;
 
-impl VideoMem {
-    pub fn draw_line_gb(&mut self, target: &mut [u8]) {    // TODO: use external type here.
-        let target_start = (self.lcdc_y as usize) * SCREEN_WIDTH;
-        //println!("Draw line {}", self.lcdc_y);
+impl VRAM {
+    pub fn draw_line_gb(&mut self, target: &mut [u8], regs: &VideoRegs) {    // TODO: use external type here.
+        let y = regs.read_lcdc_y();
+        let target_start = (y as usize) * SCREEN_WIDTH;
+        //println!("Draw line {}", y);
 
         // Rebuild caches
         if self.map_cache_0_dirty {
@@ -19,36 +23,32 @@ impl VideoMem {
         }
 
         // Find objects
-        let objects = self.ref_objects_for_line(self.lcdc_y);
+        let objects = self.ref_objects_for_line(y, regs);
 
         for (x, i) in target.chunks_mut(4).skip(target_start).take(SCREEN_WIDTH).enumerate() {
             // Is there an object here?
-            match self.sprite_pixel(&objects, x as u8, self.lcdc_y) {
+            match self.sprite_pixel(&objects, x as u8, y) {
                 SpritePixel::Hi(c) => write_pixel(i, c),
-                SpritePixel::Lo(c) => {
-                    if let Some(px) = self.window_pixel(x as u8, self.lcdc_y) {
-                        match px {
-                            BGPixel::Zero(_) => write_pixel(i, c),
-                            BGPixel::NonZero(win) => write_pixel(i, win),
-                        }
-                    } else {
-                        match self.background_pixel(x as u8, self.lcdc_y) {
-                            BGPixel::Zero(_) => write_pixel(i, c),
-                            BGPixel::NonZero(bg) => write_pixel(i, bg),
-                        }
+                SpritePixel::Lo(c) => if let Some(px) = self.window_pixel(x as u8, y, regs) {
+                    match px {
+                        BGPixel::Zero(_) => write_pixel(i, c),
+                        BGPixel::NonZero(win) => write_pixel(i, win),
+                    }
+                } else {
+                    match self.background_pixel(x as u8, y, regs) {
+                        BGPixel::Zero(_) => write_pixel(i, c),
+                        BGPixel::NonZero(bg) => write_pixel(i, bg),
                     }
                 },
-                SpritePixel::None => {
-                    if let Some(px) = self.window_pixel(x as u8, self.lcdc_y) {
-                        match px {
-                            BGPixel::Zero(win) => write_pixel(i, win),
-                            BGPixel::NonZero(win) => write_pixel(i, win),
-                        }
-                    } else {
-                        match self.background_pixel(x as u8, self.lcdc_y) {
-                            BGPixel::Zero(bg) => write_pixel(i, bg),
-                            BGPixel::NonZero(bg) => write_pixel(i, bg),
-                        }
+                SpritePixel::None => if let Some(px) = self.window_pixel(x as u8, y, regs) {
+                    match px {
+                        BGPixel::Zero(win) => write_pixel(i, win),
+                        BGPixel::NonZero(win) => write_pixel(i, win),
+                    }
+                } else {
+                    match self.background_pixel(x as u8, y, regs) {
+                        BGPixel::Zero(bg) => write_pixel(i, bg),
+                        BGPixel::NonZero(bg) => write_pixel(i, bg),
                     }
                 }
             }
@@ -89,11 +89,11 @@ impl VideoMem {
     }
 
     #[inline]
-    fn window_pixel(&self, x: u8, y: u8) -> Option<BGPixel> {
-        if self.get_window_enable() && (x >= self.window_x) && (y >= self.window_y) {
-            let win_x = (x - self.window_x) as usize;
-            let win_y = (y - self.window_y) as usize;
-            let win_texel = self.ref_window()[win_y][win_x];
+    fn window_pixel(&self, x: u8, y: u8, regs: &VideoRegs) -> Option<BGPixel> {
+        if regs.get_window_enable() && (x >= regs.window_x) && (y >= regs.window_y) {
+            let win_x = (x - regs.window_x) as usize;
+            let win_y = (y - regs.window_y) as usize;
+            let win_texel = self.ref_window(regs)[win_y][win_x];
             Some(if win_texel == 0 {
                 BGPixel::Zero(self.get_bg_colour(win_texel))
             } else {
@@ -105,11 +105,11 @@ impl VideoMem {
     }
 
     #[inline]
-    fn background_pixel(&self, x: u8, y: u8) -> BGPixel {
-        if self.get_background_priority() {
-            let bg_x = self.scroll_x.wrapping_add(x) as usize;
-            let bg_y = self.scroll_y.wrapping_add(y) as usize;
-            let bg_texel = self.ref_background()[bg_y][bg_x];
+    fn background_pixel(&self, x: u8, y: u8, regs: &VideoRegs) -> BGPixel {
+        if regs.get_background_priority() {
+            let bg_x = regs.scroll_x.wrapping_add(x) as usize;
+            let bg_y = regs.scroll_y.wrapping_add(y) as usize;
+            let bg_texel = self.ref_background(regs)[bg_y][bg_x];
             if bg_texel == 0 {
                 BGPixel::Zero(self.get_bg_colour(bg_texel))
             } else {
@@ -121,7 +121,7 @@ impl VideoMem {
     }
 }
 
-impl VideoMem {
+impl VRAM {
     fn construct_map_cache_0(&mut self) {
         for (i, tile_num) in self.tile_map_0.iter().enumerate() {
             // TODO: iterate over tile
