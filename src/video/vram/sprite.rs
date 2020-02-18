@@ -45,6 +45,14 @@ impl Sprite {
     pub fn palette_0(&self) -> bool {
         !self.flags.contains(SpriteFlags::PALETTE)
     }
+
+    pub fn flip_x(&self) -> bool {
+        self.flags.contains(SpriteFlags::X_FLIP)
+    }
+
+    pub fn flip_y(&self) -> bool {
+        self.flags.contains(SpriteFlags::Y_FLIP)
+    }
 }
 
 pub struct ObjectMem {

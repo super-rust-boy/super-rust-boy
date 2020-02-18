@@ -16,7 +16,12 @@ impl StaticPalette {
     pub fn new(colours: PaletteColours) -> Self {
         StaticPalette {
             colours: colours,
-            palette: colours,
+            palette: [
+                colours[0],
+                colours[0],
+                colours[0],
+                colours[0]
+            ],
             raw: 0
         }
     }

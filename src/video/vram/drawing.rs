@@ -24,10 +24,12 @@ impl VRAM {
 
         // Find objects
         let objects = self.ref_objects_for_line(y, regs);
+        let mut sprite_pixels = [SpritePixel::None; 160];
+
+        self.render_sprites_to_line(&mut sprite_pixels, &objects, y, regs.is_large_sprites());
 
         for (x, i) in target.chunks_mut(4).skip(target_start).take(SCREEN_WIDTH).enumerate() {
-            // Is there an object here?
-            match self.sprite_pixel(&objects, x as u8, y) {
+            match sprite_pixels[x] {
                 SpritePixel::Hi(c) => write_pixel(i, c),
                 SpritePixel::Lo(c) => if let Some(px) = self.window_pixel(x as u8, y, regs) {
                     match px {
@@ -55,36 +57,38 @@ impl VRAM {
         }
     }
 
-    #[inline]
-    fn sprite_pixel(&self, objects: &Option<Vec<&Sprite>>, x: u8, y: u8) -> SpritePixel {
-        if let Some(obj) = objects {
-            // TODO: this lil calc outside
-            let hi_x = x + 8;
-            let hi_y = y + 8;//if self.is_large_sprites() {16} else {8};    // TODO: large sprites
-            for o in obj.iter() {
-                let x_offset = hi_x.wrapping_sub(o.x);
-                if x_offset < 8 {
-                    let y_offset = hi_y.wrapping_sub(o.y);
-                    if y_offset < 8 {   // TODO: check this
-                        let tile = self.ref_tile(o.tile_num as usize);  // TODO adjust tile num based on y val
-                        let texel = tile.get_texel(x_offset as usize, y_offset as usize);
-                        return if texel == 0 {
-                            SpritePixel::None
+    fn render_sprites_to_line(&self, line: &mut [SpritePixel], objects: &[&Sprite], y: u8, large: bool) {
+        for o in objects {
+            let sprite_y = y + 16 - o.y;
+            let (tile_num_offset, tile_y) = match (large, sprite_y < 8, o.flip_y()) {
+                (false, true, false)    => (0_u8, sprite_y),
+                (false, true, true)     => (0_u8, 7 - sprite_y),
+                (true, true, false)     => (0_u8, sprite_y),
+                (true, false, false)    => (1_u8, sprite_y - 8),
+                (true, true, true)      => (1_u8, 7 - sprite_y),
+                (true, false, true)     => (0_u8, 15 - sprite_y),
+                _ => unreachable!("Cannot have small sprites with sprite_y >= 8")
+            };
+            let tile = self.ref_tile(o.tile_num.wrapping_add(tile_num_offset) as usize);
+
+            let start_x = (o.x as isize) - 8;
+            for x_offset in 0..8 {
+                let x = start_x + x_offset;
+                if x >= 0 && x < 160 {
+                    let tile_x = if o.flip_x() {7 - x_offset} else {x_offset};
+                    let texel = tile.get_texel(tile_x as usize, tile_y as usize);
+                    if texel != 0 {
+                        let pixel = if o.palette_0() {self.get_obj_0_colour(texel)} else {self.get_obj_1_colour(texel)};
+                        line[x as usize] = if o.is_above_bg() {
+                            SpritePixel::Hi(pixel)
                         } else {
-                            let pixel = if o.palette_0() {self.get_obj_0_colour(texel)} else {self.get_obj_1_colour(texel)};
-                            if o.is_above_bg() {
-                                SpritePixel::Hi(pixel)
-                            } else {
-                                SpritePixel::Lo(pixel)
-                            }
-                        }
+                            SpritePixel::Lo(pixel)
+                        };
                     }
-                    
                 }
+                // For x
             }
-            SpritePixel::None
-        } else {
-            SpritePixel::None
+            // For objects
         }
     }
 
@@ -170,6 +174,7 @@ impl VRAM {
     }
 }
 
+#[derive(Clone, Copy)]
 enum SpritePixel {
     Hi(Colour), // High priority
     Lo(Colour), // Low priority

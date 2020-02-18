@@ -105,17 +105,12 @@ impl VRAM {
         }
     }
 
-    pub fn ref_objects_for_line<'a>(&'a self, y: u8, regs: &VideoRegs) -> Option<Vec<&'a Sprite>> {
+    pub fn ref_objects_for_line<'a>(&'a self, y: u8, regs: &VideoRegs) -> Vec<&'a Sprite> {
         if regs.display_sprites() {
             let large_sprites = regs.is_large_sprites();
-            let vertices = self.object_mem.ref_objects_for_line(y, large_sprites);
-            if !vertices.is_empty() {
-                Some(vertices)
-            } else {
-                None
-            }
+            self.object_mem.ref_objects_for_line(y, large_sprites)
         } else {
-            None
+            Vec::new()
         }
     }
 
