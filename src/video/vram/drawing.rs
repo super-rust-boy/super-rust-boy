@@ -16,10 +16,10 @@ impl VRAM {
 
         // Rebuild caches
         if self.map_cache_0_dirty {
-            self.construct_map_cache_0();
+            self.construct_map_cache_0(regs);
         }
         if self.map_cache_1_dirty {
-            self.construct_map_cache_1();
+            self.construct_map_cache_1(regs);
         }
 
         // Find objects
@@ -90,8 +90,8 @@ impl VRAM {
 
     #[inline]
     fn window_pixel(&self, x: u8, y: u8, regs: &VideoRegs) -> Option<BGPixel> {
-        if regs.get_window_enable() && (x >= regs.window_x) && (y >= regs.window_y) {
-            let win_x = (x - regs.window_x) as usize;
+        if regs.get_window_enable() && (x + 7 >= regs.window_x) && (y >= regs.window_y) {
+            let win_x = (x + 7 - regs.window_x) as usize;
             let win_y = (y - regs.window_y) as usize;
             let win_texel = self.ref_window(regs)[win_y][win_x];
             Some(if win_texel == 0 {
@@ -122,7 +122,7 @@ impl VRAM {
 }
 
 impl VRAM {
-    fn construct_map_cache_0(&mut self) {
+    fn construct_map_cache_0(&mut self, regs: &VideoRegs) {
         for (i, tile_num) in self.tile_map_0.iter().enumerate() {
             // TODO: iterate over tile
             let base_y = (i / 32) << 3;
@@ -130,7 +130,13 @@ impl VRAM {
             for y in 0..8 {
                 for x in 0..8 {
                     // TODO: attrs
-                    let tex = self.tile_mem.ref_tile(*tile_num as usize).get_texel(x, y);
+                    let tile_index = if regs.lo_tile_data_select() {
+                        *tile_num as usize
+                    } else {
+                        let signed = *tile_num as i8;
+                        (256 + (signed as isize)) as usize
+                    };
+                    let tex = self.tile_mem.ref_tile(tile_index).get_texel(x, y);
                     self.map_cache_0[base_y + y][base_x + x] = tex;
                     //println!("{}, {}: {}", base_x + x, base_y + y, tex)
                 }
@@ -140,7 +146,7 @@ impl VRAM {
         self.map_cache_0_dirty = false;
     }
 
-    fn construct_map_cache_1(&mut self) {
+    fn construct_map_cache_1(&mut self, regs: &VideoRegs) {
         for (i, tile_num) in self.tile_map_1.iter().enumerate() {
             // TODO: iterate over tile
             let base_y = (i / 32) << 3;
@@ -148,7 +154,14 @@ impl VRAM {
             for y in 0..8 {
                 for x in 0..8 {
                     // TODO: attrs
-                    self.map_cache_1[base_y + y][base_x + x] = self.tile_mem.ref_tile(*tile_num as usize).get_texel(x, y);
+                    let tile_index = if regs.lo_tile_data_select() {
+                        *tile_num as usize
+                    } else {
+                        let signed = *tile_num as i8;
+                        (256 + (signed as isize)) as usize
+                    };
+                    let tex = self.tile_mem.ref_tile(tile_index).get_texel(x, y);
+                    self.map_cache_1[base_y + y][base_x + x] = tex;
                 }
             }
         }
@@ -173,5 +186,6 @@ fn write_pixel(output: &mut [u8], colour: Colour) {
     output[0] = colour.r;
     output[1] = colour.g;
     output[2] = colour.b;
-    output[3] = 255;    // TODO: does this need to be written?
+    //output[3] = 255;    // TODO: does this need to be written?
+    //println!("Write {}, {}, {}", colour.r, colour.g, colour.b);
 }

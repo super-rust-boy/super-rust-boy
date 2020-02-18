@@ -358,8 +358,12 @@ impl MemDevice for VideoDevice {
             },
             // Sprite data
             0xFE00..=0xFE9F if self.regs.can_access_oam() => self.vram.lock().unwrap().object_mem.write(loc - 0xFE00, val),
-            0xFF40 => if self.regs.write_lcd_control(val) {
-                self.cycle_count = 0;
+            0xFF40 => {
+                if self.regs.write_lcd_control(val) {
+                    self.cycle_count = 0;
+                }
+                self.vram.lock().unwrap().map_cache_0_dirty = true;
+                self.vram.lock().unwrap().map_cache_1_dirty = true;
             },
             0xFF41 => self.regs.write_status(val),
             0xFF42 => self.regs.scroll_y = val,

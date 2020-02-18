@@ -123,6 +123,11 @@ impl VideoRegs {
         self.lcd_control.contains(LCDControl::OBJ_SIZE)
     }
 
+    // True: range 0x8000 - 0x8FFF for bg & window raw tile data
+    pub fn lo_tile_data_select(&self) -> bool {
+        self.lcd_control.contains(LCDControl::TILE_DATA_SELECT)
+    }
+
     #[inline]
     pub fn can_access_vram(&self) -> bool {
         self.lcd_status.read_mode() != Mode::_3

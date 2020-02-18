@@ -21,7 +21,11 @@ use joypad::{
     Directions
 };
 
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::{
+    mpsc::{channel, Receiver},
+    Arc,
+    Mutex
+};
 
 use cpu::CPU;
 use audio::{
@@ -43,8 +47,10 @@ pub enum Button {
 }
 
 pub struct RustBoy {
-    cpu: CPU,
-    audio_recv: Option<Receiver<AudioCommand>>
+    cpu:        CPU,
+    audio_recv: Option<Receiver<AudioCommand>>,
+
+    frame:      Arc<Mutex<[u8; 160 * 144 * 4]>>
 }
 
 impl RustBoy {
@@ -64,16 +70,22 @@ impl RustBoy {
         };
 
         Box::new(RustBoy {
-            cpu: cpu,
-            audio_recv: audio_recv
+            cpu:        cpu,
+            audio_recv: audio_recv,
+
+            frame:      Arc::new(Mutex::new([0; 160 * 144 * 4]))
         })
     }
 
     // Call every 1/60 seconds.
-    pub fn frame(&mut self, frame: [u8; 160 * 144 * 4]) {
-        self.cpu.frame_update(std::sync::Arc::new(std::sync::Mutex::new(frame)));    // Draw video and read inputs
+    pub fn frame(&mut self, frame: &mut [u8]) {
+        self.cpu.frame_update(self.frame.clone());    // Draw video and read inputs
 
         while self.cpu.step() {}    // Execute up to v-blanking
+
+        for (i, o) in self.frame.lock().unwrap().iter().zip(frame.iter_mut()) {
+            *o = *i;
+        }
         
         if let Some(recv) = &mut self.audio_recv {
             while let Ok(_) = recv.try_recv() {}
