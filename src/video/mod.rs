@@ -167,7 +167,11 @@ impl VideoDevice {
         let stat_flags = self.regs.read_flags();
 
         if mode == Mode::_0 {
-            self.renderer.draw_line(self.regs.clone());
+            if self.cgb_mode {
+                self.renderer.draw_line_cgb(self.regs.clone());
+            } else {
+                self.renderer.draw_line_gb(self.regs.clone());
+            }
         }
 
         // Trigger STAT interrupt
@@ -279,8 +283,8 @@ impl MemDevice for VideoDevice {
                     vram.tile_mem.set_pixel_upper_row(base, val);
                 }
 
-                vram.map_cache_0_dirty = true;
-                vram.map_cache_1_dirty = true;
+                vram.set_cache_0_dirty();
+                vram.set_cache_1_dirty();
             },
             // Background Map A
             0x9800..=0x9BFF if self.regs.can_access_vram() => {
@@ -291,7 +295,7 @@ impl MemDevice for VideoDevice {
                     self.vram.lock().unwrap().tile_attrs_0[index] = val;
                 }
 
-                self.vram.lock().unwrap().map_cache_0_dirty = true;
+                self.vram.lock().unwrap().set_cache_0_dirty();
             },
             // Background Map B
             0x9C00..=0x9FFF if self.regs.can_access_vram() => {
@@ -302,7 +306,7 @@ impl MemDevice for VideoDevice {
                     self.vram.lock().unwrap().tile_attrs_1[index] = val;
                 }
                 
-                self.vram.lock().unwrap().map_cache_1_dirty = true;
+                self.vram.lock().unwrap().set_cache_1_dirty();
             },
             // Sprite data
             0xFE00..=0xFE9F if self.regs.can_access_oam() => self.vram.lock().unwrap().object_mem.write(loc - 0xFE00, val),
@@ -310,8 +314,8 @@ impl MemDevice for VideoDevice {
                 if self.regs.write_lcd_control(val) {
                     self.cycle_count = 0;
                 }
-                self.vram.lock().unwrap().map_cache_0_dirty = true;
-                self.vram.lock().unwrap().map_cache_1_dirty = true;
+                self.vram.lock().unwrap().set_cache_0_dirty();
+                self.vram.lock().unwrap().set_cache_1_dirty();
             },
             0xFF41 => self.regs.write_status(val),
             0xFF42 => self.regs.scroll_y = val,

@@ -3,6 +3,7 @@ mod consts;
 mod patternmem;
 mod sprite;
 mod palette;
+mod mapcache;
 
 use super::types::{
     Colour
@@ -17,6 +18,7 @@ use sprite::{
     ObjectMem,
     Sprite
 };
+use mapcache::*;
 use super::sgbpalettes::SGBPalette;
 
 use super::regs::VideoRegs;
@@ -32,10 +34,8 @@ pub struct VRAM {
     pub object_mem:         ObjectMem,
 
     // Tile map caches // TODO move these
-    map_cache_0:            Vec<Vec<u8>>,   // TODO: make this a type
-    pub map_cache_0_dirty:  bool,
-    map_cache_1:            Vec<Vec<u8>>,
-    pub map_cache_1_dirty:  bool,
+    map_cache_0:            MapCache,
+    map_cache_1:            MapCache,
 
     // Palettes
     pub palettes:           StaticPaletteMem,
@@ -52,10 +52,8 @@ impl VRAM {
             tile_attrs_1:       if cgb_mode {vec![0; 32 * 32]} else {Vec::new()},
             object_mem:         ObjectMem::new(),
 
-            map_cache_0:        vec![vec![0; 256]; 256],
-            map_cache_0_dirty:  true,
-            map_cache_1:        vec![vec![0; 256]; 256],
-            map_cache_1_dirty:  true,
+            map_cache_0:        MapCache::new(cgb_mode),
+            map_cache_1:        MapCache::new(cgb_mode),
 
             palettes:           StaticPaletteMem::new(palette),
             colour_palettes:    DynamicPaletteMem::new(),
@@ -72,36 +70,36 @@ impl VRAM {
     // Get background tilemap data.
     pub fn ref_background<'a>(&'a self, regs: &VideoRegs) -> &'a Vec<Vec<u8>> {
         if !regs.bg_tile_map_select() {
-            &self.map_cache_0
+            self.map_cache_0.ref_texels()
         } else {
-            &self.map_cache_1
+            self.map_cache_1.ref_texels()
         }
     }
 
     // Get window tilemap data.
     pub fn ref_window<'a>(&'a self, regs: &VideoRegs) -> &'a Vec<Vec<u8>> {
         if !regs.window_tile_map_select() {
-            &self.map_cache_0
+            self.map_cache_0.ref_texels()
         } else {
-            &self.map_cache_1
+            self.map_cache_1.ref_texels()
         }
     }
 
-    // Get background tilemap attributes.
-    pub fn ref_background_attrs<'a>(&'a self, regs: &VideoRegs) -> &'a [u8] {
+    // Get background tilemap attribute for pixel pos.
+    pub fn get_background_attr<'a>(&'a self, regs: &VideoRegs) -> &'a Vec<Vec<TileAttributes>> {
         if !regs.bg_tile_map_select() {
-            &self.tile_attrs_0
+            self.map_cache_0.ref_attrs()
         } else {
-            &self.tile_attrs_1
+            self.map_cache_1.ref_attrs()
         }
     }
 
     // Get window tilemap attributes.
-    pub fn ref_window_attrs<'a>(&'a self, regs: &VideoRegs) -> &'a [u8] {
+    pub fn ref_window_attrs<'a>(&'a self, regs: &VideoRegs) -> &'a Vec<Vec<TileAttributes>> {
         if !regs.window_tile_map_select() {
-            &self.tile_attrs_0
+            self.map_cache_0.ref_attrs()
         } else {
-            &self.tile_attrs_1
+            self.map_cache_1.ref_attrs()
         }
     }
 
@@ -137,5 +135,13 @@ impl VRAM {
     #[inline]
     pub fn get_gbc_obj_colour(&self, which: u8, texel: u8) -> Colour {
         self.colour_palettes.get_obj_colour(which as usize, texel)
+    }
+
+    pub fn set_cache_0_dirty(&mut self) {
+        self.map_cache_0.set_dirty();
+    }
+
+    pub fn set_cache_1_dirty(&mut self) {
+        self.map_cache_1.set_dirty();
     }
 }

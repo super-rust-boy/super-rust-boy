@@ -14,9 +14,7 @@ bitflags! {
         const X_FLIP    = bit!(5);
         const PALETTE   = bit!(4);
         const VRAM_BANK = bit!(3);
-        const CGB_PAL_2 = bit!(2);
-        const CGB_PAL_1 = bit!(1);
-        const CGB_PAL_0 = bit!(0);
+        const CGB_PAL   = bit!(2) | bit!(1) | bit!(0);
     }
 }
 
@@ -52,6 +50,14 @@ impl Sprite {
 
     pub fn flip_y(&self) -> bool {
         self.flags.contains(SpriteFlags::Y_FLIP)
+    }
+
+    pub fn bank_offset(&self) -> usize {
+        if self.flags.contains(SpriteFlags::VRAM_BANK) {384} else {0}
+    }
+
+    pub fn cgb_palette(&self) -> u8 {
+        (self.flags & SpriteFlags::CGB_PAL).bits()
     }
 }
 

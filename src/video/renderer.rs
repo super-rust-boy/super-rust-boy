@@ -16,7 +16,8 @@ pub type RenderTarget = Arc<Mutex<[u8]>>;
 // Messages to send to the render thread.
 enum RendererMessage {
     StartFrame(RenderTarget),   // Begin frame, and target the provided byte array.
-    DrawLine(VideoRegs)
+    DrawLineGB(VideoRegs),
+    DrawLineCGB(VideoRegs)
 }
 
 // Renderer for video that spawns a thread to render on.
@@ -37,10 +38,15 @@ impl Renderer {
                     StartFrame(data) => {
                         target = Some(data);
                     },
-                    DrawLine(regs) => {
+                    DrawLineGB(regs) => {
                         let mut mem = mem.lock().unwrap();
                         let mut t = target.as_ref().unwrap().lock().unwrap();
                         mem.draw_line_gb(&mut t, &regs);
+                    },
+                    DrawLineCGB(regs) => {
+                        let mut mem = mem.lock().unwrap();
+                        let mut t = target.as_ref().unwrap().lock().unwrap();
+                        mem.draw_line_cgb(&mut t, &regs);
                     }
                 }
             }
@@ -57,9 +63,15 @@ impl Renderer {
             .expect("Couldn't send start frame message!");
     }
 
-    pub fn draw_line(&mut self, regs: VideoRegs) {
+    pub fn draw_line_gb(&mut self, regs: VideoRegs) {
         self.sender
-            .send(RendererMessage::DrawLine(regs))
+            .send(RendererMessage::DrawLineGB(regs))
+            .expect("Couldn't send draw line message!");
+    }
+
+    pub fn draw_line_cgb(&mut self, regs: VideoRegs) {
+        self.sender
+            .send(RendererMessage::DrawLineCGB(regs))
             .expect("Couldn't send draw line message!");
     }
 

@@ -94,27 +94,6 @@ impl TileMem {
     pub fn ref_tile<'a>(&'a self, tile_num: usize) -> &'a Tile {
         &self.tiles[tile_num]
     }
-/*
-    // Get the raw data and unset the dirty flag.
-    pub fn ref_data<'a>(&'a mut self) -> &'a [u8] {
-        self.dirty = false;
-        &self.atlas
-    }
-
-    // Get the size of a tile in the atlas.
-    pub fn get_tile_size(&self) -> [f32; 2] {
-        [1.0 / self.atlas_size.0 as f32, 1.0 / self.atlas_size.1 as f32]
-    }
-
-    // Get the size of the atlas (in tiles).
-    pub fn get_atlas_size(&self) -> [f32; 2] {
-        [self.atlas_size.0 as f32, self.atlas_size.1 as f32]
-    }
-
-    // Check if memory is dirty.
-    pub fn is_dirty(&self) -> bool {
-        self.dirty
-    }*/
 }
 
 #[inline]
