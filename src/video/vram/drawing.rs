@@ -191,6 +191,4 @@ fn write_pixel(output: &mut [u8], colour: Colour) {
     output[0] = colour.r;
     output[1] = colour.g;
     output[2] = colour.b;
-    //output[3] = 255;    // TODO: does this need to be written?
-    //println!("Write {}, {}, {}", colour.r, colour.g, colour.b);
 }

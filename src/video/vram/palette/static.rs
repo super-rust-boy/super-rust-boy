@@ -37,7 +37,7 @@ impl StaticPalette {
         let colour_1 = (val & 0b00001100) >> 2;
         let colour_2 = (val & 0b00110000) >> 4;
         let colour_3 = (val & 0b11000000) >> 6;
-
+        
         self.palette[0] = self.colours[colour_0 as usize];
         self.palette[1] = self.colours[colour_1 as usize];
         self.palette[2] = self.colours[colour_2 as usize];

@@ -73,7 +73,7 @@ impl RustBoy {
             cpu:        cpu,
             audio_recv: audio_recv,
 
-            frame:      Arc::new(Mutex::new([0; 160 * 144 * 4]))
+            frame:      Arc::new(Mutex::new([255; 160 * 144 * 4]))
         })
     }
 
