@@ -102,12 +102,4 @@ impl MapCache {
             self.dirty = false;
         }
     }
-
-    pub fn ref_texels<'a>(&'a self) -> &'a Vec<Vec<u8>> {
-        &self.texels
-    }
-
-    pub fn ref_attrs<'a>(&'a self) -> &'a Vec<Vec<TileAttributes>> {
-        &self.attrs
-    }
 }

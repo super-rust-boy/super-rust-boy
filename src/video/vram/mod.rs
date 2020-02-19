@@ -68,41 +68,23 @@ impl VRAM {
     }
 
     // Get background tilemap data.
-    pub fn ref_background<'a>(&'a self, regs: &VideoRegs) -> &'a Vec<Vec<u8>> {
+    pub fn ref_background<'a>(&'a self, regs: &VideoRegs) -> &'a MapCache {
         if !regs.bg_tile_map_select() {
-            self.map_cache_0.ref_texels()
+            &self.map_cache_0
         } else {
-            self.map_cache_1.ref_texels()
+            &self.map_cache_1
         }
     }
 
     // Get window tilemap data.
-    pub fn ref_window<'a>(&'a self, regs: &VideoRegs) -> &'a Vec<Vec<u8>> {
+    pub fn ref_window<'a>(&'a self, regs: &VideoRegs) -> &'a MapCache {
         if !regs.window_tile_map_select() {
-            self.map_cache_0.ref_texels()
+            &self.map_cache_0
         } else {
-            self.map_cache_1.ref_texels()
+            &self.map_cache_1
         }
     }
-
-    // Get background tilemap attribute for pixel pos.
-    pub fn ref_background_attrs<'a>(&'a self, regs: &VideoRegs) -> &'a Vec<Vec<TileAttributes>> {
-        if !regs.bg_tile_map_select() {
-            self.map_cache_0.ref_attrs()
-        } else {
-            self.map_cache_1.ref_attrs()
-        }
-    }
-
-    // Get window tilemap attributes.
-    pub fn ref_window_attrs<'a>(&'a self, regs: &VideoRegs) -> &'a Vec<Vec<TileAttributes>> {
-        if !regs.window_tile_map_select() {
-            self.map_cache_0.ref_attrs()
-        } else {
-            self.map_cache_1.ref_attrs()
-        }
-    }
-
+    
     pub fn get_objects_for_line(&self, y: u8, regs: &VideoRegs) -> Vec<Sprite> {
         if regs.display_sprites() {
             let large_sprites = regs.is_large_sprites();

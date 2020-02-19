@@ -92,7 +92,8 @@ impl VRAM {
         if regs.get_window_enable() && regs.get_background_priority() && (x + 7 >= regs.window_x) && (y >= regs.window_y) {
             let win_x = (x + 7 - regs.window_x) as usize;
             let win_y = (y - regs.window_y) as usize;
-            let win_texel = self.ref_window(regs)[win_y][win_x];
+            let win_cache = self.ref_window(regs);
+            let win_texel = win_cache.get_texel(win_x, win_y);
             Some(if win_texel == 0 {
                 BGPixel::Zero(self.get_bg_colour(win_texel))
             } else {
@@ -108,7 +109,8 @@ impl VRAM {
         if regs.get_background_priority() {
             let bg_x = regs.scroll_x.wrapping_add(x) as usize;
             let bg_y = regs.scroll_y.wrapping_add(y) as usize;
-            let bg_texel = self.ref_background(regs)[bg_y][bg_x];
+            let bg_cache = self.ref_background(regs);
+            let bg_texel = bg_cache.get_texel(bg_x, bg_y);
             if bg_texel == 0 {
                 BGPixel::Zero(self.get_bg_colour(bg_texel))
             } else {
@@ -220,8 +222,9 @@ impl VRAM {
         if regs.get_window_enable() && (x + 7 >= regs.window_x) && (y >= regs.window_y) {
             let win_x = (x + 7 - regs.window_x) as usize;
             let win_y = (y - regs.window_y) as usize;
-            let win_texel = self.ref_window(regs)[win_y][win_x];
-            let attrs = self.ref_window_attrs(regs)[win_y][win_x];
+            let win_cache = self.ref_window(regs);
+            let win_texel = win_cache.get_texel(win_x, win_y);
+            let attrs = win_cache.get_attrs(win_x, win_y);
             let palette = (attrs & TileAttributes::CGB_PAL).bits();
             let colour = self.get_gbc_bg_colour(palette, win_texel);
 
@@ -247,8 +250,9 @@ impl VRAM {
     fn background_pixel_cgb(&self, x: u8, y: u8, regs: &VideoRegs) -> CGBPixel {
         let bg_x = regs.scroll_x.wrapping_add(x) as usize;
         let bg_y = regs.scroll_y.wrapping_add(y) as usize;
-        let bg_texel = self.ref_background(regs)[bg_y][bg_x];
-        let attrs = self.ref_background_attrs(regs)[bg_y][bg_x];
+        let bg_cache = self.ref_background(regs);
+        let bg_texel = bg_cache.get_texel(bg_x, bg_y);
+        let attrs = bg_cache.get_attrs(bg_x, bg_y);
         let palette = (attrs & TileAttributes::CGB_PAL).bits();
         let colour = self.get_gbc_bg_colour(palette, bg_texel);
 
