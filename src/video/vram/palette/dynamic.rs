@@ -39,45 +39,6 @@ bitflags! {
     }
 }
 
-/*impl Colour15 {
-    fn new() -> Self {
-        Colour {
-            r: 0x1F,
-            g: 0x1F,
-            b: 0x1F
-        }
-    }
-
-    fn read(&self, low_byte: bool) -> u8 {
-        if low_byte {
-            self.r | ((self.g & 0x7) << 5)
-        } else {
-            ((self.g >> 3) & 0x3) | (self.b << 2)
-        }
-    }
-
-    fn write(&mut self, val: u8, low_byte: bool) {
-        if low_byte {
-            self.r = val & 0x1F;
-            self.g &= 0x18;
-            self.g |= (val >> 5) & 0x7;
-        } else {
-            self.g &= 0x7;
-            self.g |= (val & 0x3) << 3;
-            self.b = (val >> 2) & 0x1F;
-        }
-    }
-
-    fn get_vector(&self) -> Vector4<u8> {
-        Vector4::new(
-            self.r,
-            self.g,
-            self.b,
-            1.0
-        )
-    }
-}*/
-
 #[derive(Clone)]
 struct DynamicPalette {
     colours:    PaletteColours,
@@ -99,10 +60,11 @@ impl MemDevice for DynamicPalette {
     }
 
     fn write(&mut self, loc: u16, val: u8) {
-        let colour = (loc / 2) as usize;
+        let colour = (loc >> 1) as usize;
         self.raw[(loc % 8) as usize] = val;
 
-        self.colours[colour] = col15_to_col888!(make_16!(self.raw[colour + 1], self.raw[colour]));
+        let raw_idx = colour << 1;
+        self.colours[colour] = col15_to_col888!(make_16!(self.raw[raw_idx + 1], self.raw[raw_idx]));
     }
 }
 
