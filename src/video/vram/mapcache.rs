@@ -32,10 +32,12 @@ impl MapCache {
         }
     }
 
+    #[inline]
     pub fn get_texel(&self, x: usize, y: usize) -> u8 {
         self.texels[y][x]
     }
 
+    #[inline]
     pub fn get_attrs(&self, x: usize, y: usize) -> TileAttributes {
         self.attrs[y][x]
     }

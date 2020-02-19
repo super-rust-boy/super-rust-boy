@@ -89,7 +89,7 @@ impl VRAM {
 
     #[inline]
     fn window_pixel(&self, x: u8, y: u8, regs: &VideoRegs) -> Option<BGPixel> {
-        if regs.get_window_enable() && (x + 7 >= regs.window_x) && (y >= regs.window_y) {
+        if regs.get_window_enable() && regs.get_background_priority() && (x + 7 >= regs.window_x) && (y >= regs.window_y) {
             let win_x = (x + 7 - regs.window_x) as usize;
             let win_y = (y - regs.window_y) as usize;
             let win_texel = self.ref_window(regs)[win_y][win_x];
@@ -137,27 +137,41 @@ impl VRAM {
 
         for (x, i) in target.chunks_mut(4).skip(target_start).take(SCREEN_WIDTH).enumerate() {
             match sprite_pixels[x] {
-                SpritePixel::Hi(c) => write_pixel(i, c),
-                SpritePixel::Lo(c) => if let Some(px) = self.window_pixel_cgb(x as u8, y, regs) {
+                SpritePixel::Hi(c) => if let Some(px) = self.window_pixel_cgb(x as u8, y, regs) {
                     match px {
-                        BGPixel::Zero(_) => write_pixel(i, c),
-                        BGPixel::NonZero(win) => write_pixel(i, win),
+                        CGBPixel::Hi(win) => write_pixel(i, win),
+                        _ => write_pixel(i, c),
                     }
                 } else {
                     match self.background_pixel_cgb(x as u8, y, regs) {
-                        BGPixel::Zero(_) => write_pixel(i, c),
-                        BGPixel::NonZero(bg) => write_pixel(i, bg),
+                        CGBPixel::Hi(bg) => write_pixel(i, bg),
+                        _ => write_pixel(i, c),
+                    }
+                },
+                SpritePixel::Lo(c) => if let Some(px) = self.window_pixel_cgb(x as u8, y, regs) {
+                    match px {
+                        CGBPixel::LoZero(_) => write_pixel(i, c),
+                        CGBPixel::LoNonZero(win) => write_pixel(i, win),
+                        CGBPixel::Hi(win) => write_pixel(i, win),
+                    }
+                } else {
+                    match self.background_pixel_cgb(x as u8, y, regs) {
+                        CGBPixel::LoZero(_) => write_pixel(i, c),
+                        CGBPixel::LoNonZero(bg) => write_pixel(i, bg),
+                        CGBPixel::Hi(bg) => write_pixel(i, bg),
                     }
                 },
                 SpritePixel::None => if let Some(px) = self.window_pixel_cgb(x as u8, y, regs) {
                     match px {
-                        BGPixel::Zero(win) => write_pixel(i, win),
-                        BGPixel::NonZero(win) => write_pixel(i, win),
+                        CGBPixel::LoZero(win) => write_pixel(i, win),
+                        CGBPixel::LoNonZero(win) => write_pixel(i, win),
+                        CGBPixel::Hi(win) => write_pixel(i, win),
                     }
                 } else {
                     match self.background_pixel_cgb(x as u8, y, regs) {
-                        BGPixel::Zero(bg) => write_pixel(i, bg),
-                        BGPixel::NonZero(bg) => write_pixel(i, bg),
+                        CGBPixel::LoZero(bg) => write_pixel(i, bg),
+                        CGBPixel::LoNonZero(bg) => write_pixel(i, bg),
+                        CGBPixel::Hi(bg) => write_pixel(i, bg),
                     }
                 }
             }
@@ -202,15 +216,27 @@ impl VRAM {
     }
 
     #[inline]
-    fn window_pixel_cgb(&self, x: u8, y: u8, regs: &VideoRegs) -> Option<BGPixel> {
+    fn window_pixel_cgb(&self, x: u8, y: u8, regs: &VideoRegs) -> Option<CGBPixel> {
         if regs.get_window_enable() && (x + 7 >= regs.window_x) && (y >= regs.window_y) {
             let win_x = (x + 7 - regs.window_x) as usize;
             let win_y = (y - regs.window_y) as usize;
             let win_texel = self.ref_window(regs)[win_y][win_x];
-            Some(if win_texel == 0 {
-                BGPixel::Zero(self.get_bg_colour(win_texel))
+            let attrs = self.ref_window_attrs(regs)[win_y][win_x];
+            let palette = (attrs & TileAttributes::CGB_PAL).bits();
+            let colour = self.get_gbc_bg_colour(palette, win_texel);
+
+            Some(if regs.get_background_priority() {
+                if attrs.contains(TileAttributes::PRIORITY) {
+                    CGBPixel::Hi(colour)
+                } else if win_texel == 0 {
+                    CGBPixel::LoZero(colour)
+                } else {
+                    CGBPixel::LoNonZero(colour)
+                }
+            } else if win_texel == 0 {
+                CGBPixel::LoZero(colour)
             } else {
-                BGPixel::NonZero(self.get_bg_colour(win_texel))
+                CGBPixel::LoNonZero(colour)
             })
         } else {
             None
@@ -218,18 +244,26 @@ impl VRAM {
     }
 
     #[inline]
-    fn background_pixel_cgb(&self, x: u8, y: u8, regs: &VideoRegs) -> BGPixel {
+    fn background_pixel_cgb(&self, x: u8, y: u8, regs: &VideoRegs) -> CGBPixel {
+        let bg_x = regs.scroll_x.wrapping_add(x) as usize;
+        let bg_y = regs.scroll_y.wrapping_add(y) as usize;
+        let bg_texel = self.ref_background(regs)[bg_y][bg_x];
+        let attrs = self.ref_background_attrs(regs)[bg_y][bg_x];
+        let palette = (attrs & TileAttributes::CGB_PAL).bits();
+        let colour = self.get_gbc_bg_colour(palette, bg_texel);
+
         if regs.get_background_priority() {
-            let bg_x = regs.scroll_x.wrapping_add(x) as usize;
-            let bg_y = regs.scroll_y.wrapping_add(y) as usize;
-            let bg_texel = self.ref_background(regs)[bg_y][bg_x];
-            if bg_texel == 0 {
-                BGPixel::Zero(self.get_bg_colour(bg_texel))
+            if attrs.contains(TileAttributes::PRIORITY) {
+                CGBPixel::Hi(colour)
+            } else if bg_texel == 0 {
+                CGBPixel::LoZero(colour)
             } else {
-                BGPixel::NonZero(self.get_bg_colour(bg_texel))
+                CGBPixel::LoNonZero(colour)
             }
+        } else if bg_texel == 0 {
+            CGBPixel::LoZero(colour)
         } else {
-            BGPixel::Zero(Colour::zero())
+            CGBPixel::LoNonZero(colour)
         }
     }
 }
@@ -244,6 +278,12 @@ enum SpritePixel {
 enum BGPixel {
     NonZero(Colour),    // Colour 1-3
     Zero(Colour),       // Zero colour (draw LO sprites above this)
+}
+
+enum CGBPixel {
+    Hi(Colour),         // High priority (draw above everything)
+    LoNonZero(Colour),  // Low prio, Colour 1-3 (draw HI sprites above this)
+    LoZero(Colour),     // Low prio, zero colour (draw HI & LO sprites above this)
 }
 
 #[inline]

@@ -115,7 +115,7 @@ impl VideoRegs {
 
     // For rendering window.
     pub fn get_window_enable(&self) -> bool {
-        self.lcd_control.contains(LCDControl::DISPLAY_PRIORITY | LCDControl::WINDOW_DISPLAY_ENABLE)
+        self.lcd_control.contains(LCDControl::WINDOW_DISPLAY_ENABLE)
     }
 
     // For sprites.

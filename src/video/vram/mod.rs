@@ -86,7 +86,7 @@ impl VRAM {
     }
 
     // Get background tilemap attribute for pixel pos.
-    pub fn get_background_attr<'a>(&'a self, regs: &VideoRegs) -> &'a Vec<Vec<TileAttributes>> {
+    pub fn ref_background_attrs<'a>(&'a self, regs: &VideoRegs) -> &'a Vec<Vec<TileAttributes>> {
         if !regs.bg_tile_map_select() {
             self.map_cache_0.ref_attrs()
         } else {
