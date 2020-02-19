@@ -19,7 +19,6 @@ mod constants {
 use crate::interrupt::InterruptFlags;
 use crate::mem::MemDevice;
 
-//use mem::VideoMem;
 use sgbpalettes::SGBPalette;
 use regs::VideoRegs;
 
@@ -195,11 +194,6 @@ impl VideoDevice {
 
         InterruptFlags::default()
     }
-
-    // Draw a single line
-    /*fn draw_line(&mut self) {
-        self.renderer.draw_line(self.mem.get_lcd_y(), &mut self.mem, self.cgb_mode);
-    }*/
 }
 
 impl VideoDevice {
@@ -216,16 +210,6 @@ impl VideoDevice {
     }
 }
 
-/*impl MemDevice for VideoDevice {
-    fn read(&self, loc: u16) -> u8 {
-        self.mem.read(loc)
-    }
-
-    fn write(&mut self, loc: u16, val: u8) {
-        self.mem.write(loc, val);
-    }
-}*/
-
 impl MemDevice for VideoDevice {
     fn read(&self, loc: u16) -> u8 {
         match loc {
@@ -241,15 +225,6 @@ impl MemDevice for VideoDevice {
             },
             // Background Map A
             0x9800..=0x9BFF if self.regs.can_access_vram() => {
-                /*let base = (loc - 0x9800) as usize;
-                let x = base % 0x20;
-                let y = base / 0x20;
-
-                if self.vram_bank == 0 {
-                    self.tile_map_0.get_tile_texture(x, y)
-                } else {
-                    self.tile_map_0.get_tile_attribute(x, y)
-                }*/
                 let index = (loc - 0x9800) as usize;
                 if self.vram_bank == 0 {
                     self.vram.lock().unwrap().tile_map_0[index]
@@ -259,15 +234,6 @@ impl MemDevice for VideoDevice {
             },
             // Background Map B
             0x9C00..=0x9FFF if self.regs.can_access_vram() => {
-                /*let base = (loc - 0x9C00) as usize;
-                let x = base % 0x20;
-                let y = base / 0x20;
-
-                if self.vram_bank == 0 {
-                    self.tile_map_1.get_tile_texture(x, y)
-                } else {
-                    self.tile_map_1.get_tile_attribute(x, y)
-                }*/
                 let index = (loc - 0x9C00) as usize;
                 if self.vram_bank == 0 {
                     self.vram.lock().unwrap().tile_map_1[index]
@@ -291,10 +257,10 @@ impl MemDevice for VideoDevice {
             0xFF4B => self.regs.window_x,
             0xFF4F => self.vram_bank | 0xFE,
             // Colour palettes
-            //0xFF68 => self.colour_palettes.read_bg_index(),
-            //0xFF69 => self.colour_palettes.read_bg(),
-            //0xFF6A => self.colour_palettes.read_obj_index(),
-            //0xFF6B => self.colour_palettes.read_obj(),
+            0xFF68 => self.vram.lock().unwrap().colour_palettes.read_bg_index(),
+            0xFF69 => self.vram.lock().unwrap().colour_palettes.read_bg(),
+            0xFF6A => self.vram.lock().unwrap().colour_palettes.read_obj_index(),
+            0xFF6B => self.vram.lock().unwrap().colour_palettes.read_obj(),
             _ => 0xFF
         }
     }
@@ -318,15 +284,6 @@ impl MemDevice for VideoDevice {
             },
             // Background Map A
             0x9800..=0x9BFF if self.regs.can_access_vram() => {
-                /*let base = (loc - 0x9800) as usize;
-                let x = base % 0x20;
-                let y = base / 0x20;
-
-                if self.vram_bank == 0 {
-                    self.tile_map_0.set_tile_texture(x, y, val);
-                } else {
-                    self.tile_map_0.set_tile_attribute(x, y, val);
-                }*/
                 let index = (loc - 0x9800) as usize;
                 if self.vram_bank == 0 {
                     self.vram.lock().unwrap().tile_map_0[index] = val;
@@ -338,15 +295,6 @@ impl MemDevice for VideoDevice {
             },
             // Background Map B
             0x9C00..=0x9FFF if self.regs.can_access_vram() => {
-                /*let base = (loc - 0x9C00) as usize;
-                let x = base % 0x20;
-                let y = base / 0x20;
-
-                if self.vram_bank == 0 {
-                    self.tile_map_1.set_tile_texture(x, y, val);
-                } else {
-                    self.tile_map_1.set_tile_attribute(x, y, val);
-                }*/
                 let index = (loc - 0x9C00) as usize;
                 if self.vram_bank == 0 {
                     self.vram.lock().unwrap().tile_map_1[index] = val;
@@ -377,10 +325,10 @@ impl MemDevice for VideoDevice {
             0xFF4B => self.regs.window_x = val,
             0xFF4F => self.vram_bank = val & 1,
             // Colour palettes
-            //0xFF68 => self.colour_palettes.write_bg_index(val),
-            //0xFF69 => self.colour_palettes.write_bg(val),
-            //0xFF6A => self.colour_palettes.write_obj_index(val),
-            //0xFF6B => self.colour_palettes.write_obj(val),
+            0xFF68 => self.vram.lock().unwrap().colour_palettes.write_bg_index(val),
+            0xFF69 => self.vram.lock().unwrap().colour_palettes.write_bg(val),
+            0xFF6A => self.vram.lock().unwrap().colour_palettes.write_obj_index(val),
+            0xFF6B => self.vram.lock().unwrap().colour_palettes.write_obj(val),
             _ => {}//unreachable!()
         }
     }

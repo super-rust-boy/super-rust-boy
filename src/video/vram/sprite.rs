@@ -20,7 +20,7 @@ bitflags! {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Sprite {
     pub y:          u8,
     pub x:          u8,
@@ -66,12 +66,12 @@ impl ObjectMem {
         }
     }
 
-    pub fn ref_objects_for_line<'a>(&'a self, y: u8, large: bool) -> Vec<&'a Sprite> {
+    pub fn get_objects_for_line(&self, y: u8, large: bool) -> Vec<Sprite> {
         let y_upper = y + 16;
         let y_lower = y_upper - if large {SPRITE_LARGE_HEIGHT} else {SPRITE_SMALL_HEIGHT};
         self.objects.iter().filter(|o| {
             (o.y > y_lower) && (o.y <= y_upper)
-        }).collect::<Vec<_>>()
+        }).cloned().collect::<Vec<_>>()
     }
 }
 

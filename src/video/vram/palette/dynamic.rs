@@ -1,9 +1,4 @@
 // Game Boy Color 15-bit palettes.
-use cgmath::{
-    Vector4,
-    Matrix4
-};
-
 use bitflags::bitflags;
 
 use crate::{
@@ -14,7 +9,28 @@ use crate::{
     }
 };
 
-const MAX_COLOUR: f32 = 0x1F as f32;
+const MAX_COLOUR: u16 = 0x1F;
+macro_rules! col15_to_col888 {
+    ($rgb:expr) => {
+        {
+            let r = ($rgb & MAX_COLOUR) << 3;
+            let g = (($rgb >> 5) & MAX_COLOUR) << 3;
+            let b = (($rgb >> 10) & MAX_COLOUR) << 3;
+            Colour::new(r as u8, g as u8, b as u8)
+        }
+    };
+}
+
+/*macro_rules! col888_to_col15 {
+    ($colour:expr) => {
+        {
+            let r = colour.r >> 3;
+            let g = colour.g >> 3;
+            let b = colour.b >> 3;
+            r | (g << 5) | (b << 5)
+        }
+    };
+}*/
 
 bitflags! {
     #[derive(Default)]
@@ -64,43 +80,29 @@ bitflags! {
 
 #[derive(Clone)]
 struct DynamicPalette {
-    colours: PaletteColours
+    colours:    PaletteColours,
+    raw:        [u8; 8],
 }
 
 impl DynamicPalette {
     fn new() -> Self {
         DynamicPalette {
-            colours: [Colour::new(); 3]
+            colours:    [Colour::zero(); 4],
+            raw:        [0; 8],
         }
-    }
-
-    fn get_palette(&self, transparent: bool) -> PaletteColours {
-        let col_0 = if transparent {
-            Vector4::new(0.0, 0.0, 0.0, 0.0)
-        } else {
-            self.colours[0].get_vector()
-        };
-
-        Matrix4::from_cols(
-            col_0,
-            self.colours[1].get_vector(),
-            self.colours[2].get_vector(),
-            self.colours[3].get_vector()
-        )
     }
 }
 
 impl MemDevice for DynamicPalette {
     fn read(&self, loc: u16) -> u8 {
-        let colour = (loc / 2) as usize;
-        let low_byte = (loc % 2) == 0;
-        self.colours[colour].read(low_byte)
+        self.raw[(loc % 8) as usize]
     }
 
     fn write(&mut self, loc: u16, val: u8) {
         let colour = (loc / 2) as usize;
-        let low_byte = (loc % 2) == 0;
-        self.colours[colour].write(val, low_byte);
+        self.raw[(loc % 8) as usize] = val;
+
+        self.colours[colour] = col15_to_col888!(make_16!(self.raw[colour + 1], self.raw[colour]));
     }
 }
 
@@ -128,12 +130,12 @@ impl DynamicPaletteMem {
         }
     }
 
-    pub fn make_data(&mut self) -> Vec<PaletteColours> {
-        self.bg_palettes.iter()
-            .map(|p| p.get_palette(true))
-            .chain(self.bg_palettes.iter().map(|p| p.get_palette(false)))
-            .chain(self.obj_palettes.iter().map(|p| p.get_palette(true)))
-            .collect::<Vec<_>>()
+    pub fn get_bg_colour(&self, which: usize, texel: u8) -> Colour {
+        self.bg_palettes[which].colours[texel as usize]
+    }
+
+    pub fn get_obj_colour(&self, which: usize, texel: u8) -> Colour {
+        self.obj_palettes[which].colours[texel as usize]
     }
 
     pub fn read_bg_index(&self) -> u8 {

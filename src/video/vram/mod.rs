@@ -5,14 +5,13 @@ mod sprite;
 mod palette;
 
 use super::types::{
-    PaletteColours,
     Colour
 };
 use consts::*;
 use patternmem::*;
 use palette::{
     r#static::StaticPaletteMem,
-    //dynamic::DynamicPaletteMem
+    dynamic::DynamicPaletteMem
 };
 use sprite::{
     ObjectMem,
@@ -32,15 +31,15 @@ pub struct VRAM {
     pub tile_attrs_1:       Vec<u8>,
     pub object_mem:         ObjectMem,
 
-    // Tile map caches
-    map_cache_0:        Vec<Vec<u8>>,   // TODO: make this a type
+    // Tile map caches // TODO move these
+    map_cache_0:            Vec<Vec<u8>>,   // TODO: make this a type
     pub map_cache_0_dirty:  bool,
-    map_cache_1:        Vec<Vec<u8>>,
+    map_cache_1:            Vec<Vec<u8>>,
     pub map_cache_1_dirty:  bool,
 
     // Palettes
     pub palettes:           StaticPaletteMem,
-    //colour_palettes:    DynamicPaletteMem,
+    pub colour_palettes:    DynamicPaletteMem,
 }
 
 impl VRAM {
@@ -59,6 +58,7 @@ impl VRAM {
             map_cache_1_dirty:  true,
 
             palettes:           StaticPaletteMem::new(palette),
+            colour_palettes:    DynamicPaletteMem::new(),
         }
     }
 }
@@ -105,10 +105,10 @@ impl VRAM {
         }
     }
 
-    pub fn ref_objects_for_line<'a>(&'a self, y: u8, regs: &VideoRegs) -> Vec<&'a Sprite> {
+    pub fn get_objects_for_line(&self, y: u8, regs: &VideoRegs) -> Vec<Sprite> {
         if regs.display_sprites() {
             let large_sprites = regs.is_large_sprites();
-            self.object_mem.ref_objects_for_line(y, large_sprites)
+            self.object_mem.get_objects_for_line(y, large_sprites)
         } else {
             Vec::new()
         }
@@ -127,5 +127,15 @@ impl VRAM {
     #[inline]
     pub fn get_obj_1_colour(&self, texel: u8) -> Colour {
         self.palettes.get_colour(2, texel)
+    }
+
+    #[inline]
+    pub fn get_gbc_bg_colour(&self, which: u8, texel: u8) -> Colour {
+        self.colour_palettes.get_bg_colour(which as usize, texel)
+    }
+
+    #[inline]
+    pub fn get_gbc_obj_colour(&self, which: u8, texel: u8) -> Colour {
+        self.colour_palettes.get_obj_colour(which as usize, texel)
     }
 }

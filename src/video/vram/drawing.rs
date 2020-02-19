@@ -5,14 +5,12 @@ use super::{
     super::regs::VideoRegs
 };
 
-const TILE_MAP_WIDTH: usize = 32;
 const SCREEN_WIDTH: usize = 160;
 
 impl VRAM {
     pub fn draw_line_gb(&mut self, target: &mut [u8], regs: &VideoRegs) {    // TODO: use external type here.
         let y = regs.read_lcdc_y();
         let target_start = (y as usize) * SCREEN_WIDTH;
-        //println!("Draw line {}", y);
 
         // Rebuild caches
         if self.map_cache_0_dirty {
@@ -23,8 +21,8 @@ impl VRAM {
         }
 
         // Find objects
-        let objects = self.ref_objects_for_line(y, regs);
-        let mut sprite_pixels = [SpritePixel::None; 160];
+        let objects = self.get_objects_for_line(y, regs);
+        let mut sprite_pixels = [SpritePixel::None; SCREEN_WIDTH];
 
         self.render_sprites_to_line(&mut sprite_pixels, &objects, y, regs.is_large_sprites());
 
@@ -57,7 +55,7 @@ impl VRAM {
         }
     }
 
-    fn render_sprites_to_line(&self, line: &mut [SpritePixel], objects: &[&Sprite], y: u8, large: bool) {
+    fn render_sprites_to_line(&self, line: &mut [SpritePixel], objects: &[Sprite], y: u8, large: bool) {
         for o in objects {
             let sprite_y = y + 16 - o.y;
             let (tile_num_offset, tile_y) = match (large, sprite_y < 8, o.flip_y()) {
@@ -74,7 +72,7 @@ impl VRAM {
             let start_x = (o.x as isize) - 8;
             for x_offset in 0..8 {
                 let x = start_x + x_offset;
-                if x >= 0 && x < 160 {
+                if x >= 0 && x < (SCREEN_WIDTH as isize) {
                     let tile_x = if o.flip_x() {7 - x_offset} else {x_offset};
                     let texel = tile.get_texel(tile_x as usize, tile_y as usize);
                     if texel != 0 {

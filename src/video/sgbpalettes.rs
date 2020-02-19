@@ -2,7 +2,6 @@
 macro_rules! make_colour {
     ($r: expr, $g: expr, $b: expr) => {
         {
-            //Vector4::new(($r as f32) / 255.0, ($g as f32) / 255.0, ($b as f32) / 255.0, 1.0)
             Colour::new($r, $g, $b)
         }
     };
@@ -28,13 +27,6 @@ pub struct SGBPalette {
     pub obj0: PaletteColours,
     pub obj1: PaletteColours
 }
-
-/*impl SGBPalette {
-    #[inline]
-    pub fn get_colour_0(&self) -> Vector4<f32> {
-        self.bg[0]
-    }
-}*/
 
 // GB greyscale palette
 const BW_COLOURS: PaletteColours = [
