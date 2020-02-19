@@ -21,17 +21,6 @@ macro_rules! col15_to_col888 {
     };
 }
 
-/*macro_rules! col888_to_col15 {
-    ($colour:expr) => {
-        {
-            let r = colour.r >> 3;
-            let g = colour.g >> 3;
-            let b = colour.b >> 3;
-            r | (g << 5) | (b << 5)
-        }
-    };
-}*/
-
 bitflags! {
     #[derive(Default)]
     struct PaletteIndex: u8 {
