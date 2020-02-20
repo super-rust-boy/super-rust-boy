@@ -6,7 +6,8 @@ use std::sync::{
     Arc,
     mpsc::{
         channel,
-        Sender
+        Sender,
+        Receiver
     },
     Mutex
 };
@@ -23,11 +24,13 @@ enum RendererMessage {
 // Renderer for video that spawns a thread to render on.
 pub struct Renderer {
     sender: Sender<RendererMessage>,
+    receiver: Receiver<()>,
 }
 
 impl Renderer {
     pub fn new(mem: Arc<Mutex<VRAM>>) -> Self {
         let (send_msg, recv_msg) = channel::<RendererMessage>();
+        let (send_reply, recv_reply) = channel::<()>();
 
         std::thread::spawn(move || {
             use RendererMessage::*;
@@ -41,11 +44,13 @@ impl Renderer {
                     DrawLineGB(regs) => {
                         let mut mem = mem.lock().unwrap();
                         let mut t = target.as_ref().unwrap().lock().unwrap();
+                        send_reply.send(()).unwrap();
                         mem.draw_line_gb(&mut t, &regs);
                     },
                     DrawLineCGB(regs) => {
                         let mut mem = mem.lock().unwrap();
                         let mut t = target.as_ref().unwrap().lock().unwrap();
+                        send_reply.send(()).unwrap();
                         mem.draw_line_cgb(&mut t, &regs);
                     }
                 }
@@ -54,6 +59,7 @@ impl Renderer {
 
         Renderer {
             sender: send_msg,
+            receiver: recv_reply,
         }
     }
 
@@ -67,12 +73,20 @@ impl Renderer {
         self.sender
             .send(RendererMessage::DrawLineGB(regs))
             .expect("Couldn't send draw line message!");
+
+        self.receiver
+            .recv()
+            .expect("GB");
     }
 
     pub fn draw_line_cgb(&mut self, regs: VideoRegs) {
         self.sender
             .send(RendererMessage::DrawLineCGB(regs))
             .expect("Couldn't send draw line message!");
+
+        self.receiver
+            .recv()
+            .expect("CGB");
     }
 
     pub fn end_frame(&mut self) {

@@ -9,7 +9,7 @@ use super::{
 const SCREEN_WIDTH: usize = 160;
 
 impl VRAM {
-    pub fn draw_line_gb(&mut self, target: &mut [u8], regs: &VideoRegs) {    // TODO: use external type here.
+    pub fn draw_line_gb(&mut self, target: &mut [u8], regs: &VideoRegs) {
         let y = regs.read_lcdc_y();
         let target_start = (y as usize) * SCREEN_WIDTH;
 
@@ -53,7 +53,7 @@ impl VRAM {
     }
 
     fn render_sprites_to_line(&self, line: &mut [SpritePixel], objects: &[Sprite], y: u8, large: bool) {
-        for o in objects {
+        for o in objects.iter().take(10) {
             let sprite_y = y + 16 - o.y;
             let (tile_num_offset, tile_y) = match (large, sprite_y < 8, o.flip_y()) {
                 (false, true, false)    => (0_u8, sprite_y),
@@ -181,7 +181,7 @@ impl VRAM {
     }
 
     fn render_sprites_to_line_cgb(&self, line: &mut [SpritePixel], objects: &[Sprite], y: u8, large: bool) {
-        for o in objects {
+        for o in objects.iter().take(10).rev() {
             let sprite_y = y + 16 - o.y;
             let (tile_num_offset, tile_y) = match (large, sprite_y < 8, o.flip_y()) {
                 (false, true, false)    => (0_u8, sprite_y),

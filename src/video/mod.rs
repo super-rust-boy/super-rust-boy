@@ -166,7 +166,7 @@ impl VideoDevice {
         self.regs.write_mode(mode);
         let stat_flags = self.regs.read_flags();
 
-        if mode == Mode::_0 {
+        if mode == Mode::_3 {
             if self.cgb_mode {
                 self.renderer.draw_line_cgb(self.regs.clone());
             } else {

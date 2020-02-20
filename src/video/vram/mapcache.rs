@@ -49,12 +49,10 @@ impl MapCache {
     pub fn construct_gb(&mut self, tile_map: &[u8], tile_mem: &TileMem, regs: &VideoRegs) {
         if self.dirty {
             for (i, tile_num) in tile_map.iter().enumerate() {
-                // TODO: iterate over tile
                 let base_y = (i / 32) << 3;
                 let base_x = (i % 32) << 3;
-                for y in 0..8 {
-                    for x in 0..8 {
-                        // TODO: attrs
+                for (y, texel_row) in self.texels.iter_mut().skip(base_y).take(8).enumerate() {
+                    for (x, texel) in texel_row.iter_mut().skip(base_x).take(8).enumerate() {
                         let tile_index = if regs.lo_tile_data_select() {
                             *tile_num as usize
                         } else {
@@ -62,7 +60,7 @@ impl MapCache {
                             (256 + (signed as isize)) as usize
                         };
                         let tex = tile_mem.ref_tile(tile_index).get_texel(x, y);
-                        self.texels[base_y + y][base_x + x] = tex;
+                        *texel = tex;
                     }
                 }
             }
@@ -75,11 +73,10 @@ impl MapCache {
         if self.dirty {
             for (i, (tile_num, attrs)) in tile_map.iter().zip(tile_attrs.iter()).enumerate() {
                 let attr_flags = TileAttributes::from_bits_truncate(*attrs);
-                // TODO: iterate over tile
                 let base_y = (i / 32) << 3;
                 let base_x = (i % 32) << 3;
-                for y in 0..8 {
-                    for x in 0..8 {
+                for (y, (texel_row, attrs_row)) in self.texels.iter_mut().zip(self.attrs.iter_mut()).skip(base_y).take(8).enumerate() {
+                    for (x, (texel, attrs)) in texel_row.iter_mut().zip(attrs_row.iter_mut()).skip(base_x).take(8).enumerate() {
                         let bank_offset = if attr_flags.contains(TileAttributes::VRAM_BANK) {384} else {0};
                         let tile_index = if regs.lo_tile_data_select() {
                             *tile_num as usize
@@ -91,10 +88,8 @@ impl MapCache {
                         let tex_x = if attr_flags.contains(TileAttributes::X_FLIP) {7-x} else {x};
                         let tex_y = if attr_flags.contains(TileAttributes::Y_FLIP) {7-y} else {y};
                         
-                        let tex = tile_mem.ref_tile(tile_index).get_texel(tex_x, tex_y);
-                        self.texels[base_y + y][base_x + x] = tex;
-                        
-                        self.attrs[base_y + y][base_x + x] = attr_flags;
+                        *texel = tile_mem.ref_tile(tile_index).get_texel(tex_x, tex_y);
+                        *attrs = attr_flags;
                     }
                 }
             }
