@@ -1,4 +1,3 @@
-//mod mem;
 mod types;
 mod renderer;
 mod vram;
@@ -129,8 +128,7 @@ impl VideoDevice {
                     self.update_mode(Mode::_2)
                 },
                 Mode::_1 => if self.get_cycle_count() >= MODE_1 {
-                    //self.renderer.frame_start(&mut self.mem);
-                    self.renderer.end_frame();
+                    //self.renderer.end_frame();
                     self.regs.set_lcdc_y(0);
                     self.frame_cycle_reset();
                     self.update_mode(Mode::_2)

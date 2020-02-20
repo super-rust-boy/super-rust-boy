@@ -23,8 +23,8 @@ enum RendererMessage {
 
 // Renderer for video that spawns a thread to render on.
 pub struct Renderer {
-    sender: Sender<RendererMessage>,
-    receiver: Receiver<()>,
+    sender:     Sender<RendererMessage>,
+    receiver:   Receiver<()>,
 }
 
 impl Renderer {
@@ -58,8 +58,8 @@ impl Renderer {
         });
 
         Renderer {
-            sender: send_msg,
-            receiver: recv_reply,
+            sender:     send_msg,
+            receiver:   recv_reply,
         }
     }
 
@@ -87,9 +87,5 @@ impl Renderer {
         self.receiver
             .recv()
             .expect("CGB");
-    }
-
-    pub fn end_frame(&mut self) {
-
     }
 }
