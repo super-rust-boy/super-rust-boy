@@ -152,10 +152,6 @@ impl MemBus {
         self.joypad.set_direction(direction, val);
     }
 
-    /*pub fn on_resize(&mut self) {
-        self.video_device.on_resize();
-    }*/
-
     // Flush the battery-backed RAM to disk.
     pub fn flush_cart(&mut self) {
         self.cart.flush_ram();
