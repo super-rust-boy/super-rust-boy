@@ -3,13 +3,16 @@
 use crate::{
     video::{
         sgbpalettes::*,
-        RendererType,
         VideoDevice
     },
     audio::AudioDevice,
     timer::Timer,
     joypad::*,
     interrupt::InterruptFlags
+};
+
+use std::sync::{
+    Arc, Mutex
 };
 
 use super::cartridge::Cartridge;
@@ -44,7 +47,7 @@ pub struct MemBus {
 }
 
 impl MemBus {
-    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette, audio_device: AudioDevice, renderer: RendererType) -> MemBus {
+    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette, audio_device: AudioDevice) -> MemBus {
         let rom = match Cartridge::new(rom_file, save_file) {
             Ok(r) => r,
             Err(s) => panic!("Could not construct ROM: {}", s),
@@ -71,7 +74,7 @@ impl MemBus {
             interrupt_flag:     InterruptFlags::default(),
             interrupt_enable:   InterruptFlags::default(),
 
-            video_device:       VideoDevice::new(renderer, palette, cgb_mode),
+            video_device:       VideoDevice::new(palette, cgb_mode),
             audio_device:       audio_device,
             timer:              Timer::new(),
             joypad:             Joypad::new(),
@@ -88,9 +91,9 @@ impl MemBus {
         }
     }
 
-    pub fn render_frame(&mut self) {
+    pub fn render_frame(&mut self, frame: Arc<Mutex<[u8]>>) {
         self.audio_device.frame_update();
-        self.video_device.frame();
+        self.video_device.start_frame(frame);
         if self.joypad.check_interrupt() {
             self.interrupt_flag.insert(InterruptFlags::JOYPAD);
         }
@@ -147,10 +150,6 @@ impl MemBus {
 
     pub fn set_direction(&mut self, direction: Directions, val: bool) {
         self.joypad.set_direction(direction, val);
-    }
-
-    pub fn on_resize(&mut self) {
-        self.video_device.on_resize();
     }
 
     // Flush the battery-backed RAM to disk.

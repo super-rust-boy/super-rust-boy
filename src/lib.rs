@@ -13,9 +13,7 @@ mod joypad;
 pub mod debug;
 
 pub use video::{
-    UserPalette,
-    VulkanRenderer,
-    RendererType
+    UserPalette
 };
 
 use joypad::{
@@ -23,7 +21,11 @@ use joypad::{
     Directions
 };
 
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::{
+    mpsc::{channel, Receiver},
+    Arc,
+    Mutex
+};
 
 use cpu::CPU;
 use audio::{
@@ -45,16 +47,18 @@ pub enum Button {
 }
 
 pub struct RustBoy {
-    cpu: CPU,
-    audio_recv: Option<Receiver<AudioCommand>>
+    cpu:        CPU,
+    audio_recv: Option<Receiver<AudioCommand>>,
+
+    frame:      Arc<Mutex<[u8; 160 * 144 * 4]>>
 }
 
 impl RustBoy {
-    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool, renderer: RendererType) -> Box<Self> {
+    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool) -> Box<Self> {
         let (send, recv) = channel();
 
         let ad = AudioDevice::new(send);
-        let mem = MemBus::new(cart_name, save_file_name, palette, ad, renderer);
+        let mem = MemBus::new(cart_name, save_file_name, palette, ad);
 
         let cpu = CPU::new(mem);
 
@@ -66,17 +70,23 @@ impl RustBoy {
         };
 
         Box::new(RustBoy {
-            cpu: cpu,
-            audio_recv: audio_recv
+            cpu:        cpu,
+            audio_recv: audio_recv,
+
+            frame:      Arc::new(Mutex::new([255; 160 * 144 * 4]))
         })
     }
 
     // Call every 1/60 seconds.
-    pub fn frame(&mut self) {
+    pub fn frame(&mut self, frame: &mut [u8]) {
+        self.cpu.frame_update(self.frame.clone());    // Draw video and read inputs
+
         while self.cpu.step() {}    // Execute up to v-blanking
 
-        self.cpu.frame_update();    // Draw video and read inputs
-
+        for (i, o) in self.frame.lock().unwrap().iter().zip(frame.iter_mut()) {
+            *o = *i;
+        }
+        
         if let Some(recv) = &mut self.audio_recv {
             while let Ok(_) = recv.try_recv() {}
         }
@@ -95,10 +105,6 @@ impl RustBoy {
             Start   => self.cpu.set_button(Buttons::START, val),
             Select  => self.cpu.set_button(Buttons::SELECT, val),
         }
-    }
-
-    pub fn on_resize(&mut self) {
-        self.cpu.on_resize();
     }
 
     #[cfg(feature = "debug")]

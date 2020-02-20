@@ -1,17 +1,25 @@
 // Game Boy Color 15-bit palettes.
-use cgmath::{
-    Vector4,
-    Matrix4
-};
-
 use bitflags::bitflags;
 
 use crate::{
     mem::MemDevice,
-    video::PaletteColours
+    video::{
+        PaletteColours,
+        Colour
+    }
 };
 
-const MAX_COLOUR: f32 = 0x1F as f32;
+const MAX_COLOUR: u16 = 0x1F;
+macro_rules! col15_to_col888 {
+    ($rgb:expr) => {
+        {
+            let r = ($rgb & MAX_COLOUR) << 3;
+            let g = (($rgb >> 5) & MAX_COLOUR) << 3;
+            let b = (($rgb >> 10) & MAX_COLOUR) << 3;
+            Colour::new(r as u8, g as u8, b as u8)
+        }
+    };
+}
 
 bitflags! {
     #[derive(Default)]
@@ -20,92 +28,32 @@ bitflags! {
     }
 }
 
-// 15-bit colour, stored in 2 bytes.
-#[derive(Clone, Copy)]
-struct Colour {
-    r: u8,
-    g: u8,
-    b: u8
-}
-
-impl Colour {
-    fn new() -> Self {
-        Colour {
-            r: 0x1F,
-            g: 0x1F,
-            b: 0x1F
-        }
-    }
-
-    fn read(&self, low_byte: bool) -> u8 {
-        if low_byte {
-            self.r | ((self.g & 0x7) << 5)
-        } else {
-            ((self.g >> 3) & 0x3) | (self.b << 2)
-        }
-    }
-
-    fn write(&mut self, val: u8, low_byte: bool) {
-        if low_byte {
-            self.r = val & 0x1F;
-            self.g &= 0x18;
-            self.g |= (val >> 5) & 0x7;
-        } else {
-            self.g &= 0x7;
-            self.g |= (val & 0x3) << 3;
-            self.b = (val >> 2) & 0x1F;
-        }
-    }
-
-    fn get_vector(&self) -> Vector4<f32> {
-        Vector4::new(
-            self.r as f32 / MAX_COLOUR,
-            self.g as f32 / MAX_COLOUR,
-            self.b as f32 / MAX_COLOUR,
-            1.0
-        )
-    }
-}
-
 #[derive(Clone)]
 struct DynamicPalette {
-    colours: Vec<Colour>
+    colours:    PaletteColours,
+    raw:        [u8; 8],
 }
 
 impl DynamicPalette {
     fn new() -> Self {
         DynamicPalette {
-            colours: vec![Colour::new(); 4]
+            colours:    [Colour::zero(); 4],
+            raw:        [0; 8],
         }
-    }
-
-    fn get_palette(&self, transparent: bool) -> PaletteColours {
-        let col_0 = if transparent {
-            Vector4::new(0.0, 0.0, 0.0, 0.0)
-        } else {
-            self.colours[0].get_vector()
-        };
-
-        Matrix4::from_cols(
-            col_0,
-            self.colours[1].get_vector(),
-            self.colours[2].get_vector(),
-            self.colours[3].get_vector()
-        )
     }
 }
 
 impl MemDevice for DynamicPalette {
     fn read(&self, loc: u16) -> u8 {
-        let colour = (loc / 2) as usize;
-        let low_byte = (loc % 2) == 0;
-        self.colours[colour].read(low_byte)
+        self.raw[(loc % 8) as usize]
     }
 
     fn write(&mut self, loc: u16, val: u8) {
-        let colour = (loc / 2) as usize;
-        let low_byte = (loc % 2) == 0;
-        self.colours[colour].write(val, low_byte);
+        let colour = (loc >> 1) as usize;
+        self.raw[(loc % 8) as usize] = val;
+
+        let raw_idx = colour << 1;
+        self.colours[colour] = col15_to_col888!(make_16!(self.raw[raw_idx + 1], self.raw[raw_idx]));
     }
 }
 
@@ -118,8 +66,6 @@ pub struct DynamicPaletteMem {
     obj_palettes:       Vec<DynamicPalette>,
     obj_palette_index:  usize,
     obj_auto_inc:       PaletteIndex,
-
-    dirty:              bool
 }
 
 impl DynamicPaletteMem {
@@ -132,18 +78,15 @@ impl DynamicPaletteMem {
             obj_palettes:       vec![DynamicPalette::new(); 8],
             obj_palette_index:  0,
             obj_auto_inc:       PaletteIndex::default(),
-
-            dirty:              true
         }
     }
 
-    pub fn make_data(&mut self) -> Vec<PaletteColours> {
-        self.dirty = false;
-        self.bg_palettes.iter()
-            .map(|p| p.get_palette(true))
-            .chain(self.bg_palettes.iter().map(|p| p.get_palette(false)))
-            .chain(self.obj_palettes.iter().map(|p| p.get_palette(true)))
-            .collect::<Vec<_>>()
+    pub fn get_bg_colour(&self, which: usize, texel: u8) -> Colour {
+        self.bg_palettes[which].colours[texel as usize]
+    }
+
+    pub fn get_obj_colour(&self, which: usize, texel: u8) -> Colour {
+        self.obj_palettes[which].colours[texel as usize]
     }
 
     pub fn read_bg_index(&self) -> u8 {
@@ -177,8 +120,6 @@ impl DynamicPaletteMem {
         if self.bg_auto_inc.contains(PaletteIndex::AUTO_INCREMENT) {
             self.bg_palette_index = (self.bg_palette_index + 1) % 0x40;
         }
-
-        self.dirty = true;
     }
 
     pub fn read_obj(&self) -> u8 {
@@ -194,11 +135,5 @@ impl DynamicPaletteMem {
         if self.obj_auto_inc.contains(PaletteIndex::AUTO_INCREMENT) {
             self.obj_palette_index = (self.obj_palette_index + 1) % 0x40;
         }
-
-        self.dirty = true;
-    }
-
-    pub fn is_dirty(&self) -> bool {
-        self.dirty
     }
 }

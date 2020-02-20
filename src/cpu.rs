@@ -8,6 +8,10 @@ use crate::joypad::{
     Directions
 };
 
+use std::sync::{
+    Arc, Mutex
+};
+
 bitflags! {
     #[derive(Default)]
     struct CPUFlags: u8 {
@@ -154,8 +158,8 @@ impl CPU {
         return true;
     }
 
-    pub fn frame_update(&mut self) {
-        self.mem.render_frame();
+    pub fn frame_update(&mut self, frame: Arc<Mutex<[u8]>>) {
+        self.mem.render_frame(frame);
         self.mem.flush_cart();
     }
 
@@ -165,10 +169,6 @@ impl CPU {
 
     pub fn set_direction(&mut self, direction: Directions, val: bool) {
         self.mem.set_direction(direction, val);
-    }
-
-    pub fn on_resize(&mut self) {
-        self.mem.on_resize();
     }
 }
 

@@ -1,34 +1,17 @@
 [package]
 name = "rustboy"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["coopersimon <simon.d.cooper@hotmail.co.uk>"]
 edition = "2018"
-default-run = "rustboy-bin"
 
 [lib]
 name = "rustboy"
 path = "src/lib.rs"
-# crate-type = ["staticlib"]
-
-[[bin]]
-name = "rustboy-bin"
-path = "src/bin/main.rs"
-required-features = ["debug", "vulkano-render"]
-
-[dependencies]
-cpal = "0.11"
-vulkano = "0.16"
-vulkano-shaders = "0.16"
-vulkano-win = "0.16"
-winit = "0.19"
-cgmath = "0.17"
-bitflags = "1.1"
-clap = "2"
-chrono = "0.4"
 
 [features]
 debug = []
-vulkano-render = []
 
-#[profile.release]
-#debug = true
+[dependencies]
+cpal = "0.11"
+bitflags = "1.1"
+chrono = "0.4"

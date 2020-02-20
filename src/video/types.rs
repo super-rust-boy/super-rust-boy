@@ -1,23 +1,26 @@
-use winit::EventsLoop;
-
-use super::mem::VideoMem;
-
-#[derive(Default, Copy, Clone)]
-pub struct Vertex {
-    pub position: [f32; 2],
-    pub data: u32
+#[derive(Clone, Copy, Debug)]
+pub struct Colour {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8
 }
 
-pub type PaletteColours = cgmath::Matrix4<f32>;
+impl Colour {
+    pub const fn new(r: u8, g: u8, b: u8) -> Self {
+        Colour {
+            r: r,
+            g: g,
+            b: b
+        }
+    }
 
-pub trait Renderer {
-    fn frame_start(&mut self, video_mem: &mut VideoMem);
-    fn frame_end(&mut self);
-    fn draw_line(&mut self, y: u8, video_mem: &mut VideoMem, cgb_mode: bool);
-
-    fn on_resize(&mut self);
+    pub fn zero() -> Colour {
+        Colour {
+            r: 255,
+            g: 255,
+            b: 255
+        }
+    }
 }
 
-pub enum RendererType<'a> {
-    Vulkano(&'a EventsLoop) // Requires vulkano-render feature
-}
+pub type PaletteColours = [Colour; 4];
