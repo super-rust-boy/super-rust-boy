@@ -12,6 +12,6 @@ path = "src/lib.rs"
 debug = []
 
 [dependencies]
-cpal = "0.11"
+#cpal = "0.11"
 bitflags = "1.1"
 chrono = "0.4"

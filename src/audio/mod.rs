@@ -16,7 +16,7 @@ use crate::mem::MemDevice;
 
 use std::sync::mpsc::Sender;
 
-pub use self::handler::start_audio_handler_thread;
+//pub use self::handler::start_audio_handler_thread;
 
 const MAX_CYCLES: u32 = 154 * 456;
 const MAX_CYCLES_FLOAT: f32 = MAX_CYCLES as f32;

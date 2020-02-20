@@ -30,8 +30,7 @@ use std::sync::{
 use cpu::CPU;
 use audio::{
     AudioCommand,
-    AudioDevice,
-    start_audio_handler_thread
+    AudioDevice
 };
 use mem::MemBus;
 
@@ -63,7 +62,7 @@ impl RustBoy {
         let cpu = CPU::new(mem);
 
         let audio_recv = if !mute {
-            start_audio_handler_thread(recv);
+            //start_audio_handler_thread(recv);
             None
         } else {
             Some(recv)
