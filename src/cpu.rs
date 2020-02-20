@@ -170,10 +170,6 @@ impl CPU {
     pub fn set_direction(&mut self, direction: Directions, val: bool) {
         self.mem.set_direction(direction, val);
     }
-
-    /*pub fn on_resize(&mut self) {
-        self.mem.on_resize();
-    }*/
 }
 
 // Top level internals

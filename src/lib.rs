@@ -106,10 +106,6 @@ impl RustBoy {
         }
     }
 
-    /*pub fn on_resize(&mut self) {
-        self.cpu.on_resize();
-    }*/
-
     #[cfg(feature = "debug")]
     pub fn step(&mut self) -> bool {
         self.cpu.step()
