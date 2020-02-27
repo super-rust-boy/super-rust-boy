@@ -12,6 +12,11 @@ path = "src/lib.rs"
 debug = []
 
 [dependencies]
-#cpal = "0.11"
 bitflags = "1.1"
 chrono = "0.4"
+
+[target.'cfg(not(target_os = "ios"))'.dependencies]
+cpal = "0.11"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+coreaudio-rs = "0.9.1"

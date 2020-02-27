@@ -1,4 +1,4 @@
-/*use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Receiver;
 use std::thread;
 use std::collections::VecDeque;
 
@@ -8,8 +8,6 @@ use super::square1::{Square1Regs, Square1Gen};
 use super::square2::{Square2Regs, Square2Gen};
 use super::wave::{WaveRegs, WaveGen};
 use super::noise::{NoiseRegs, NoiseGen};
-
-use cpal;
 
 use bitflags::bitflags;
 
@@ -40,6 +38,7 @@ macro_rules! sample {
 type AudioFrame = [f32; 2];
 
 // TODO: better error handling
+#[cfg(not(target_os = "ios"))]
 pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
     use cpal::traits::{
         HostTrait,
@@ -109,6 +108,45 @@ pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
                 _ => {},
             }
         });
+    });
+}
+
+#[cfg(target_os = "ios")]
+pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
+    use coreaudio::audio_unit::{
+        AudioUnit,
+        IOType,
+        render_callback::{
+            self,
+            data
+        }
+    };
+
+    thread::spawn(move || {
+        let mut audio_unit = AudioUnit::new(IOType::DefaultOutput).unwrap();
+
+        let stream_format = audio_unit.output_stream_format().unwrap();
+        let sample_rate = audio_unit.sample_rate().unwrap() as usize;
+
+        let mut handler = AudioHandler::new(recv, sample_rate);
+
+        audio_unit.set_render_callback(move |args: render_callback::Args<data::NonInterleaved<f32>>| {
+            let num_frames = args.num_frames;
+            let mut data = args.data;
+
+            for i in 0..num_frames {
+                let frame = handler.process_frame();
+                for (channel, f) in data.channels_mut().zip(frame.iter()) {
+                    channel[i] = *f;
+                }
+            }
+
+            Ok(())
+        }).unwrap();
+
+        audio_unit.start().unwrap();
+
+        loop {}
     });
 }
 
@@ -309,4 +347,3 @@ impl AudioBuffers {
         }
     }
 }
-*/

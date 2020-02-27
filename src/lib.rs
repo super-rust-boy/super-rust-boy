@@ -62,7 +62,7 @@ impl RustBoy {
         let cpu = CPU::new(mem);
 
         let audio_recv = if !mute {
-            //start_audio_handler_thread(recv);
+            audio::start_audio_handler_thread(recv);
             None
         } else {
             Some(recv)

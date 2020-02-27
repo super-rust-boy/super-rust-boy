@@ -14,7 +14,7 @@ impl Colour {
         }
     }
 
-    pub fn zero() -> Colour {
+    pub const fn zero() -> Colour {
         Colour {
             r: 255,
             g: 255,
