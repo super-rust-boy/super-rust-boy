@@ -4,12 +4,13 @@ use super::regs::VideoRegs;
 
 use std::sync::{
     Arc,
-    mpsc::{
-        channel,
-        Sender,
-        Receiver
-    },
     Mutex
+};
+
+use crossbeam_channel::{
+    bounded,
+    Sender,
+    Receiver
 };
 
 pub type RenderTarget = Arc<Mutex<[u8]>>;
@@ -29,8 +30,8 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(mem: Arc<Mutex<VRAM>>) -> Self {
-        let (send_msg, recv_msg) = channel::<RendererMessage>();
-        let (send_reply, recv_reply) = channel::<()>();
+        let (send_msg, recv_msg) = bounded(1);
+        let (send_reply, recv_reply) = bounded(1);
 
         std::thread::spawn(move || {
             use RendererMessage::*;

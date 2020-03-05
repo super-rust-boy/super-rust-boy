@@ -14,7 +14,7 @@ use noise::NoiseRegs;
 
 use crate::mem::MemDevice;
 
-use std::sync::mpsc::Sender;
+use crossbeam_channel::Sender;
 
 pub use self::handler::start_audio_handler_thread;
 
