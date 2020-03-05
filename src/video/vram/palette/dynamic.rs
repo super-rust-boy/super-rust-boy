@@ -13,9 +13,12 @@ const MAX_COLOUR: u16 = 0x1F;
 macro_rules! col15_to_col888 {
     ($rgb:expr) => {
         {
-            let r = ($rgb & MAX_COLOUR) << 3;
-            let g = (($rgb >> 5) & MAX_COLOUR) << 3;
-            let b = (($rgb >> 10) & MAX_COLOUR) << 3;
+            let r_i = ($rgb & MAX_COLOUR) << 3;
+            let g_i = (($rgb >> 5) & MAX_COLOUR) << 3;
+            let b_i = (($rgb >> 10) & MAX_COLOUR) << 3;
+            let r = r_i + (r_i >> 5);
+            let g = g_i + (g_i >> 5);
+            let b = b_i + (b_i >> 5);
             Colour::new(r as u8, g as u8, b as u8)
         }
     };

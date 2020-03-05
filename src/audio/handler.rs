@@ -1,5 +1,4 @@
-/*use std::sync::mpsc::Receiver;
-use std::thread;
+/*use std::thread;
 use std::collections::VecDeque;
 
 use super::{AudioCommand, AudioChannelGen, AudioChannelRegs};
@@ -10,7 +9,7 @@ use super::wave::{WaveRegs, WaveGen};
 use super::noise::{NoiseRegs, NoiseGen};
 
 use cpal;
-
+use crossbeam_channel::Receiver;
 use bitflags::bitflags;
 
 bitflags! {
