@@ -27,7 +27,7 @@ use std::sync::{
 };
 
 use crossbeam_channel::{
-    bounded, Receiver
+    unbounded, Receiver
 };
 
 use cpu::CPU;
@@ -60,7 +60,7 @@ pub struct RustBoy {
 
 impl RustBoy {
     pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool) -> Box<Self> {
-        let (send, recv) = bounded(1);
+        let (send, recv) = unbounded();
 
         let ad = AudioDevice::new(send);
         let mem = MemBus::new(cart_name, save_file_name, palette, ad);
