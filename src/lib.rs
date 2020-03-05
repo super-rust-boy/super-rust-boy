@@ -38,6 +38,8 @@ use audio::{
 };
 use mem::MemBus;
 
+pub const FRAME_SIZE_BYTES: usize = 160 * 144 * 4;
+
 pub enum Button {
     Up,
     Down,
@@ -53,7 +55,7 @@ pub struct RustBoy {
     cpu:        CPU,
     audio_recv: Option<Receiver<AudioCommand>>,
 
-    frame:      Arc<Mutex<[u8; 160 * 144 * 4]>>
+    frame:      Arc<Mutex<[u8; FRAME_SIZE_BYTES]>>
 }
 
 impl RustBoy {
@@ -76,7 +78,7 @@ impl RustBoy {
             cpu:        cpu,
             audio_recv: audio_recv,
 
-            frame:      Arc::new(Mutex::new([255; 160 * 144 * 4]))
+            frame:      Arc::new(Mutex::new([255; FRAME_SIZE_BYTES]))
         })
     }
 
