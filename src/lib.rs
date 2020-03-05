@@ -22,9 +22,12 @@ use joypad::{
 };
 
 use std::sync::{
-    mpsc::{channel, Receiver},
     Arc,
     Mutex
+};
+
+use crossbeam_channel::{
+    bounded, Receiver
 };
 
 use cpu::CPU;
@@ -34,6 +37,8 @@ use audio::{
     start_audio_handler_thread
 };
 use mem::MemBus;
+
+pub const FRAME_SIZE_BYTES: usize = 160 * 144 * 4;
 
 pub enum Button {
     Up,
@@ -50,12 +55,12 @@ pub struct RustBoy {
     cpu:        CPU,
     audio_recv: Option<Receiver<AudioCommand>>,
 
-    frame:      Arc<Mutex<[u8; 160 * 144 * 4]>>
+    frame:      Arc<Mutex<[u8; FRAME_SIZE_BYTES]>>
 }
 
 impl RustBoy {
     pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool) -> Box<Self> {
-        let (send, recv) = channel();
+        let (send, recv) = bounded(1);
 
         let ad = AudioDevice::new(send);
         let mem = MemBus::new(cart_name, save_file_name, palette, ad);
@@ -73,7 +78,7 @@ impl RustBoy {
             cpu:        cpu,
             audio_recv: audio_recv,
 
-            frame:      Arc::new(Mutex::new([255; 160 * 144 * 4]))
+            frame:      Arc::new(Mutex::new([255; FRAME_SIZE_BYTES]))
         })
     }
 
@@ -83,9 +88,8 @@ impl RustBoy {
 
         while self.cpu.step() {}    // Execute up to v-blanking
 
-        for (i, o) in self.frame.lock().unwrap().iter().zip(frame.iter_mut()) {
-            *o = *i;
-        }
+        let new_frame = self.frame.lock().unwrap();
+        frame.copy_from_slice(&(*new_frame));
         
         if let Some(recv) = &mut self.audio_recv {
             while let Ok(_) = recv.try_recv() {}
