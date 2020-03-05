@@ -8,7 +8,7 @@ use std::sync::{
 };
 
 use crossbeam_channel::{
-    bounded,
+    unbounded,
     Sender,
     Receiver
 };
@@ -30,8 +30,8 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(mem: Arc<Mutex<VRAM>>) -> Self {
-        let (send_msg, recv_msg) = bounded(1);
-        let (send_reply, recv_reply) = bounded(1);
+        let (send_msg, recv_msg) = unbounded();
+        let (send_reply, recv_reply) = unbounded();
 
         std::thread::spawn(move || {
             use RendererMessage::*;
