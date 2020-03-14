@@ -26,15 +26,10 @@ use std::sync::{
     Mutex
 };
 
-use crossbeam_channel::{
-    unbounded, Receiver
-};
+use crossbeam_channel::unbounded;
 
 use cpu::CPU;
-use audio::{
-    AudioCommand,
-    AudioHandler
-};
+use audio::AudioHandler;
 use mem::MemBus;
 
 pub const FRAME_SIZE_BYTES: usize = 160 * 144 * 4;
@@ -58,14 +53,8 @@ pub struct RustBoy {
 
 impl RustBoy {
     pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette) -> Box<Self> {
-        //let ad = AudioDevice::new(audio_send, audio_reply_recv);
         let mem = MemBus::new(cart_name, save_file_name, palette);
-
         let cpu = CPU::new(mem);
-
-        //let audio_packet = Arc::new(Mutex::new(vec![0.0; sample_rate / 60]));
-
-        //start_audio_handler_thread(audio_recv, audio_reply, sample_rate, audio_packet.clone());
 
         Box::new(RustBoy {
             cpu:            cpu,

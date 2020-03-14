@@ -1,21 +1,19 @@
-use std::thread;
-use std::collections::VecDeque;
-use std::sync::{
-    Arc, Mutex
-};
+// Handler which can run in a separate thread. It generates audio samples.
 
-use super::{AudioCommand, AudioChannelGen, AudioChannelRegs};
-
-use super::square1::{Square1Regs, Square1Gen};
-use super::square2::{Square2Regs, Square2Gen};
-use super::wave::{WaveRegs, WaveGen};
-use super::noise::{NoiseRegs, NoiseGen};
-
-use crossbeam_channel::{
-    Receiver,
-    Sender
-};
 use bitflags::bitflags;
+use crossbeam_channel::Receiver;
+
+use std::collections::VecDeque;
+
+use super::{
+    AudioCommand,
+    AudioChannelGen,
+    AudioChannelRegs,
+    square1::{Square1Regs, Square1Gen},
+    square2::{Square2Regs, Square2Gen},
+    wave::{WaveRegs, WaveGen},
+    noise::{NoiseRegs, NoiseGen}
+};
 
 bitflags! {
     #[derive(Default)]
@@ -93,6 +91,7 @@ impl AudioHandler {
         }
     }
 
+    // Fills the provided buffer with samples.
     pub fn fill_buffer(&mut self, buffer: &mut [f32]) {
         for f in buffer.chunks_exact_mut(2) {
             let frame = self.process_frame();
@@ -101,47 +100,6 @@ impl AudioHandler {
             }
         }
     }
-
-    // Run the main loop (wait for commands)
-    /*fn run_loop(&mut self, audio_packet: Arc<Mutex<Vec<f32>>>) {
-        loop {
-            let command = self.receiver.recv().unwrap();
-            match command {
-                AudioCommand::Control{
-                    channel_control,
-                    output_select,
-                    on_off,
-                } => {
-                    let ap = audio_packet.lock().unwrap();
-                    self.set_controls(channel_control, output_select, on_off);
-                    self.gen_audio_packet(&mut ap);
-                },
-                AudioCommand::Frame => self.gen_audio_packet(&mut audio_packet.lock().unwrap()),
-                AudioCommand::NR1(regs, time) => self.square1_data.push_back((regs, time)),
-                AudioCommand::NR2(regs, time) => self.square2_data.push_back((regs, time)),
-                AudioCommand::NR3(regs, time) => self.wave_data.push_back((regs, time)),
-                AudioCommand::NR4(regs, time) => self.noise_data.push_back((regs, time)),
-            }
-        }
-    }
-
-    // Generate an audio packet (1/60s of audio)
-    fn gen_audio_packet(&mut self, audio_packet: &mut Vec<f32>) {
-        self.replier.send(()).expect("Couldn't reply from audio thread");
-
-        process_command_buffer(&mut self.square1, &mut self.square1_data, &mut self.buffers.square1);
-        process_command_buffer(&mut self.square2, &mut self.square2_data, &mut self.buffers.square2);
-        process_command_buffer(&mut self.wave, &mut self.wave_data, &mut self.buffers.wave);
-        process_command_buffer(&mut self.noise, &mut self.noise_data, &mut self.buffers.noise);
-
-        // Mix first samples of new data.
-        match self.buffers.get_next() {
-            Some(vals) => {
-                let frame = self.mix_output(vals);
-            },
-            None => panic!("Can't find any audio."),
-        }
-    }*/
 
     // Generator function that produces the next two samples (left & right channel)
     fn process_frame(&mut self) -> AudioFrame {

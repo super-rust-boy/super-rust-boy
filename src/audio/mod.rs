@@ -14,10 +14,7 @@ use noise::NoiseRegs;
 
 use crate::mem::MemDevice;
 
-use crossbeam_channel::{
-    Sender,
-    Receiver
-};
+use crossbeam_channel::Sender;
 
 pub use handler::AudioHandler;
 
@@ -41,7 +38,6 @@ pub struct AudioDevice {
     update:          bool,
     control_update:  bool,
     sender:          Option<Sender<AudioCommand>>,
-    //reply_recv:      Option<Receiver<()>>,
 
     cycle_count:     u32,
 }
@@ -61,7 +57,6 @@ impl AudioDevice {
             update:         false,
             control_update: false,
             sender:         None,
-            //reply_recv:     None,
 
             cycle_count:    0,
         }
