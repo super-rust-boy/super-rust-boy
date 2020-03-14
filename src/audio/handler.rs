@@ -1,16 +1,19 @@
-use std::thread;
+// Handler which can run in a separate thread. It generates audio samples.
+
+use bitflags::bitflags;
+use crossbeam_channel::Receiver;
+
 use std::collections::VecDeque;
 
-use super::{AudioCommand, AudioChannelGen, AudioChannelRegs};
-
-use super::square1::{Square1Regs, Square1Gen};
-use super::square2::{Square2Regs, Square2Gen};
-use super::wave::{WaveRegs, WaveGen};
-use super::noise::{NoiseRegs, NoiseGen};
-
-use cpal;
-use crossbeam_channel::Receiver;
-use bitflags::bitflags;
+use super::{
+    AudioCommand,
+    AudioChannelGen,
+    AudioChannelRegs,
+    square1::{Square1Regs, Square1Gen},
+    square2::{Square2Regs, Square2Gen},
+    wave::{WaveRegs, WaveGen},
+    noise::{NoiseRegs, NoiseGen}
+};
 
 bitflags! {
     #[derive(Default)]
@@ -38,82 +41,8 @@ macro_rules! sample {
 
 type AudioFrame = [f32; 2];
 
-// TODO: better error handling
-pub fn start_audio_handler_thread(recv: Receiver<AudioCommand>) {
-    use cpal::traits::{
-        HostTrait,
-        DeviceTrait,
-        EventLoopTrait
-    };
-
-    thread::spawn(move || {
-        let host = cpal::default_host();
-
-        let event_loop = host.event_loop();
-
-        let device = host.default_output_device().expect("no output device available.");
-
-        let mut supported_formats_range = device.supported_output_formats()
-            .expect("error while querying formats");
-
-        let format = supported_formats_range.next()
-            .expect("No supported format")
-            .with_max_sample_rate();
-
-        let stream_id = event_loop.build_output_stream(&device, &format).unwrap();
-
-        let sample_rate = format.sample_rate.0 as usize;
-
-        let mut handler = AudioHandler::new(recv, sample_rate);
-
-        event_loop.play_stream(stream_id).expect("Stream could not start.");
-
-        event_loop.run(move |_stream_id, stream_result| {
-            use cpal::StreamData::*;
-            use cpal::UnknownTypeOutputBuffer::*;
-
-            let stream_data = match stream_result {
-                Ok(data) => data,
-                Err(e) => {
-                    eprintln!("An error occurred in audio handler: {}", e);
-                    return;
-                }
-            };
-
-            match stream_data {
-                Output { buffer: U16(mut buffer) } => {
-                    for out in buffer.chunks_exact_mut(2) {
-                        let frame = handler.process_frame();
-                        for (elem, f) in out.iter_mut().zip(frame.iter()) {
-                            *elem = (f * u16::max_value() as f32) as u16
-                        }
-                    }
-                },
-                Output { buffer: I16(mut buffer) } => {
-                    for out in buffer.chunks_exact_mut(2) {
-                        let frame = handler.process_frame();
-                        for (elem, f) in out.iter_mut().zip(frame.iter()) {
-                            *elem = (f * i16::max_value() as f32) as i16
-                        }
-                    }
-                },
-                Output { buffer: F32(mut buffer) } => {
-                    for out in buffer.chunks_exact_mut(2) {
-                        let frame = handler.process_frame();
-                        for (elem, f) in out.iter_mut().zip(frame.iter()) {
-                            *elem = *f;
-                        }
-                    }
-                },
-                _ => {},
-            }
-        });
-    });
-}
-
-
 // Receives updates from the AudioDevice, and processes and generates signals.
-struct AudioHandler {
+pub struct AudioHandler {
     receiver:   Receiver<AudioCommand>,
 
     // Data lists for each note
@@ -139,7 +68,7 @@ struct AudioHandler {
 }
 
 impl AudioHandler {
-    fn new(recv: Receiver<AudioCommand>, sample_rate: usize) -> Self {
+    pub fn new(recv: Receiver<AudioCommand>, sample_rate: usize) -> Self {
         AudioHandler {
             receiver:   recv,
 
@@ -162,9 +91,19 @@ impl AudioHandler {
         }
     }
 
+    // Fills the provided buffer with samples.
+    pub fn fill_buffer(&mut self, buffer: &mut [f32]) {
+        for f in buffer.chunks_exact_mut(2) {
+            let frame = self.process_frame();
+            for (o, i) in f.iter_mut().zip(frame.iter()) {
+                *o = *i;
+            }
+        }
+    }
+
     // Generator function that produces the next two samples (left & right channel)
     fn process_frame(&mut self) -> AudioFrame {
-        let n = self.buffers.get_next();
+        let n = self.buffers.next();
         match n {
             Some(vals) => self.mix_output(vals),
             None => {
@@ -195,7 +134,7 @@ impl AudioHandler {
                 process_command_buffer(&mut self.noise, &mut self.noise_data, &mut self.buffers.noise);
 
                 // Mix first samples of new data.
-                match self.buffers.get_next() {
+                match self.buffers.next() {
                     Some(vals) => self.mix_output(vals),
                     None => panic!("Can't find any audio."),
                 }
@@ -291,8 +230,12 @@ impl AudioBuffers {
             i:          0,
         }
     }
+}
 
-    fn get_next(&mut self) -> Option<(i8, i8, i8, i8)> {
+impl Iterator for AudioBuffers {
+    type Item = (i8, i8, i8, i8);
+
+    fn next(&mut self) -> Option<Self::Item> {
         if self.i >= self.size {
             self.i = 0;
             None
