@@ -1,11 +1,15 @@
 // CPU Module
 use bitflags::bitflags;
+use crossbeam_channel::Sender;
 
-use crate::mem::{MemBus, MemDevice};
-use crate::interrupt::*;
-use crate::joypad::{
-    Buttons,
-    Directions
+use crate::{
+    audio::AudioCommand,
+    mem::{MemBus, MemDevice},
+    interrupt::*,
+    joypad::{
+        Buttons,
+        Directions
+    }
 };
 
 use std::sync::{
@@ -159,8 +163,12 @@ impl CPU {
     }
 
     pub fn frame_update(&mut self, frame: Arc<Mutex<[u8]>>) {
-        self.mem.render_frame(frame);
+        self.mem.frame(frame);
         self.mem.flush_cart();
+    }
+
+    pub fn enable_audio(&mut self, sender: Sender<AudioCommand>) {
+        self.mem.enable_audio(sender);
     }
 
     pub fn set_button(&mut self, button: Buttons, val: bool) {

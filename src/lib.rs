@@ -33,8 +33,7 @@ use crossbeam_channel::{
 use cpu::CPU;
 use audio::{
     AudioCommand,
-    AudioDevice,
-    start_audio_handler_thread
+    AudioHandler
 };
 use mem::MemBus;
 
@@ -52,34 +51,37 @@ pub enum Button {
 }
 
 pub struct RustBoy {
-    cpu:        CPU,
-    audio_recv: Option<Receiver<AudioCommand>>,
+    cpu:            CPU,
 
-    frame:      Arc<Mutex<[u8; FRAME_SIZE_BYTES]>>
+    frame:          Arc<Mutex<[u8; FRAME_SIZE_BYTES]>>,
 }
 
 impl RustBoy {
-    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette, mute: bool) -> Box<Self> {
-        let (send, recv) = unbounded();
-
-        let ad = AudioDevice::new(send);
-        let mem = MemBus::new(cart_name, save_file_name, palette, ad);
+    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette) -> Box<Self> {
+        //let ad = AudioDevice::new(audio_send, audio_reply_recv);
+        let mem = MemBus::new(cart_name, save_file_name, palette);
 
         let cpu = CPU::new(mem);
 
-        let audio_recv = if !mute {
-            start_audio_handler_thread(recv);
-            None
-        } else {
-            Some(recv)
-        };
+        //let audio_packet = Arc::new(Mutex::new(vec![0.0; sample_rate / 60]));
+
+        //start_audio_handler_thread(audio_recv, audio_reply, sample_rate, audio_packet.clone());
 
         Box::new(RustBoy {
-            cpu:        cpu,
-            audio_recv: audio_recv,
+            cpu:            cpu,
 
-            frame:      Arc::new(Mutex::new([255; FRAME_SIZE_BYTES]))
+            frame:          Arc::new(Mutex::new([255; FRAME_SIZE_BYTES])),
         })
+    }
+
+    pub fn enable_audio(&mut self, sample_rate: usize) -> RustBoyAudioHandle {
+        let (audio_send, audio_recv) = unbounded();
+
+        self.cpu.enable_audio(audio_send);
+
+        RustBoyAudioHandle {
+            handler: AudioHandler::new(audio_recv, sample_rate)
+        }
     }
 
     // Call every 1/60 seconds.
@@ -90,10 +92,6 @@ impl RustBoy {
 
         let new_frame = self.frame.lock().unwrap();
         frame.copy_from_slice(&(*new_frame));
-        
-        if let Some(recv) = &mut self.audio_recv {
-            while let Ok(_) = recv.try_recv() {}
-        }
     }
 
     pub fn set_button(&mut self, button: Button, val: bool) {
@@ -110,23 +108,32 @@ impl RustBoy {
             Select  => self.cpu.set_button(Buttons::SELECT, val),
         }
     }
+}
 
-    #[cfg(feature = "debug")]
+pub struct RustBoyAudioHandle {
+    handler: AudioHandler
+}
+
+impl RustBoyAudioHandle {
+    pub fn get_audio_packet(&mut self, packet: &mut [f32]) {
+        self.handler.fill_buffer(packet);
+    }
+}
+
+#[cfg(feature = "debug")]
+impl RustBoy {
     pub fn step(&mut self) -> bool {
         self.cpu.step()
     }
 
-    #[cfg(feature = "debug")]
     pub fn get_state(&self) -> debug::CPUState {
         self.cpu.get_state()
     }
 
-    #[cfg(feature = "debug")]
     pub fn get_instr(&self) -> [u8; 3] {
         self.cpu.get_instr()
     }
 
-    #[cfg(feature = "debug")]
     pub fn get_mem_at(&self, loc: u16) -> u8 {
         self.cpu.get_mem_at(loc)
     }

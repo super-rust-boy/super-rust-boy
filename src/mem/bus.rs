@@ -1,11 +1,16 @@
 // The main memory bus that connects to the CPU.
 
+use crossbeam_channel::Sender;
+
 use crate::{
     video::{
         sgbpalettes::*,
         VideoDevice
     },
-    audio::AudioDevice,
+    audio::{
+        AudioDevice,
+        AudioCommand
+    },
     timer::Timer,
     joypad::*,
     interrupt::InterruptFlags
@@ -47,7 +52,7 @@ pub struct MemBus {
 }
 
 impl MemBus {
-    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette, audio_device: AudioDevice) -> MemBus {
+    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette) -> MemBus {
         let rom = match Cartridge::new(rom_file, save_file) {
             Ok(r) => r,
             Err(s) => panic!("Could not construct ROM: {}", s),
@@ -75,7 +80,7 @@ impl MemBus {
             interrupt_enable:   InterruptFlags::default(),
 
             video_device:       VideoDevice::new(palette, cgb_mode),
-            audio_device:       audio_device,
+            audio_device:       AudioDevice::new(),
             timer:              Timer::new(),
             joypad:             Joypad::new(),
 
@@ -91,9 +96,10 @@ impl MemBus {
         }
     }
 
-    pub fn render_frame(&mut self, frame: Arc<Mutex<[u8]>>) {
+    pub fn frame(&mut self, frame: Arc<Mutex<[u8]>>) {
         self.audio_device.frame_update();
         self.video_device.start_frame(frame);
+
         if self.joypad.check_interrupt() {
             self.interrupt_flag.insert(InterruptFlags::JOYPAD);
         }
@@ -102,6 +108,10 @@ impl MemBus {
     // Send new audio update.
     pub fn update_audio(&mut self, cycles: u32) {
         self.audio_device.send_update(cycles);
+    }
+
+    pub fn enable_audio(&mut self, sender: Sender<AudioCommand>) {
+        self.audio_device.enable_audio(sender);
     }
 
     // Clock memory: update timer and DMA transfers.

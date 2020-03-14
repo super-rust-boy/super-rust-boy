@@ -14,9 +14,12 @@ use noise::NoiseRegs;
 
 use crate::mem::MemDevice;
 
-use crossbeam_channel::Sender;
+use crossbeam_channel::{
+    Sender,
+    Receiver
+};
 
-pub use self::handler::start_audio_handler_thread;
+pub use handler::AudioHandler;
 
 const MAX_CYCLES: u32 = 154 * 456;
 const MAX_CYCLES_FLOAT: f32 = MAX_CYCLES as f32;
@@ -37,13 +40,14 @@ pub struct AudioDevice {
     // Managing audio handler
     update:          bool,
     control_update:  bool,
-    sender:          Sender<AudioCommand>,
+    sender:          Option<Sender<AudioCommand>>,
+    //reply_recv:      Option<Receiver<()>>,
 
     cycle_count:     u32,
 }
 
 impl AudioDevice {
-    pub fn new(sender: Sender<AudioCommand>) -> Self {
+    pub fn new() -> Self {
         AudioDevice {
             nr1: Square1Regs::new(),
             nr2: Square2Regs::new(),
@@ -56,10 +60,16 @@ impl AudioDevice {
 
             update:         false,
             control_update: false,
-            sender:         sender,
+            sender:         None,
+            //reply_recv:     None,
 
             cycle_count:    0,
         }
+    }
+
+    // Call to enable audio on the appropriate thread (this should be done before any processing)
+    pub fn enable_audio(&mut self, sender: Sender<AudioCommand>) {
+        self.sender = Some(sender);
     }
 
     // Call every instruction to send update
@@ -69,17 +79,20 @@ impl AudioDevice {
 
         // If trigger bit was just written, send timed update
         if self.update {
-            let time_in_frame = (self.cycle_count as f32) / MAX_CYCLES_FLOAT;
+            if let Some(sender) = &mut self.sender {
+                let time_in_frame = (self.cycle_count as f32) / MAX_CYCLES_FLOAT;
 
-            if self.nr1.triggered() {
-                self.sender.send(AudioCommand::NR1(self.nr1.clone(), time_in_frame)).unwrap();
-            } else if self.nr2.triggered() {
-                self.sender.send(AudioCommand::NR2(self.nr2.clone(), time_in_frame)).unwrap();
-            } else if self.nr3.triggered() {
-                self.sender.send(AudioCommand::NR3(self.nr3.clone(), time_in_frame)).unwrap();
-            } else if self.nr4.triggered() {
-                self.sender.send(AudioCommand::NR4(self.nr4.clone(), time_in_frame)).unwrap();
+                if self.nr1.triggered() {
+                    sender.send(AudioCommand::NR1(self.nr1.clone(), time_in_frame)).unwrap();
+                } else if self.nr2.triggered() {
+                    sender.send(AudioCommand::NR2(self.nr2.clone(), time_in_frame)).unwrap();
+                } else if self.nr3.triggered() {
+                    sender.send(AudioCommand::NR3(self.nr3.clone(), time_in_frame)).unwrap();
+                } else if self.nr4.triggered() {
+                    sender.send(AudioCommand::NR4(self.nr4.clone(), time_in_frame)).unwrap();
+                }
             }
+            
             self.update = false;
         }
     }
@@ -88,15 +101,17 @@ impl AudioDevice {
     pub fn frame_update(&mut self) {
         // End of last frame
         if self.control_update {
-            self.sender.send(AudioCommand::Control{
-                channel_control: self.channel_control,
-                output_select:   self.output_select,
-                on_off:          self.on_off,
-            }).unwrap();
+            if let Some(sender) = &mut self.sender {
+                sender.send(AudioCommand::Control{
+                    channel_control: self.channel_control,
+                    output_select:   self.output_select,
+                    on_off:          self.on_off,
+                }).unwrap();
+            }
 
             self.control_update = false;
-        } else {
-            self.sender.send(AudioCommand::Frame).unwrap();
+        } else if let Some(sender) = &mut self.sender {
+            sender.send(AudioCommand::Frame).unwrap();
         }
     }
 }
