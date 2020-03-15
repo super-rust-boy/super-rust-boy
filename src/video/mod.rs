@@ -1,7 +1,12 @@
 mod types;
-mod renderer;
 mod vram;
 mod regs;
+
+#[cfg(feature = "threads")]
+mod renderer_threads;
+
+#[cfg(not(feature = "threads"))]
+mod renderer_nothreads;
 
 pub mod sgbpalettes;
 
@@ -28,7 +33,11 @@ pub use types::{
 
 use vram::VRAM;
 
-use renderer::*;
+#[cfg(feature = "threads")]
+use renderer_threads::*;
+
+#[cfg(not(feature = "threads"))]
+use renderer_nothreads::*;
 
 use std::sync::{
     Arc,
