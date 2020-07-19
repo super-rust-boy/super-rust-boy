@@ -4,6 +4,7 @@ mod bus;
 mod cartridge;
 
 pub use bus::MemBus;
+pub use cartridge::ROMType;
 
 pub trait MemDevice {
     fn read(&self, loc: u16) -> u8;

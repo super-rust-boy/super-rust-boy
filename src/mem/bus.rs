@@ -20,7 +20,7 @@ use std::sync::{
     Arc, Mutex
 };
 
-use super::cartridge::Cartridge;
+use super::cartridge::{Cartridge, ROMType};
 use super::{MemDevice, WriteableMem};
 
 pub struct MemBus {
@@ -52,14 +52,14 @@ pub struct MemBus {
 }
 
 impl MemBus {
-    pub fn new(rom_file: &str, save_file: &str, user_palette: UserPalette) -> MemBus {
-        let rom = match Cartridge::new(rom_file, save_file) {
+    pub fn new(rom: ROMType, save_file: &str, user_palette: UserPalette) -> MemBus {
+        let cart = match Cartridge::new(rom, save_file) {
             Ok(r) => r,
             Err(s) => panic!("Could not construct ROM: {}", s),
         };
 
         let palette = match user_palette {
-            UserPalette::Default => if let Some(cart_hash) = rom.cart_name_hash() {
+            UserPalette::Default => if let Some(cart_hash) = cart.cart_name_hash() {
                 lookup_sgb_palette(cart_hash.0, cart_hash.1)
             } else {
                 BW_PALETTE
@@ -68,10 +68,10 @@ impl MemBus {
             UserPalette::Classic => CLASSIC_PALETTE
         };
 
-        let cgb_mode = (user_palette == UserPalette::Default) && rom.cgb_cart();
+        let cgb_mode = (user_palette == UserPalette::Default) && cart.cgb_cart();
 
         MemBus {
-            cart:               rom,
+            cart:               cart,
 
             ram:                WriteableMem::new(0x8000),
             high_ram:           WriteableMem::new(0x7F),

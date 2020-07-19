@@ -1,23 +1,19 @@
 // Cartridge module.
 
 mod ram;
+mod rom;
 mod mbc1;
 
 use ram::*;
+use rom::*;
 use mbc1::MBC1;
 
-use std::{
-    collections::BTreeMap,
-    io::{
-        BufReader,
-        Read,
-        Seek,
-        SeekFrom
-    },
-    fs::File
-};
-
 use super::MemDevice;
+
+pub enum ROMType {
+    File(String),
+    Data(Vec<u8>),
+}
 
 // Cartridge Memory Bank type
 enum MBC {
@@ -36,27 +32,21 @@ enum CartFeatures {
 }
 
 pub struct Cartridge {
-    rom_bank_0:         [u8; 0x4000],
-    rom_bank_cache:     BTreeMap<usize, Vec<u8>>,
-    rom_bank_offset:    usize,
+    rom:        Box<dyn ROM>,
+    ram:        Box<dyn RAM>,
 
-    ram:                Box<dyn RAM>,
-
-    rom_file:           BufReader<File>,
-    mem_bank:           MBC,
-    ram_enable:         bool
+    mem_bank:   MBC,
+    ram_enable: bool
 }
 
 impl Cartridge {
-    pub fn new(rom_file_name: &str, save_file_name: &str) -> Result<Cartridge, String> {
-        let f = File::open(rom_file_name).map_err(|e| e.to_string())?;
+    pub fn new(rom_type: ROMType, save_file_name: &str) -> Result<Cartridge, String> {
+        let rom = match rom_type {
+            ROMType::File(file_name) => ROMFile::new(&file_name)? as Box<dyn ROM>,
+            ROMType::Data(data) => ROMData::new(&data) as Box<dyn ROM>,
+        };
 
-        let mut reader = BufReader::new(f);
-        let mut buf = [0_u8; 0x4000];
-        reader.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-        reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
-
-        let (bank_type, features) = match buf[0x147] {
+        let (bank_type, features) = match rom.read(0x147) {
             0x1 | 0x2           => (MBC::_1(MBC1::new()), CartFeatures::None),
             0x3                 => (MBC::_1(MBC1::new()), CartFeatures::Battery),
             0x5                 => (MBC::_2,              CartFeatures::None),
@@ -69,7 +59,7 @@ impl Cartridge {
             _                   => (MBC::_0,              CartFeatures::None)
         };
 
-        let ram_size = match (&bank_type, buf[0x149]) {
+        let ram_size = match (&bank_type, rom.read(0x149)) {
             (MBC::_2,_)     => 0x200,
             (_,0x1)         => 0x800,
             (_,0x2)         => 0x2000,
@@ -86,11 +76,8 @@ impl Cartridge {
         };
 
         let mut ret = Cartridge {
-            rom_bank_0:         buf,
-            rom_bank_cache:     BTreeMap::new(),
-            rom_bank_offset:    0,
+            rom:                rom,
             ram:                ram,
-            rom_file:           reader,
             mem_bank:           bank_type,
             ram_enable:         false
         };
@@ -167,19 +154,7 @@ impl Cartridge {
 // Internal swapping methods.
 impl Cartridge {
     fn swap_rom_bank(&mut self, bank: u16) {
-        self.rom_bank_offset = (bank as usize) * 0x4000;
-
-        if self.rom_bank_cache.get(&self.rom_bank_offset).is_none() {
-            let mut rom_bank = vec![0; 0x4000];
-
-            self.rom_file.seek(SeekFrom::Start(self.rom_bank_offset as u64))
-                .expect("Couldn't swap in bank");
-
-            self.rom_file.read_exact(&mut rom_bank)
-                .expect(&format!("Couldn't swap in bank at pos {}-{}", self.rom_bank_offset, self.rom_bank_offset + 0x3FFF));
-
-            self.rom_bank_cache.insert(self.rom_bank_offset, rom_bank);
-        }
+        self.rom.set_bank(bank);
     }
 
     #[inline]
@@ -210,8 +185,7 @@ impl Cartridge {
 impl MemDevice for Cartridge {
     fn read(&self, loc: u16) -> u8 {
         match loc {
-            0x0..=0x3FFF    => self.rom_bank_0[loc as usize],
-            0x4000..=0x7FFF => self.rom_bank_cache.get(&self.rom_bank_offset).expect("Bank not loaded!")[(loc - 0x4000) as usize],
+            0x0..=0x7FFF    => self.rom.read(loc),
             0xA000..=0xBFFF => self.read_ram(loc - 0xA000),
             _ => unreachable!()
         }
