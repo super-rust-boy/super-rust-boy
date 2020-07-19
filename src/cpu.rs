@@ -178,6 +178,10 @@ impl CPU {
     pub fn set_direction(&mut self, direction: Directions, val: bool) {
         self.mem.set_direction(direction, val);
     }
+
+    pub fn cart_name(&self) -> String {
+        self.mem.cart_name()
+    }
 }
 
 // Top level internals

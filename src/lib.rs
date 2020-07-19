@@ -98,6 +98,10 @@ impl RustBoy {
             Select  => self.cpu.set_button(Buttons::SELECT, val),
         }
     }
+
+    pub fn cart_name(&self) -> String {
+        self.cpu.cart_name()
+    }
 }
 
 pub struct RustBoyAudioHandle {
