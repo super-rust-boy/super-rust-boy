@@ -31,6 +31,7 @@ use crossbeam_channel::unbounded;
 use cpu::CPU;
 use audio::AudioHandler;
 use mem::MemBus;
+pub use mem::ROMType;
 
 pub const FRAME_SIZE_BYTES: usize = 160 * 144 * 4;
 
@@ -52,8 +53,8 @@ pub struct RustBoy {
 }
 
 impl RustBoy {
-    pub fn new(cart_name: &str, save_file_name: &str, palette: UserPalette) -> Box<Self> {
-        let mem = MemBus::new(cart_name, save_file_name, palette);
+    pub fn new(rom: ROMType, save_file_name: &str, palette: UserPalette) -> Box<Self> {
+        let mem = MemBus::new(rom, save_file_name, palette);
         let cpu = CPU::new(mem);
 
         Box::new(RustBoy {
