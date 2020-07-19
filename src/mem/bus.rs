@@ -167,6 +167,10 @@ impl MemBus {
         self.cart.flush_ram();
     }
 
+    pub fn cart_name(&self) -> String {
+        self.cart.name()
+    }
+
     // See if the memory is in CGB mode.
     pub fn is_cgb(&self) -> bool {
         self.cgb_mode

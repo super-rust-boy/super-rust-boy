@@ -104,6 +104,30 @@ impl Cartridge {
         self.ram.flush();
     }
 
+    // Get the ROM name.
+    pub fn name(&self) -> String {
+        use std::str::FromStr;
+
+        let old_code = self.read(0x014B);
+        let title_end = if old_code == 0x33 {
+            0x13E
+        } else {
+            0x143
+        };
+
+        let mut name_bytes = Vec::new();
+        for title_loc in 0x134..=title_end {
+            let byte = self.read(title_loc);
+            if byte == 0 {
+                break;
+            } else {
+                name_bytes.push(byte);
+            }
+        }
+
+        String::from_str(std::str::from_utf8(&name_bytes).unwrap()).unwrap()
+    }
+
     // Get the cart name hash values for SGB palette lookup.
     pub fn cart_name_hash(&self) -> Option<(u8, u8)> {
         let old_code = self.read(0x014B);
