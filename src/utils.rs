@@ -4,6 +4,13 @@ macro_rules! bit {
     };
 }
 
+// Multiple bit selection.
+macro_rules! bits {
+    [ $($bit_num:expr),* ] => {
+        $(bit!($bit_num))|*
+    };
+}
+
 macro_rules! test_bit {
     ($val:expr, $bit_num:expr) => {
         ($val & bit!($bit_num)) != 0
