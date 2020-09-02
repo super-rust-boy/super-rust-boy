@@ -46,8 +46,10 @@ impl LCDStatus {
     }
 
     fn write(&mut self, val: u8) {
-        self.flags = LCDStatusFlags::from_bits_truncate(val);
-        self.video_mode = Mode::from(val);
+        let coincedence_flag = self.flags & LCDStatusFlags::COINCEDENCE_FLAG;
+        let mut new_flags = LCDStatusFlags::from_bits_truncate(val);
+        new_flags.remove(LCDStatusFlags::COINCEDENCE_FLAG);
+        self.flags = new_flags | coincedence_flag;
     }
 
     fn read_flags(&self) -> LCDStatusFlags {
@@ -80,7 +82,7 @@ pub struct VideoRegs {
 impl VideoRegs {
     pub fn new() -> Self {
         VideoRegs {
-            lcd_control:    LCDControl::ENABLE,
+            lcd_control:    LCDControl::default(),
             lcd_status:     LCDStatus::new(),
             lcdc_y:         0,
             ly_compare:     0,
@@ -194,14 +196,12 @@ impl VideoRegs {
         let is_display_enabled = self.is_display_enabled();
 
         // Has display been toggled on/off?
-        if is_display_enabled != was_display_enabled {
-            if is_display_enabled { // ON
-                self.lcd_status.write_mode(Mode::_2);
-                return true;
-            } else {                // OFF
-                self.lcd_status.write_mode(Mode::_0);
-                self.lcdc_y = 0;
-            }
+        if is_display_enabled && !was_display_enabled {         // ON
+            self.lcd_status.write_mode(Mode::_2);
+            return true;
+        } else if !is_display_enabled && was_display_enabled {  // OFF
+            self.lcd_status.write_mode(Mode::_0);
+            self.lcdc_y = 0;
         }
 
         false
