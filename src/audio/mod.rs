@@ -228,10 +228,10 @@ impl MemDevice for AudioDevice {
 
             // If any of the below change, send an update at the end of the frame.
             0xFF24  => {
-                const REDUCTION_FACTOR: f32 = 7.0 * 4.0;    // 4 channels, max vol = 7
+                const REDUCTION_FACTOR: f32 = 1.0 / (4.0 * 7.0);    // 4 channels, max vol = 7
                 let vol_ctrl = VolumeControl::from_bits_truncate(val);
-                self.vol_left = vol_ctrl.vol_left() / REDUCTION_FACTOR;
-                self.vol_right = vol_ctrl.vol_right() / REDUCTION_FACTOR;
+                self.vol_left = vol_ctrl.vol_left() * REDUCTION_FACTOR;
+                self.vol_right = vol_ctrl.vol_right() * REDUCTION_FACTOR;
                 self.volume_control = vol_ctrl;
             },
             0xFF25  => self.channel_enables = ChannelEnables::from_bits_truncate(val),

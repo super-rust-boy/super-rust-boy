@@ -190,7 +190,7 @@ impl Square1 {
         const SWEEP_SHIFT_MASK: u8 = bits![2, 1, 0];
         const MAX_FREQUENCY: u32 = 2047;
 
-        let freq_modulo = get_freq_modulo(self.freq_hi_reg, self.freq_lo_reg);
+        let freq_modulo = 2048 - (self.freq_modulo / 4);
         let sweep_shift = self.sweep_reg & SWEEP_SHIFT_MASK;
         let freq_delta = freq_modulo >> sweep_shift;
         let new_modulo = if test_bit!(self.sweep_reg, 3) {
