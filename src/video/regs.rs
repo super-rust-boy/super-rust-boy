@@ -82,7 +82,7 @@ pub struct VideoRegs {
 impl VideoRegs {
     pub fn new() -> Self {
         VideoRegs {
-            lcd_control:    LCDControl::default(),
+            lcd_control:    LCDControl::ENABLE,
             lcd_status:     LCDStatus::new(),
             lcdc_y:         0,
             ly_compare:     0,
