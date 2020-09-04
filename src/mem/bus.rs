@@ -9,7 +9,7 @@ use crate::{
     },
     audio::{
         AudioDevice,
-        Stereo
+        SamplePacket
     },
     timer::Timer,
     joypad::*,
@@ -104,8 +104,8 @@ impl MemBus {
         }
     }
 
-    pub fn enable_audio(&mut self, target_sample_rate: f64, sender: Sender<Stereo<f32>>) {
-        self.audio_device.enable_audio(target_sample_rate, sender);
+    pub fn enable_audio(&mut self, sender: Sender<SamplePacket>) {
+        self.audio_device.enable_audio(sender);
     }
 
     // Clock memory: update timer and DMA transfers.

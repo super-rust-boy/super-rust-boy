@@ -1,11 +1,13 @@
 mod channels;
+mod resampler;
 
 use bitflags::bitflags;
 use crossbeam_channel::Sender;
+use sample::frame::Stereo;
 
 use crate::mem::MemDevice;
 
-pub use channels::Stereo;
+pub use resampler::Resampler;
 use channels::{
     Channel,
     square1::Square1,
@@ -69,8 +71,9 @@ impl PowerControl {
 
 const SAMPLE_PACKET_SIZE: usize = 32;
 const CYCLES_PER_SECOND: usize = 154 * 456 * 60;
+const INPUT_SAMPLE_RATE: f64 = 131_072.0;
 
-//pub type SamplePacket = Box<[Stereo<f32>]>;
+pub type SamplePacket = Box<[Stereo<f32>]>;
 
 // The structure that exists in memory. Sends data to the audio thread.
 pub struct AudioDevice {
@@ -86,8 +89,8 @@ pub struct AudioDevice {
     power_control:      PowerControl,
 
     // Managing output of samples
-    //sample_buffer:      Vec<Stereo<f32>>,
-    sender:             Option<Sender<Stereo<f32>>>,
+    sample_buffer:      Vec<Stereo<f32>>,
+    sender:             Option<Sender<SamplePacket>>,
     cycle_count:        f64,
     cycles_per_sample:  f64,
 
@@ -111,7 +114,7 @@ impl AudioDevice {
             channel_enables:    ChannelEnables::default(),
             power_control:      PowerControl::default(),
 
-            //sample_buffer:      Vec::new(),
+            sample_buffer:      Vec::new(),
             sender:             None,
             cycle_count:        0.0,
             cycles_per_sample:  0.0,
@@ -125,10 +128,10 @@ impl AudioDevice {
     }
 
     // Call to enable audio on the appropriate thread (this should be done before any processing)
-    pub fn enable_audio(&mut self, target_sample_rate: f64, sender: Sender<Stereo<f32>>) {
+    pub fn enable_audio(&mut self, sender: Sender<SamplePacket>) {
         self.sender = Some(sender);
 
-        let seconds_per_sample = 1.0 / target_sample_rate;
+        let seconds_per_sample = 1.0 / INPUT_SAMPLE_RATE;
         self.cycles_per_sample = seconds_per_sample * (CYCLES_PER_SECOND as f64);
     }
 
@@ -143,18 +146,18 @@ impl AudioDevice {
 
             // Generate sample
             let sample = self.generate_sample();
-            //self.sample_buffer.push(sample);
-            if let Some(s) = &mut self.sender {
+            self.sample_buffer.push(sample);
+            /*if let Some(s) = &mut self.sender {
                 s.send(sample).expect("Error sending!");
-            }
+            }*/
 
             // Output to audio thread
-            /*if self.sample_buffer.len() > SAMPLE_PACKET_SIZE {
+            if self.sample_buffer.len() > SAMPLE_PACKET_SIZE {
                 let sample_packet = self.sample_buffer.drain(..).collect::<SamplePacket>();
-                if let Some(s) = self.sender {
-                    s.send(sample_packet);
+                if let Some(s) = &self.sender {
+                    s.send(sample_packet).expect("Error sending!");
                 }
-            }*/
+            }
         }
     }
 }

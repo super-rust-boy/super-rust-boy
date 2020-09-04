@@ -26,12 +26,9 @@ use std::sync::{
     Mutex
 };
 
-use crossbeam_channel::{
-    unbounded,
-    Receiver
-};
+use crossbeam_channel::unbounded;
 
-use audio::Stereo;
+use audio::Resampler;
 use cpu::CPU;
 use mem::MemBus;
 pub use mem::ROMType;
@@ -70,10 +67,10 @@ impl RustBoy {
     pub fn enable_audio(&mut self, sample_rate: usize) -> RustBoyAudioHandle {
         let (audio_send, audio_recv) = unbounded();
 
-        self.cpu.enable_audio(sample_rate as f64, audio_send);
+        self.cpu.enable_audio(audio_send);
 
         RustBoyAudioHandle {
-            rx: audio_recv
+            resampler: Resampler::new(audio_recv, sample_rate as f64)
         }
     }
 
@@ -108,12 +105,12 @@ impl RustBoy {
 }
 
 pub struct RustBoyAudioHandle {
-    rx: Receiver<Stereo<f32>>
+    resampler: Resampler,
 }
 
 impl RustBoyAudioHandle {
     pub fn get_audio_packet(&mut self, packet: &mut [f32]) {
-        for (o_frame, i_frame) in packet.chunks_exact_mut(2).zip(&mut self.rx.iter()) {
+        for (o_frame, i_frame) in packet.chunks_exact_mut(2).zip(&mut self.resampler) {
             for (o, i) in o_frame.iter_mut().zip(i_frame.iter()) {
                 *o = *i;
             }
