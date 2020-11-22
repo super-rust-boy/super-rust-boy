@@ -1,6 +1,6 @@
 [package]
 name = "rustboy"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["coopersimon <simon.d.cooper@hotmail.co.uk>"]
 edition = "2018"
 
