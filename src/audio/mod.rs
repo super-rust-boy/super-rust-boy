@@ -147,10 +147,7 @@ impl AudioDevice {
             // Generate sample
             let sample = self.generate_sample();
             self.sample_buffer.push(sample);
-            /*if let Some(s) = &mut self.sender {
-                s.send(sample).expect("Error sending!");
-            }*/
-
+            
             // Output to audio thread
             if self.sample_buffer.len() > SAMPLE_PACKET_SIZE {
                 let sample_packet = self.sample_buffer.drain(..).collect::<SamplePacket>();
@@ -229,7 +226,6 @@ impl MemDevice for AudioDevice {
             0xFF22  => self.noise.set_poly_counter_reg(val),
             0xFF23  => self.noise.set_trigger_reg(val),
 
-            // If any of the below change, send an update at the end of the frame.
             0xFF24  => {
                 const REDUCTION_FACTOR: f32 = 1.0 / (4.0 * 7.0);    // 4 channels, max vol = 7
                 let vol_ctrl = VolumeControl::from_bits_truncate(val);
