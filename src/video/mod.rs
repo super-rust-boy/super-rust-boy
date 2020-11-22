@@ -184,7 +184,7 @@ impl VideoDevice {
         // Trigger STAT interrupt
         if !stat_flags.is_empty() {
             // LY Coincidence interrupt
-            if stat_flags.contains(LCDStatusFlags::COINCEDENCE_INT) {
+            if stat_flags.contains(LCDStatusFlags::COINCIDENCE_INT) {
                 if self.regs.compare_ly_equal() {
                     return InterruptFlags::LCD_STAT;
                 }

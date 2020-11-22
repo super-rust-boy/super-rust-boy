@@ -28,8 +28,8 @@ use std::sync::{
 
 use crossbeam_channel::unbounded;
 
+use audio::Resampler;
 use cpu::CPU;
-use audio::AudioHandler;
 use mem::MemBus;
 pub use mem::ROMType;
 
@@ -70,7 +70,7 @@ impl RustBoy {
         self.cpu.enable_audio(audio_send);
 
         RustBoyAudioHandle {
-            handler: AudioHandler::new(audio_recv, sample_rate)
+            resampler: Resampler::new(audio_recv, sample_rate as f64)
         }
     }
 
@@ -105,12 +105,16 @@ impl RustBoy {
 }
 
 pub struct RustBoyAudioHandle {
-    handler: AudioHandler
+    resampler: Resampler,
 }
 
 impl RustBoyAudioHandle {
     pub fn get_audio_packet(&mut self, packet: &mut [f32]) {
-        self.handler.fill_buffer(packet);
+        for (o_frame, i_frame) in packet.chunks_exact_mut(2).zip(&mut self.resampler) {
+            for (o, i) in o_frame.iter_mut().zip(i_frame.iter()) {
+                *o = *i;
+            }
+        }
     }
 }
 

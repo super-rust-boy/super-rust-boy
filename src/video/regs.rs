@@ -19,11 +19,11 @@ bitflags! {
 bitflags! {
     #[derive(Default)]
     pub struct LCDStatusFlags: u8 {
-        const COINCEDENCE_INT   = bit!(6);
+        const COINCIDENCE_INT   = bit!(6);
         const OAM_INT           = bit!(5);
         const V_BLANK_INT       = bit!(4);
         const H_BLANK_INT       = bit!(3);
-        const COINCEDENCE_FLAG  = bit!(2);
+        const COINCIDENCE_FLAG  = bit!(2);
     }
 }
 
@@ -46,8 +46,10 @@ impl LCDStatus {
     }
 
     fn write(&mut self, val: u8) {
-        self.flags = LCDStatusFlags::from_bits_truncate(val);
-        self.video_mode = Mode::from(val);
+        let coincidence_flag = self.flags & LCDStatusFlags::COINCIDENCE_FLAG;
+        let mut new_flags = LCDStatusFlags::from_bits_truncate(val);
+        new_flags.remove(LCDStatusFlags::COINCIDENCE_FLAG);
+        self.flags = new_flags | coincidence_flag;
     }
 
     fn read_flags(&self) -> LCDStatusFlags {
@@ -142,12 +144,12 @@ impl VideoRegs {
                 
     pub fn inc_lcdc_y(&mut self) {
         self.lcdc_y += 1;
-        self.lcd_status.flags.set(LCDStatusFlags::COINCEDENCE_FLAG, self.lcdc_y == self.ly_compare);
+        self.lcd_status.flags.set(LCDStatusFlags::COINCIDENCE_FLAG, self.lcdc_y == self.ly_compare);
     }
 
     pub fn set_lcdc_y(&mut self, val: u8) {
         self.lcdc_y = val;
-        self.lcd_status.flags.set(LCDStatusFlags::COINCEDENCE_FLAG, self.lcdc_y == self.ly_compare);
+        self.lcd_status.flags.set(LCDStatusFlags::COINCIDENCE_FLAG, self.lcdc_y == self.ly_compare);
     }
 
     pub fn write_mode(&mut self, mode: Mode) {
@@ -194,14 +196,12 @@ impl VideoRegs {
         let is_display_enabled = self.is_display_enabled();
 
         // Has display been toggled on/off?
-        if is_display_enabled != was_display_enabled {
-            if is_display_enabled { // ON
-                self.lcd_status.write_mode(Mode::_2);
-                return true;
-            } else {                // OFF
-                self.lcd_status.write_mode(Mode::_0);
-                self.lcdc_y = 0;
-            }
+        if is_display_enabled && !was_display_enabled {         // ON
+            self.lcd_status.write_mode(Mode::_2);
+            return true;
+        } else if !is_display_enabled && was_display_enabled {  // OFF
+            self.lcd_status.write_mode(Mode::_0);
+            self.lcdc_y = 0;
         }
 
         false

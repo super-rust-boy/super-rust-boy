@@ -3,7 +3,7 @@ use bitflags::bitflags;
 use crossbeam_channel::Sender;
 
 use crate::{
-    audio::AudioCommand,
+    audio::SamplePacket,
     mem::{MemBus, MemDevice},
     interrupt::*,
     joypad::{
@@ -167,7 +167,7 @@ impl CPU {
         self.mem.flush_cart();
     }
 
-    pub fn enable_audio(&mut self, sender: Sender<AudioCommand>) {
+    pub fn enable_audio(&mut self, sender: Sender<SamplePacket>) {
         self.mem.enable_audio(sender);
     }
 
@@ -191,7 +191,6 @@ impl CPU {
     fn clock_inc(&mut self) {
         self.cgb_dma_active = self.mem.clock(self.step_cycles);
         self.v_blank_latch = self.v_blank_latch || self.mem.video_mode(self.step_cycles);
-        self.mem.update_audio(self.step_cycles);
     }
 
     // Check for interrupts. Return true if they are serviced.

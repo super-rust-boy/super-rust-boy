@@ -9,7 +9,7 @@ use crate::{
     },
     audio::{
         AudioDevice,
-        AudioCommand
+        SamplePacket
     },
     timer::Timer,
     joypad::*,
@@ -97,7 +97,6 @@ impl MemBus {
     }
 
     pub fn frame(&mut self, frame: Arc<Mutex<[u8]>>) {
-        self.audio_device.frame_update();
         self.video_device.start_frame(frame);
 
         if self.joypad.check_interrupt() {
@@ -105,18 +104,15 @@ impl MemBus {
         }
     }
 
-    // Send new audio update.
-    pub fn update_audio(&mut self, cycles: u32) {
-        self.audio_device.send_update(cycles);
-    }
-
-    pub fn enable_audio(&mut self, sender: Sender<AudioCommand>) {
+    pub fn enable_audio(&mut self, sender: Sender<SamplePacket>) {
         self.audio_device.enable_audio(sender);
     }
 
     // Clock memory: update timer and DMA transfers.
     // Return true if CGB DMA is active.
     pub fn clock(&mut self, cycles: u32) -> bool {
+        self.audio_device.clock(cycles);
+
         if self.timer.update(cycles) {
             self.interrupt_flag.insert(InterruptFlags::TIMER);
         }
