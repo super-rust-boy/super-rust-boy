@@ -1,10 +1,13 @@
 // Module that resamples from 32_000 to the output sample rate.
 use crossbeam_channel::Receiver;
-use sample::{
+use dasp::{
     frame::{Frame, Stereo},
-    interpolate::{Converter, Sinc},
+    interpolate::sinc::Sinc,
     ring_buffer::Fixed,
-    signal::Signal
+    signal::{
+        interpolate::Converter,
+        Signal,
+    }
 };
 
 pub struct Resampler {
@@ -13,7 +16,7 @@ pub struct Resampler {
 
 impl Resampler {
     pub fn new(receiver: Receiver<super::SamplePacket>, target_sample_rate: f64) -> Self {
-        let sinc = Sinc::new(Fixed::from([Stereo::equilibrium(); 2]));
+        let sinc = Sinc::new(Fixed::from([Stereo::EQUILIBRIUM; 2]));
         Resampler {
             converter: Source::new(receiver).from_hz_to_hz(sinc, super::INPUT_SAMPLE_RATE, target_sample_rate)
         }

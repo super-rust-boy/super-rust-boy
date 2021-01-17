@@ -3,7 +3,7 @@ mod resampler;
 
 use bitflags::bitflags;
 use crossbeam_channel::Sender;
-use sample::frame::Stereo;
+use dasp::frame::Stereo;
 
 use crate::mem::MemDevice;
 

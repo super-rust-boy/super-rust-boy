@@ -4,8 +4,6 @@ pub mod square2;
 pub mod wave;
 pub mod noise;
 
-use sample::frame::Stereo;
-
 pub trait Channel {
     // Clock the channel and recalculate the output if necessary.
     // Call this with individual CPU cycles.
