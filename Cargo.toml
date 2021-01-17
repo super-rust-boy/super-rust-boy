@@ -1,6 +1,6 @@
 [package]
 name = "rustboy"
-version = "0.7.1"
+version = "0.8.0"
 authors = ["coopersimon <simon.d.cooper@hotmail.co.uk>"]
 edition = "2018"
 
@@ -12,7 +12,10 @@ path = "src/lib.rs"
 bitflags = "1.1"
 chrono = "0.4"
 crossbeam-channel = "0.4.2"
-sample = "0.10"
+
+[dependencies.dasp]
+version = "0.11"
+features = ["interpolate", "interpolate-sinc", "ring_buffer", "signal"]
 
 [features]
 default = ["threads"]
